@@ -23,10 +23,8 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==5.13
           .\make.ps1
-          echo "SUCCESS=true" >> $GITHUB_ENV
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        if: env.SUCCESS == 'true'
         with:
           name: Seraphine
           path: .\Seraphine.7z
