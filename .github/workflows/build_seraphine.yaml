@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install dependencies
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.8'
           cache: 'pip'
@@ -25,8 +25,8 @@ jobs:
           .\make.ps1
           echo "SUCCESS=true" >> $GITHUB_ENV
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        if: ${{ env.SUCCESS }} == 'true'
+        uses: actions/upload-artifact@v4
+        if: env.SUCCESS == 'true'
         with:
           name: Seraphine
           path: .\Seraphine.7z
@@ -48,7 +48,7 @@ jobs:
         echo "VERSION=v$VERSION" >> $GITHUB_ENV
         echo "UPDATED=$UPDATED" >> $GITHUB_ENV
     - name: Download artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       if: env.UPDATED == 'true'
       with:
         name: Seraphine
@@ -62,14 +62,3 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         replacesArtifacts: false
         artifacts: Seraphine.7z
-    - name: Sync to Gitee
-      if: env.UPDATED == 'true'
-      env:
-        GITEE_OWNER: Zzaphkiel
-        GITEE_REPO: seraphine
-        GITEE_USERNAME: ${{ secrets.GITEE_USERNAME }}
-        GITEE_PASSWORD: ${{ secrets.GITEE_PASSWORD }}
-        GITEE_CLIENT_ID: ${{ secrets.GITEE_CLIENT_ID }}
-        GITEE_CLIENT_SECRET: ${{ secrets.GITEE_CLIENT_SECRET }}
-      run: |
-        python3 sync.py --tag "$VERSION"
