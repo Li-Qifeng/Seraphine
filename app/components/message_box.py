@@ -345,7 +345,7 @@ class ExceptionMessageBox(MessageBoxBase):
 class MultiChampionSelectMsgBox(MessageBoxBase):
     completed = pyqtSignal(list)
 
-    def __init__(self, champions: dict, selected: list, parent=None):
+    def __init__(self, champions: dict, selected: list, maxCount=6, parent=None):
         super().__init__(parent)
 
         self.myYesButton = PrimaryPushButton(self.tr('OK'), self.buttonGroup)
@@ -353,7 +353,7 @@ class MultiChampionSelectMsgBox(MessageBoxBase):
 
         self.titleLabel = TitleLabel(self.tr("Choose Champions"))
         self.championSelectWidget = MultiChampionSelectWidget(
-            champions, selected)
+            champions, selected, maxCount=maxCount)
 
         self.__initWidget()
         self.__initLayout()

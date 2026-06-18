@@ -17,7 +17,8 @@ from PyQt5.QtWidgets import QApplication, QSystemTrayIcon
 
 from app.common.qfluentwidgets import (NavigationItemPosition, InfoBar, InfoBarPosition, Action,
                                        FluentWindow, SplashScreen, MessageBox, SmoothScrollArea,
-                                       ToolTipFilter, FluentIcon, ToolTipPosition, FluentWindowBase)
+                                       ToolTipFilter, FluentIcon, ToolTipPosition, FluentWindowBase,
+                                       Flyout, FlyoutAnimationType)
 
 from app.view.start_interface import StartInterface
 from app.view.setting_interface import SettingInterface
@@ -26,6 +27,7 @@ from app.view.search_interface import SearchInterface
 from app.view.game_info_interface import GameInfoInterface
 from app.view.auxiliary_interface import AuxiliaryInterface
 from app.view.opgg_window import OpggWindow
+from app.view.hextech_window import HextechWindow, HextechGrabFlyout
 from app.common.util import (github, getLolClientPid, getTasklistPath,
                              getLolClientPidSlowly, getLoLPathByRegistry)
 from app.components.avatar_widget import NavigationAvatarWidget
@@ -45,7 +47,7 @@ from app.lol.tools import (parseAllyGameInfo, parseGameInfoByGameflowSession,
                            getAllyOrderByGameRole, getTeamColor, autoBan, autoPick,
                            autoComplete, autoSwap, autoTrade, ChampionSelection,
                            SERVERS_NAME, SERVERS_SUBSET, showOpggBuild, autoShow,
-                           autoSetSummonerSpell)
+                           autoSetSummonerSpell, autoBenchGrab)
 from app.lol.aram import AramBuff
 from app.lol.champions import ChampionAlias
 from app.lol.opgg import opgg
@@ -106,6 +108,11 @@ class MainWindow(FluentWindow):
         self.__initInterface()
         self.__initNavigation()
         self.__initListener()
+
+        # Hextech 抢人窗口必须在 __conncetSignalToSlot 之前创建 (接线引用 self.hextechWindow)
+        self.hextechWindow = HextechWindow()
+        self.hextechWindow.setChampionSelection(self.championSelection)
+
         self.__conncetSignalToSlot()
         self.__autoStartLolClient()
 
@@ -164,6 +171,16 @@ class MainWindow(FluentWindow):
             self.tr("Auxiliary Functions"), pos)
 
         pos = NavigationItemPosition.BOTTOM
+
+        self.navigationInterface.addItem(
+            routeKey='HextechGrab',
+            icon=QIcon("app/resource/images/hextech.svg"),
+            text=self.tr("抢英雄"),
+            onClick=self.showHextechWindow,
+            selectable=False,
+            position=pos,
+            tooltip=self.tr("海克斯/大乱斗抢英雄")
+        )
 
         self.navigationInterface.addItem(
             routeKey='Opgg',
@@ -258,6 +275,8 @@ class MainWindow(FluentWindow):
         self.stackedWidget.currentChanged.connect(
             self.__onCurrentStackedChanged)
         self.mainWindowHide.connect(self.__onWindowHide)
+
+        # Hextech/ARAM 抢人窗口 (hextechGrabbed 信号由 HextechWindow 自行 connect, 避免跨类 name mangling)
 
     def __initWindow(self):
         self.setMinimumSize(1134, 826)
@@ -736,6 +755,7 @@ class MainWindow(FluentWindow):
         if not cfg.get(cfg.enableCloseToTray) or self.isTrayExit:
             self.__terminateListeners()
             self.opggWindow.close()
+            self.hextechWindow.close()
 
             cfg.set(cfg.windowSize, self.windowSize)
 
@@ -829,6 +849,7 @@ class MainWindow(FluentWindow):
 
         if status != 'ChampSelect':
             self.opggWindow.setStaysOnTopEnabled(False)
+            self.hextechWindow.hide()
 
         if title != None:
             self.setWindowTitle("Seraphine - " + title)
@@ -881,6 +902,12 @@ class MainWindow(FluentWindow):
             if cfg.get(cfg.enableOpggOnTop):
                 self.opggWindow.setStaysOnTopEnabled(True)
 
+        # 海克斯/大乱斗抢人窗口: 仅备选席模式 + 自动弹开启时显示
+        if cfg.get(cfg.autoShowHextechWindow) and cSession.get('benchEnabled'):
+            self.hextechWindow.show()
+            if cfg.get(cfg.enableHextechWindowOnTop):
+                self.hextechWindow.setStaysOnTopEnabled(True)
+
         currentSummonerId = self.currentSummoner['summonerId']
         info = await parseAllyGameInfo(cSession, currentSummonerId, queueId, useSGP=True)
         self.gameInfoInterface.updateAllySummoners(info)
@@ -892,10 +919,29 @@ class MainWindow(FluentWindow):
     async def __onChampSelectChanged(self, data):
         data = data['data']
 
+        # 诊断: 确认 ARAM 的 timer.phase 值 (不受 logLevel 限制)
+        try:
+            import os, json
+            phaseDebug = os.path.join(
+                os.environ.get('APPDATA', ''), 'Seraphine',
+                'hextech_phase_debug.json')
+            with open(phaseDebug, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'phase': data.get('timer', {}).get('phase'),
+                    'benchEnabled': data.get('benchEnabled'),
+                    'enableAutoAramBench': cfg.get(cfg.enableAutoAramBench),
+                }, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+        # 海克斯/大乱斗抢人: benchEnabled 时直接调用, 不依赖 phase (ARAM 的 phase 可能不是 FINALIZATION)
+        if data.get('benchEnabled'):
+            await autoBenchGrab(data, self.championSelection)
+
         phase = {
             'PLANNING': [autoSetSummonerSpell, autoShow],
             'BAN_PICK': [autoSetSummonerSpell, autoBan, autoPick, autoComplete, autoSwap, showOpggBuild],
-            'FINALIZATION': [autoSetSummonerSpell, autoTrade, showOpggBuild],
+            'FINALIZATION': [autoSetSummonerSpell, autoBenchGrab, autoTrade, showOpggBuild],
         }
 
         for func in phase.get(data['timer']['phase'], []):
@@ -907,6 +953,15 @@ class MainWindow(FluentWindow):
 
         # 更新楼层顺序
         self.gameInfoInterface.updateAllySummonersOrder(data['myTeam'])
+
+        # 海克斯/大乱斗抢人: 绕过 phase 机制, 备选席模式直接调用
+        # (ARAM 的 phase 可能不是 FINALIZATION, 依赖 phase dispatch 会漏掉)
+        if data.get('benchEnabled'):
+            await autoBenchGrab(data, self.championSelection)
+
+        # 海克斯/大乱斗: 备选席模式时刷新抢人窗口的头像墙
+        if data.get('benchEnabled') and self.hextechWindow.isVisible():
+            signalBus.hextechSessionUpdated.emit(data)
 
     # 进入游戏后触发
     async def __onGameStart(self):
@@ -1016,6 +1071,74 @@ class MainWindow(FluentWindow):
         self.opggWindow.raise_()
 
     @asyncSlot()
+    async def showHextechWindow(self):
+        """导航栏按钮: 弹出抢英雄 Flyout 浮层 (不进入独立页面)"""
+        if not self.isClientProcessRunning:
+            InfoBar.warning(
+                self.tr("提示"),
+                self.tr("英雄联盟客户端未运行"),
+                parent=self, duration=3000, position=InfoBarPosition.TOP)
+            return
+
+        # 锚点: 导航栏中点击的按钮
+        target = self.sender() or self.navigationInterface
+
+        # 取当前选人会话; 不在选人中则提示
+        try:
+            data = await connector.getChampSelectSession()
+        except Exception:
+            data = None
+
+        if not data or not data.get('benchEnabled'):
+            InfoBar.warning(
+                self.tr("提示"),
+                self.tr("当前不在大乱斗/海克斯大乱斗选人中"),
+                parent=self, duration=3000, position=InfoBarPosition.TOP)
+            return
+
+        # 构建 Flyout
+        flyoutView = HextechGrabFlyout(self)
+
+        from app.lol.tools import _getLocalChampionId, _getBenchChampionIds
+        bench = set(_getBenchChampionIds(data))
+        mine = _getLocalChampionId(data)
+        cellId = data.get('localPlayerCellId')
+        shown = set()
+
+        # 手持
+        if mine:
+            name, icon = await self.hextechWindow._getChampionNameIcon(mine)
+            flyoutView.addChampion(mine, icon, name, 'mine')
+            shown.add(mine)
+        # 备选席
+        for cid in sorted(bench):
+            if cid in shown:
+                continue
+            name, icon = await self.hextechWindow._getChampionNameIcon(cid)
+            flyoutView.addChampion(cid, icon, name, 'bench')
+            shown.add(cid)
+        # 队友持有
+        for player in data.get('myTeam', []):
+            cid = player.get('championId', 0) or 0
+            if cid in shown or cid == 0 or player.get('cellId') == cellId:
+                continue
+            name, icon = await self.hextechWindow._getChampionNameIcon(cid)
+            flyoutView.addChampion(cid, icon, name, 'ally')
+            shown.add(cid)
+
+        flyoutView.connectClicks()
+        flyoutView.championGrabRequested.connect(self.__onHextechFlyoutGrab)
+
+        self._hextechFlyout = Flyout.make(
+            flyoutView, target, self, FlyoutAnimationType.DROP_DOWN)
+
+    def __onHextechFlyoutGrab(self, championId):
+        """Flyout 头像点击: 设为手动抢目标"""
+        self.championSelection.hextechTargetId = championId
+        self.championSelection.manualGrabRequested = True
+        logger.info(f"hextech flyout: manual grab {championId}", TAG)
+
+    @asyncSlot()
     async def __refreshCareerInterface(self):
         if self.isClientProcessRunning:
             self.careerInterface.refreshButton.click()
@@ -1025,6 +1148,7 @@ class MainWindow(FluentWindow):
         isMicaEnabled = cfg.get(cfg.micaEnabled)
         self.setMicaEffectEnabled(isMicaEnabled)
         self.opggWindow.setMicaEffectEnabled(isMicaEnabled)
+        self.hextechWindow.setMicaEffectEnabled(isMicaEnabled)
 
     @asyncSlot()
     async def __onFixLCUButtonClicked(self):

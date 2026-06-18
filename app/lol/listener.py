@@ -28,8 +28,15 @@ class LolProcessExistenceListener(QThread):
             return
 
         while True:
-            # 取一下当前运行中的所有客户端 pid
-            pids = getLolClientPids(path)
+            try:
+                # 取一下当前运行中的所有客户端 pid
+                pids = getLolClientPids(path)
+            except Exception as e:
+                # tasklist / psutil 偶发异常 (issue #367), 记录后跳过本轮,
+                # 不要让监听线程整个崩溃退出
+                logger.exception(
+                    'getLolClientPids failed in this loop', e, TAG)
+                pids = []
 
             # 如果有客户端正在运行
             if len(pids) != 0:
@@ -47,7 +54,14 @@ class LolProcessExistenceListener(QThread):
 
             # 如果没有任何客户端在运行，且上一次检查时有客户端在运行
             else:
-                if self.runningPid and not isLolGameProcessExist(path):
+                try:
+                    gameExist = isLolGameProcessExist(path)
+                except Exception as e:
+                    logger.exception(
+                        'isLolGameProcessExist failed in this loop', e, TAG)
+                    gameExist = False
+
+                if self.runningPid and not gameExist:
                     self.runningPid = 0
                     signalBus.lolClientEnded.emit()
 

@@ -94,8 +94,23 @@ class RoundIconButton(QFrame):
 
         self.isPressed = False
         self.isHover = False
+        self.isSelected = False    # 抢人选中态: 绿色高亮边框
+        self.isGrabbed = False     # 已抢到态: 绿色实心边框 + 勾
+        self.isWishlist = False    # 愿望单英雄: 金色边框
+
+        self._toolTipFilter = None  # ToolTipFilter 引用, 用于清理时主动隐藏
 
         self.setFixedSize(diameter, diameter)
+
+    def setToolTipFilter(self, tooltipFilter):
+        """保存 ToolTipFilter 引用, 供 clearAll 时主动隐藏 tooltip"""
+        self._toolTipFilter = tooltipFilter
+
+    def cleanupToolTip(self):
+        """主动隐藏并清理 tooltip, 解决 deleteLater 延迟期间 tooltip 堆叠不消失的问题"""
+        if self._toolTipFilter:
+            self._toolTipFilter.hideToolTip()
+            self._toolTipFilter = None
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -125,9 +140,37 @@ class RoundIconButton(QFrame):
 
         painter.drawPixmap(self.rect(), image)
 
-        painter.setPen(
-            QPen(QColor(120, 90, 40), self.borderWidth, Qt.SolidLine))
+        # 选中态: 半透明绿色遮罩
+        if self.isSelected and not self.isGrabbed:
+            painter.setOpacity(1)
+            painter.setBrush(QColor(34, 197, 94, 90))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(self.rect())
+
+        painter.setClipping(False)
+
+        # 边框: 选中/已抢到用绿色, 愿望单用金色, 否则默认棕色
+        if self.isSelected or self.isGrabbed:
+            painter.setPen(
+                QPen(QColor(34, 197, 94), self.borderWidth + 1, Qt.SolidLine))
+        elif self.isWishlist:
+            painter.setPen(
+                QPen(QColor(234, 179, 8), self.borderWidth + 1, Qt.SolidLine))
+        else:
+            painter.setPen(
+                QPen(QColor(120, 90, 40), self.borderWidth, Qt.SolidLine))
+        painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(0, 0, self.width(), self.height())
+
+        # 已抢到: 画一个白色勾
+        if self.isGrabbed:
+            painter.setPen(QPen(QColor(255, 255, 255), 2.5,
+                                Qt.SolidLine, Qt.RoundCap))
+            cx, cy = self.width() / 2, self.height() / 2
+            painter.drawLine(int(cx - 6), int(cy),
+                             int(cx - 2), int(cy + 4))
+            painter.drawLine(int(cx - 2), int(cy + 4),
+                             int(cx + 6), int(cy - 5))
 
         return super().paintEvent(event)
 

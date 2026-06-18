@@ -823,7 +823,8 @@ class LolClientConnector(QObject):
         await self.__post(f"/lol-champ-select/v1/session/swaps/{id}/accept")
         await self.__post(f"/lol-champ-select/v1/ongoing-swap/{id}/clear")
 
-    # 备战席交换
+    # 备战席交换 (大乱斗/海克斯大乱斗抢英雄)
+    @retry()
     async def benchSwap(self, championId):
         res = await self.__post(f"/lol-champ-select/v1/session/bench/swap/{championId}")
         return await res.json()

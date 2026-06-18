@@ -154,7 +154,7 @@ class Config(QConfig):
                                          BoolValidator())
 
     enableCheckUpdate = ConfigItem("General",
-                                   "EnableCheckUpdate", True,
+                                   "EnableCheckUpdate", False,
                                    BoolValidator())
 
     logLevel = OptionsConfigItem(
@@ -204,6 +204,16 @@ class Config(QConfig):
         "450": [],
         "480": [],
     })
+
+    # 海克斯/大乱斗抢英雄 (备选席模式)
+    enableAutoAramBench = ConfigItem(
+        "Functions", "EnableAutoAramBench", False, BoolValidator())
+    hextechChampions = ConfigItem(
+        "Functions", "HextechChampions", [])
+    autoShowHextechWindow = ConfigItem(
+        "Functions", "AutoShowHextechWindow", True, BoolValidator())
+    enableHextechWindowOnTop = ConfigItem(
+        "Functions", "EnableHextechWindowOnTop", False, BoolValidator())
 
 YEAR = 2023
 AUTHOR = "Zzaphkiel"

@@ -1,0 +1,19 @@
+#titleLabel {
+    font: bold 22px 'Microsoft YaHei', 'Segoe UI';
+    color: white;
+}
+
+#contentLabel {
+    font: 14px 'Microsoft YaHei', 'Segoe UI';
+    color: rgba(255, 255, 255, 0.63);
+}
+
+#hintLabel {
+    font: 13px 'Microsoft YaHei', 'Segoe UI';
+    color: rgba(255, 255, 255, 0.55);
+}
+
+HextechInterface {
+    border: none;
+    background: transparent;
+}

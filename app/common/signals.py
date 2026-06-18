@@ -36,5 +36,9 @@ class SignalBus(QObject):
     # OPGG:
     toOpggBuildInterface = pyqtSignal(int, str, str)
 
+    # hextech/aram 抢英雄 (备选席模式):
+    hextechGrabbed = pyqtSignal(int)          # 抢到目标英雄 (championId)
+    hextechSessionUpdated = pyqtSignal(dict)  # 会话刷新 (供窗口更新头像墙)
+
 
 signalBus = SignalBus()

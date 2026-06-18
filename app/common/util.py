@@ -22,24 +22,32 @@ TAG = "Util"
 
 class Github:
     def __init__(self, user="Zzaphkiel", repositories="Seraphine"):
-        self.githubApi = "http://api.github.com"
-        self.giteeApi = "http://gitee.com/api"
-
-        self.proxyApi = 'https://ghproxy.net'
+        self.githubApi = "https://api.github.com"
 
         self.user = user
         self.repositories = repositories
         self.sess = requests.session()
 
+    def __proxy(self):
+        """
+        构建代理字典。开启代理时同时为 http/https 两种协议注入
+        (旧代码只设了 'https' 键，对当时的 http:// 地址其实从未生效)
+        """
+        if cfg.get(cfg.enableProxy):
+            addr = cfg.get(cfg.proxyAddr)
+            return {'http': addr, 'https': addr}
+        return None
+
+    def __headers(self):
+        # GitHub API 要求带 User-Agent，匿名 UA 偶发被拒
+        return {'User-Agent': f'Seraphine/{VERSION}'}
+
     def getReleasesInfo(self):
         url = f"{self.githubApi}/repos/{self.user}/{self.repositories}/releases/latest"
 
-        if cfg.get(cfg.enableProxy):
-            proxy = {'https': cfg.get(cfg.proxyAddr)}
-        else:
-            proxy = None
-
-        return self.sess.get(url, proxies=proxy).json()
+        return self.sess.get(url, proxies=self.__proxy(),
+                             headers=self.__headers(),
+                             timeout=15).json()
 
     def checkUpdate(self):
         """
@@ -57,12 +65,10 @@ class Github:
 
     def __get_ver_info(self):
         url = f'{self.githubApi}/repos/{self.user}/{self.repositories}/contents/document/ver.json'
-        if cfg.get(cfg.enableProxy):
-            proxy = {'https': cfg.get(cfg.proxyAddr)}
-        else:
-            proxy = None
 
-        res = self.sess.get(url, proxies=proxy).json()
+        res = self.sess.get(url, proxies=self.__proxy(),
+                            headers=self.__headers(),
+                            timeout=15).json()
 
         json_data = json.loads(
             str(base64.b64decode(res['content']), encoding='utf-8'))
@@ -72,12 +78,9 @@ class Github:
     def getNotice(self):
         url = f'{self.githubApi}/repos/{self.user}/{self.repositories}/contents/document/notice.md'
 
-        if cfg.get(cfg.enableProxy):
-            proxy = {'https': cfg.get(cfg.proxyAddr)}
-        else:
-            proxy = None
-
-        res = self.sess.get(url, proxies=proxy).json()
+        res = self.sess.get(url, proxies=self.__proxy(),
+                            headers=self.__headers(),
+                            timeout=15).json()
 
         content = str(base64.b64decode(res['content']), encoding='utf-8')
 
@@ -155,6 +158,12 @@ def getLolClientPid(path):
 
 
 def getLolClientPids(path):
+    """
+    获取所有 LeagueClientUx.exe 进程的 pid 列表。
+
+    tasklist 通过 shell 起子进程时偶尔会抛 PermissionError / OSError
+    (见 issue #367), 这里捕获后回退到 psutil 慢速枚举, 避免监听线程整个崩溃。
+    """
     try:
         processes = subprocess.check_output(
             f'{path} /FI "imagename eq LeagueClientUx.exe" /NH',
@@ -164,9 +173,14 @@ def getLolClientPids(path):
     except subprocess.CalledProcessError as e:
         logger.error(
             'an error occurred when calling tasklist command, '
-            f'original output: {e.output.decode()}'
+            f'original output: {e.output.decode() if e.output else ""}'
         )
-        raise e
+        return getLolClientPidsSlowly()
+    except (PermissionError, OSError, FileNotFoundError) as e:
+        # tasklist 子进程启动失败 (Windows 上 fork/exec 偶发), 回退 psutil
+        logger.warning(
+            f'tasklist subprocess failed, fallback to psutil: {e}', TAG)
+        return getLolClientPidsSlowly()
 
     pids = []
 
@@ -193,8 +207,27 @@ def getLolClientPidsSlowly():
 
 
 def isLolGameProcessExist(path):
-    processes = subprocess.check_output(
-        f'{path} /FI "imagename eq League of Legends.exe" /NH', shell=True)
+    """
+    判断游戏主程序 (League of Legends.exe) 是否在运行。
+
+    tasklist 子进程可能间歇性失败 (issue #367), 失败时回退 psutil,
+    宁可误判也不会让监听线程崩溃退出。
+    """
+    try:
+        processes = subprocess.check_output(
+            f'{path} /FI "imagename eq League of Legends.exe" /NH',
+            shell=True, stderr=subprocess.STDOUT)
+    except (PermissionError, OSError, FileNotFoundError,
+            subprocess.CalledProcessError) as e:
+        logger.warning(
+            f'tasklist subprocess failed, fallback to psutil: {e}', TAG)
+        for process in psutil.process_iter():
+            try:
+                if process.name() == 'League of Legends.exe':
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
 
     return b'League of Legends.exe' in processes
 

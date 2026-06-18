@@ -1,0 +1,12 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="1" width="22" height="22" rx="4" fill="url(#paint_hextech)" />
+    <path d="M13.5 4L6.5 13H11L10 20L17.5 10.5H13L13.5 4Z"
+        fill="white" stroke="white" stroke-width="0.5" stroke-linejoin="round" />
+    <defs>
+        <linearGradient id="paint_hextech" x1="1" y1="23" x2="23" y2="1"
+            gradientUnits="userSpaceOnUse">
+            <stop stop-color="#0E9F6E" />
+            <stop offset="1" stop-color="#3B82F6" />
+        </linearGradient>
+    </defs>
+</svg>

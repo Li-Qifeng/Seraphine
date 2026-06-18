@@ -10,6 +10,7 @@ from .exceptions import SummonerRankInfoNotFound
 from ..common.config import cfg, Language
 from ..lol.connector import connector
 from ..common.signals import signalBus
+from ..common.logger import logger
 
 
 SERVERS_NAME = {
@@ -1387,8 +1388,146 @@ class ChampionSelection:
         self.opggShowChampionId = None
         self.queueId = None
 
+        # 海克斯/大乱斗抢英雄 (备选席模式, 与上面的 Rift 字段相互隔离)
+        self.isHextechMode = False          # 本局是否为备选席抢人模式 (benchEnabled)
+        self.hextechTargetId = None         # 当前抢人目标 championId (愿望单命中 or 用户手动点击)
+        self.isHextechGrabbed = False       # 本局是否已成功抢到 (幂等防抖, 成功后 early-return)
+        self.manualGrabRequested = False    # 用户是否在窗口手动点了头像触发抢
+
     def reset(self):
         self.__init__()
+
+
+def _getLocalChampionId(data):
+    """
+    从 champ-select session 取本地玩家当前手持的英雄 id
+    ARAM/Hextech 下 data['actions'] 为空, 英雄持有信息在 myTeam[*].championId
+    """
+    cellId = data.get('localPlayerCellId')
+    if cellId is None:
+        return 0
+    for player in data.get('myTeam', []):
+        if player.get('cellId') == cellId:
+            return player.get('championId', 0) or 0
+    return 0
+
+
+def _getBenchChampionIds(data):
+    """
+    从 champ-select session 取备选席英雄 id 列表
+    兼容两种格式:
+      - 新版/国服: benchChampions = [{championId, isPriority}, ...] (对象数组)
+      - 旧版:      benchChampionIds = [int, ...] (int 数组, 已废弃)
+    """
+    benchChampions = data.get('benchChampions')
+    if isinstance(benchChampions, list):
+        return [item.get('championId') for item in benchChampions
+                if isinstance(item, dict) and item.get('championId')]
+    # 兼容旧版
+    ids = data.get('benchChampionIds')
+    if isinstance(ids, list):
+        return [i for i in ids if i]
+    return []
+
+
+def _resolveHextechTarget(bench, mine, selection):
+    """
+    决定本次抢人的目标英雄 id
+    优先级: 用户手动点击 (selection.hextechTargetId) > 愿望单按序匹配 (cfg.hextechChampions)
+    返回目标 id; 无目标返回 None
+    """
+    # 用户手动指定优先
+    target = selection.hextechTargetId
+    if target and target != mine:
+        return target
+
+    # 愿望单按序匹配, 命中备选席且非当前手持
+    wishlist = cfg.get(cfg.hextechChampions) or []
+    for w in wishlist:
+        if w in bench and w != mine:
+            return w
+
+    return None
+
+
+async def autoBenchGrab(data, selection: ChampionSelection):
+    """
+    海克斯/大乱斗抢英雄: 检测备选席, 命中愿望单/手动目标则自动 benchSwap
+
+    节奏策略 (事件驱动为主):
+      - 默认靠 WS 的 champSelectChanged 每帧判一次, 零额外 HTTP
+      - 仅在目标不在 bench 但用户已手动请求时, 短轮询 (200ms x 5) 等待释放
+
+    返回 True 表示本帧已消费 (触发 phase dispatch 的 break)
+    """
+    # 守卫: 非备选席模式直接放行, 不影响 Rift 流程
+    if not data.get('benchEnabled'):
+        return False
+    selection.isHextechMode = True
+
+    # 守卫: 已抢到
+    if selection.isHextechGrabbed:
+        return False
+
+    # 守卫: 未启用自动抢; 但手动点击 (manualGrabRequested) 不受此限制
+    if not cfg.get(cfg.enableAutoAramBench) and not selection.manualGrabRequested:
+        return False
+
+    bench = set(_getBenchChampionIds(data))
+    mine = _getLocalChampionId(data)
+
+    logger.error(
+        f"hextech bench={sorted(bench)}, mine={mine}, "
+        f"target={selection.hextechTargetId}, wishlist={cfg.get(cfg.hextechChampions)}",
+        "autoBenchGrab")
+
+    target = _resolveHextechTarget(bench, mine, selection)
+    if target is None:
+        logger.error(f"hextech no target resolved (wishlist empty or no match)",
+                     "autoBenchGrab")
+        return False
+
+    # 目标已在备选席: 直接抢
+    if target in bench:
+        try:
+            await connector.benchSwap(target)
+            selection.isHextechGrabbed = True
+            logger.error(f"hextech grabbed champion {target}", "autoBenchGrab")
+            signalBus.hextechGrabbed.emit(target)
+            return True
+        except Exception as e:
+            logger.error(f"hextech benchSwap failed for {target}: {e}",
+                         "autoBenchGrab")
+            return False
+
+    # 目标不在备选席: 仅在用户手动请求时进入"等待释放"短轮询
+    if not selection.manualGrabRequested:
+        return False
+
+    for _ in range(5):
+        await asyncio.sleep(0.2)
+        # 重新拉一次 session 取最新 bench (队友可能刚把目标放上来)
+        try:
+            sess = await connector.getChampSelectSession()
+        except Exception:
+            continue
+        curBench = set(_getBenchChampionIds(sess))
+        if target in curBench:
+            try:
+                await connector.benchSwap(target)
+                selection.isHextechGrabbed = True
+                logger.info(
+                    f"hextech grabbed champion {target} (after poll)",
+                    "autoBenchGrab")
+                signalBus.hextechGrabbed.emit(target)
+                return True
+            except Exception as e:
+                logger.warning(
+                    f"hextech benchSwap failed for {target}: {e}",
+                    "autoBenchGrab")
+                return False
+
+    return False
 
 
 async def autoSwap(data, selection: ChampionSelection):
@@ -1475,6 +1614,8 @@ async def showOpggBuild(data, selection: ChampionSelection):
     else:
         if selection.queueId == 450:
             mode = 'aram'
+        elif selection.queueId == 2400:
+            mode = 'aram_mayhem'
         elif selection.queueId in (1700, 1710):
             mode = 'arena'
         elif selection.queueId == 1300:

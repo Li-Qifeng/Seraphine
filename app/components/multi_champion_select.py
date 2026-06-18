@@ -156,10 +156,11 @@ class ChampionsSelectWidget(QWidget):
 
 
 class MultiChampionSelectWidget(QWidget):
-    def __init__(self, champions: dict, selected: list, parent=None):
+    def __init__(self, champions: dict, selected: list, maxCount=6, parent=None):
         super().__init__(parent=parent)
 
         self.hBoxLayout = QHBoxLayout(self)
+        self.maxCount = maxCount
 
         self.itemsDraggableWidget = ChampionDraggableWidget()
         self.championsSelectWidget = ChampionsSelectWidget(champions)
@@ -184,7 +185,7 @@ class MultiChampionSelectWidget(QWidget):
         self.hBoxLayout.addWidget(self.championsSelectWidget)
 
     def __onChampionIconClicked(self, championId):
-        if self.itemsDraggableWidget.count() == 6:
+        if self.itemsDraggableWidget.count() >= self.maxCount:
             return
 
         if championId in self.itemsDraggableWidget.getCurrentChampionIds():
