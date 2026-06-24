@@ -356,7 +356,7 @@ class OpggDataParser:
                 "play": i['play'],
                 "win": i['win'],
                 'pickRate': i['pick_rate'],
-                "averatePlace": i['total_place'] / i['play'],
+                "averagePlace": i['total_place'] / i['play'],
                 "firstRate": i['first_place'] / i['play']
             })
 
@@ -368,7 +368,7 @@ class OpggDataParser:
                 "play": i['play'],
                 "win": i['win'],
                 'pickRate': i['pick_rate'],
-                "averatePlace": i['total_place'] / i['play'],
+                "averagePlace": i['total_place'] / i['play'],
                 "firstRate": i['first_place'] / i['play']
             })
 
@@ -380,7 +380,7 @@ class OpggDataParser:
                 "play": i['play'],
                 "win": i['win'],
                 'pickRate': i['pick_rate'],
-                "averatePlace": i['total_place'] / i['play'],
+                "averagePlace": i['total_place'] / i['play'],
                 "firstRate": i['first_place'] / i['play']
             })
 

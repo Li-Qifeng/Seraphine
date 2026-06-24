@@ -549,8 +549,8 @@ class OpggWindow(OpggWindowBase):
         w, h = desktop.width(), desktop.height()
         self.move(w - self.width(), h // 2 - self.height() // 2)
 
-    def setHomeInterfaceEnabled(self, enabeld):
-        interface = self.homeInterface if enabeld else self.tierInterface
+    def setHomeInterfaceEnabled(self, enabled):
+        interface = self.homeInterface if enabled else self.tierInterface
         self.stackedWidget.setCurrentWidget(interface)
 
     def eventFilter(self, obj, e: QEvent):
