@@ -1277,21 +1277,23 @@ class SearchInterface(SeraphineInterface):
         '''
         tabs = self.gamesView.gamesTab
 
-        # 遍历一下目前已经画好的第一页有没有这个 tab，有的话就直接画上
-        # FIXME -- By Hpero4
-        #  如果在绘制前Tabs的StackWidget改变, 会导致画错框甚至找不到绘制对象 AttributeError
-        #  必须保证绘制时界面没有被改变; (目前暂时是将耗时操作移到画框后面)
-        # FIXME -- By Hpero4
-        #  如果选中的对局不在第一页中(> 11), 将不会画上选择框
-        layout = tabs.stackWidget.widget(1).layout()
-        for i in range(layout.count()):
-            item = layout.itemAt(i)
-
-            if not item.widget():
+        # 先收集所有页面上的 widget，避免遍历时 StackWidget 改变导致 AttributeError
+        all_widgets = []
+        for pageIdx in range(1, tabs.stackWidget.count()):
+            page = tabs.stackWidget.widget(pageIdx)
+            if page is None:
                 continue
+            layout = page.layout()
+            if layout is None:
+                continue
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget():
+                    all_widgets.append(item.widget())
 
-            widget: GameTab = item.widget()
-
+        for widget in all_widgets:
+            if not hasattr(widget, 'gameId'):
+                continue
             if widget.gameId == int(gameId):
                 tabs.currentTabSelected = widget
                 widget.setProperty("selected", True)

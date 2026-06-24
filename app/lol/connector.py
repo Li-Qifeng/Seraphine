@@ -324,8 +324,7 @@ class LolClientConnector(QObject):
         self.sgpToken = await self.getSGPtoken()
 
     def __initFolder(self):
-        if not os.path.exists("app/resource/game"):
-            os.mkdir("app/resource/game")
+        os.makedirs("app/resource/game", exist_ok=True)
 
         for folder in [
             "champion icons",
@@ -336,9 +335,7 @@ class LolClientConnector(QObject):
             "augment icons",
             "splashes",
         ]:
-            p = f"app/resource/game/{folder}"
-            if not os.path.exists(p):
-                os.mkdir(p)
+            os.makedirs(f"app/resource/game/{folder}", exist_ok=True)
 
     async def __initManager(self):
         items = await self.__json_retry_get("/lol-game-data/assets/v1/items.json")
@@ -795,9 +792,8 @@ class LolClientConnector(QObject):
 
     @retry()
     async def getGameflowSession(self):
-        # FIXME
-        # 若刚进行完一场对局, 随后开启一盘自定义, 玩家在红色方且蓝色方没人时,
-        # 该接口会返回上一局中蓝色方的队员信息 (teamOne or teamTwo)
+        # NOTE: 该接口在自定义模式下可能返回上一局的 teamOne/teamTwo 脏数据,
+        #       tools.py:parseGameInfoByGameflowSession 中已做去重校验处理
         res = await self.__get("/lol-gameflow/v1/session")
         return await res.json()
 

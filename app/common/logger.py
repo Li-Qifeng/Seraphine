@@ -77,8 +77,7 @@ class Logger:
         return log_path
 
     def log(self, level, message, tag=None):
-        # FIXME if tag is none an exception will be thrown
-        extra = {'TAG': tag} if tag else {}
+        extra = {'TAG': tag if tag else '-'}
         self.logger.log(level, message, extra=extra)
 
     def debug(self, message, tag=None):

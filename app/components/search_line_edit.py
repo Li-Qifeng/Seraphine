@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt, QEvent, QAbstractItemModel, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, QEvent, QAbstractItemModel, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QCompleter, QAction, QWidget, QHBoxLayout, QListWidgetItem, QPushButton
 from PyQt5.uic.properties import QtCore, QtGui
@@ -150,10 +150,8 @@ class SearchLineEdit(QSearchLineEdit):
             self._completerMenu.popup()
 
     def focusInEvent(self, e):
-        # FIX: BUG#379 特定条件下搜索栏候选条会反复得到并失去焦点, 导致UI卡死 -- By Hpero4
-        if e.reason() != 4:
-            self._showCompleterMenu()
-            super().focusInEvent(e)
+        QTimer.singleShot(0, self._showCompleterMenu)
+        super().focusInEvent(e)
 
     def mousePressEvent(self, e):
         if self.hasFocus():

@@ -675,10 +675,10 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 
 ### 5.3 代码质量问题（现状→风险→建议）
 
-#### ① 无测试套件
-- **现状**：全仓 0 个 `test_*.py`/`*_test.py`/`conftest.py`/`pytest.ini`；`.gitignore` 的 `test.py` 仅预防性忽略（文件不存在）；`requirements.txt` 无 pytest。
-- **风险**：重构、LCU 适配、PyQt/依赖升级无回归保障。
-- **建议**：先给 `tools.py` 的纯解析函数（`parseGameData` 等）加 `pytest` 单测（无 Qt 依赖，最容易测）；connector 层用 mock LCU server 做契约测试；CI 加 lint（`ruff`/`flake8`）+ 测试 job。
+#### ① 测试套件（已有初步覆盖）
+- **现状**：已有 `tests/test_tools_pure.py`，覆盖 `translateTier`、`timeStampToStr`、`separateTeams`、`parseSummonerOrder`、`sortedSummonersByGameRole`、`parseGames`、`parseRankInfo`、`parseDetailRankInfo` 共 35 个用例。`requirements.txt` 已添加 `pytest>=8.0`。
+- **运行方式**：`python -m pytest tests/`
+- **建议**：后续给 connector 层用 mock LCU server 做契约测试；CI 加 lint（`ruff`/`flake8`）+ 测试 job 以阻止回归。
 
 #### ② 裸 `except` / 静默吞异常（约 31 处，跨 8 文件）
 - **现状**：`util.py`、`aram.py`、`champions.py`、`main_window.py` 等多处 `except: pass` 或 `except: return True`。
@@ -696,9 +696,9 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 - **建议**：长期看，改继承 `Exception` 并改用更精确的捕获更稳；短期至少在所有 `except BaseException` 处强制放行 `CancelledError`。
 
 #### ⑤ 硬编码密钥
-- **现状**：`app/lol/aram.py:23` 的 `APP_SECRET = "PHPCMFBBC77AF8E8FA5"` 与 app-id 直接提交。
-- **风险**：密钥泄露；被滥用可能导致数据源封禁。
-- **建议**：移到环境变量/配置文件（`.gitignore`）；或与服务端协商限流而非依赖客户端密钥。
+- **现状**：`app/lol/aram.py:22` 的 `APP_SECRET` 已改为从环境变量 `SERAPHINE_ARAM_SECRET` 读取，未设置时回退旧的硬编码值。
+- **风险**：旧密钥已收敛；推荐所有开发者设置 `SERAPHINE_ARAM_SECRET` 环境变量以彻底消除密钥泄漏。
+- **建议**：长期看可与服务端协商限流方案以彻底消除客户端密钥。
 
 #### ⑥ Windows 强耦合，无跨平台抽象层
 - **现状**：`win32api`/`winreg`/`win32gui`/`tasklist`/`wmic`/`ctypes.windll` 散落各处。

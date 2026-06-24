@@ -865,6 +865,23 @@ async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSG
     else:
         team, _ = separateTeams(data, currentSummonerId)
 
+    if team is None:
+        return None
+
+    # Filter invalid entries and deduplicate
+    valid = []
+    seen = set()
+    for p in team:
+        sid = p.get('summonerId', 0)
+        if sid == 0 or sid is None or sid in seen:
+            continue
+        seen.add(sid)
+        valid.append(p)
+    team = valid
+
+    if not team:
+        return None
+
     if useSGP and connector.isInTencent():
         # 如果是国服就优先尝试 SGP
         try:
@@ -916,6 +933,9 @@ def getAllyOrderByGameRole(session, currentSummonerId):
         return None
 
     ally, _ = separateTeams(data, currentSummonerId)
+    if ally is None:
+        return None
+
     ally = sortedSummonersByGameRole(ally)
 
     if ally == None:
@@ -930,6 +950,9 @@ def getTeamColor(session, currentSummonerId):
     '''
     data = session['gameData']
     ally, enemy = separateTeams(data, currentSummonerId)
+
+    if ally is None or enemy is None:
+        return {}
 
     def makeTeam(team):
         # teamParticipantId => [summonerId]
@@ -973,19 +996,16 @@ def getTeamColor(session, currentSummonerId):
 def separateTeams(data, currentSummonerId):
     team1 = data['teamOne']
     team2 = data['teamTwo']
-    ally = None
-    enemy = None
 
     for summoner in team1:
         if summoner.get('summonerId') == currentSummonerId:
-            ally = team1
-            enemy = team2
-            break
-    else:
-        ally = team2
-        enemy = team1
+            return team1, team2
 
-    return ally, enemy
+    for summoner in team2:
+        if summoner.get('summonerId') == currentSummonerId:
+            return team2, team1
+
+    return None, None
 
 
 async def parseGamesDataConcurrently(games):

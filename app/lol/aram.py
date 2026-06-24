@@ -20,7 +20,7 @@ class AramBuff:
     URL = "http://www.jddld.com"
     TAG = "AramBuff"
     APPID = 1
-    APP_SECRET = "PHPCMFBBC77AF8E8FA5"
+    APP_SECRET = os.environ.get("SERAPHINE_ARAM_SECRET", "PHPCMFBBC77AF8E8FA5")
     data = None
 
     @classmethod
