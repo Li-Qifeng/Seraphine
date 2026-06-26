@@ -1,24 +1,21 @@
-import copy
 from typing import Dict
 
-from PyQt5.QtCore import pyqtSignal, Qt, QPropertyAnimation, QRect, QTimer
+from PyQt5.QtCore import pyqtSignal, Qt, QTimer
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QFrame, QVBoxLayout,
                              QSpacerItem, QSizePolicy, QStackedWidget,
-                             QGridLayout, QSplitter, QApplication, QWidget)
-from PyQt5.QtGui import QPixmap, QFont, QPainter, QColor, QPalette, QImage, QFontMetrics
+                             QGridLayout, QSplitter)
+from PyQt5.QtGui import QPixmap, QColor, QPalette
 from qasync import asyncSlot
 
-from ..common.qfluentwidgets import (SmoothScrollArea, TransparentTogglePushButton,
+from ..common.qfluentwidgets import (TransparentTogglePushButton,
                                      ToolTipFilter, ToolTipPosition, setCustomStyleSheet)
 
-from app.common.icons import Icon
 from app.common.style_sheet import StyleSheet
 from app.common.signals import signalBus
-from app.common.config import cfg
 from app.components.champion_icon_widget import RoundIcon
 from app.components.profile_level_icon_widget import RoundLevelAvatar
 from app.components.summoner_name_button import SummonerName
-from app.components.animation_frame import CardWidget, ColorAnimationFrame
+from app.components.animation_frame import ColorAnimationFrame
 from app.components.color_label import DeathsLabel
 from app.lol.tools import parseSummonerOrder
 from app.lol.connector import connector
@@ -66,8 +63,13 @@ class GameInfoInterface(SeraphineInterface):
     def __initLayout(self):
         self.hBoxLayout.setContentsMargins(30, 32, 30, 30)
 
+        self.rightVBoxLayout = QVBoxLayout()
+        self.rightVBoxLayout.setContentsMargins(0, 0, 0, 0)
+        self.rightVBoxLayout.setSpacing(8)
+        self.rightVBoxLayout.addWidget(self.summonersGamesView, stretch=1)
+
         self.hBoxLayout.addWidget(self.summonersView, stretch=2)
-        self.hBoxLayout.addWidget(self.summonersGamesView, stretch=7)
+        self.hBoxLayout.addLayout(self.rightVBoxLayout, stretch=7)
 
     def __connectSignalToSlot(self):
         self.summonersView.currentTeamChanged.connect(
@@ -733,3 +735,5 @@ class GameTab(ColorAnimationFrame):
 
         self.hBoxLayout.addSpacerItem(
             QSpacerItem(1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
+
+

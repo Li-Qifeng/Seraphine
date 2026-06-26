@@ -1,6 +1,7 @@
 import itertools
 import time
 import ctypes
+import os
 from copy import deepcopy
 
 import asyncio
@@ -131,14 +132,19 @@ async def getRecentTeammates(games, puuid):
 
 async def parseSummonerData(summoner, rankTask, gameTask):
     iconId = summoner['profileIconId']
-    icon = await connector.getProfileIcon(iconId)
-    level = summoner['summonerLevel']
-    xpSinceLastLevel = summoner['xpSinceLastLevel']
-    xpUntilNextLevel = summoner['xpUntilNextLevel']
+    try:
+        icon = await connector.getProfileIcon(iconId)
+    except Exception:
+        cached_icon = f"./app/resource/game/profile icons/{iconId}.jpg"
+        icon = cached_icon if os.path.exists(cached_icon) else "app/resource/images/game.png"
+    level = summoner.get('summonerLevel', -1)
+    xpSinceLastLevel = summoner.get('xpSinceLastLevel', 0)
+    xpUntilNextLevel = summoner.get('xpUntilNextLevel', 0)
 
     try:
         gamesInfo = await gameTask
-    except Exception:
+    except Exception as e:
+        logger.warning(f"parseSummonerData: failed to fetch games: {e}", "tools")
         champions = []
         games = {}
     else:
@@ -169,7 +175,7 @@ async def parseSummonerData(summoner, rankTask, gameTask):
 
     try:
         rankInfo = await rankTask
-    except SummonerRankInfoNotFound:
+    except Exception:
         rankInfo = {}
 
     return {
@@ -182,7 +188,7 @@ async def parseSummonerData(summoner, rankTask, gameTask):
         'rankInfo': rankInfo,
         'games': games,
         'champions': champions,
-        'isPublic': summoner['privacy'] == "PUBLIC",
+        'isPublic': summoner.get('privacy') == "PUBLIC",
         'tagLine': summoner.get("tagLine"),
     }
 
@@ -241,6 +247,14 @@ async def parseGameData(game):
 
     position = None
 
+    # 海克斯大乱斗: 读取强化 ID (playerAugment1~6)
+    augmentIds = []
+    if queueId == 2400:
+        for i in range(1, 7):
+            aid = stats.get(f'playerAugment{i}', 0)
+            if aid:
+                augmentIds.append(aid)
+
     tt = ToolsTranslator()
 
     if queueId in [420, 440]:
@@ -279,6 +293,7 @@ async def parseGameData(game):
         'gold': gold,
         'timeStamp': timeStamp,
         'position': position,
+        'augmentIds': augmentIds,
     }
 
 
@@ -444,6 +459,14 @@ async def parseGameDetailData(puuid, game):
                             if division == 'NA':
                                 division = ''
 
+                # 海克斯大乱斗: 读取强化 ID (playerAugment1~6)
+                augmentIds = []
+                if queueId == 2400:
+                    for i in range(1, 7):
+                        aid = stats.get(f'playerAugment{i}', 0)
+                        if aid:
+                            augmentIds.append(aid)
+
                 item = {
                     'summonerName': summonerName,
                     'puuid': summonerPuuid,
@@ -466,7 +489,8 @@ async def parseGameDetailData(puuid, game):
                     'champLevel': stats['champLevel'],
                     'demage': stats['totalDamageDealtToChampions'],
                     'subteamPlacement': subteamPlacement,
-                    'isPublic': isPublic
+                    'isPublic': isPublic,
+                    'augmentIds': augmentIds,
                 }
                 teams[tid]['summoners'].append(item)
 
@@ -474,7 +498,7 @@ async def parseGameDetailData(puuid, game):
 
     mapIcon = connector.manager.getMapIconByMapId(mapId, win)
 
-    if win == None:
+    if win is None:
         return None
 
     return {
@@ -904,7 +928,7 @@ async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSG
     if queueId in [420, 440]:
         s = sortedSummonersByGameRole(summoners)
 
-        if s != None:
+        if s is not None:
             summoners = s
 
     champions = {summoner['summonerId']: summoner['championId']
@@ -938,7 +962,7 @@ def getAllyOrderByGameRole(session, currentSummonerId):
 
     ally = sortedSummonersByGameRole(ally)
 
-    if ally == None:
+    if ally is None:
         return None
 
     return [x['summonerId'] for x in ally]
@@ -1019,7 +1043,7 @@ async def parseSummonerGameInfo(item, queueId, currentSummonerId):
     if item.get('nameVisibilityType') == 'HIDDEN':
         return None
 
-    if summonerId == 0 or summonerId == None:
+    if summonerId == 0 or summonerId is None:
         return None
 
     summoner = await connector.getSummonerById(summonerId)
@@ -1362,6 +1386,14 @@ async def parseGamesDataFromSGP(game, puuid):
         elif lane == 'BOTTOM' and role == 'CARRY':
             position = tt.bottom
 
+    # 海克斯大乱斗: 读取强化 ID (SGP 通道, participant 上扁平字段)
+    augmentIds = []
+    if queueId == 2400:
+        for i in range(1, 7):
+            aid = participant.get(f'playerAugment{i}', 0)
+            if aid:
+                augmentIds.append(aid)
+
     return {
         'queueId': queueId,
         'gameId': gameId,
@@ -1386,6 +1418,7 @@ async def parseGamesDataFromSGP(game, puuid):
         'gold': gold,
         'timeStamp': timeStamp,
         'position': position,
+        'augmentIds': augmentIds,
     }
 
 
@@ -1470,82 +1503,92 @@ def _resolveHextechTarget(bench, mine, selection):
     return None
 
 
+async def _doBenchSwapWithRetry(target, max_retries=2):
+    for attempt in range(max_retries):
+        try:
+            await connector.benchSwap(target)
+            return True
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logger.debug(
+                    f"hextech benchSwap attempt {attempt+1} failed for {target}: {e}, retrying...",
+                    "autoBenchGrab")
+                await asyncio.sleep(0.1)
+            else:
+                logger.warning(
+                    f"hextech benchSwap failed for {target} after {max_retries} attempts: {e}",
+                    "autoBenchGrab")
+                return False
+    return False
+
+
 async def autoBenchGrab(data, selection: ChampionSelection):
     """
     海克斯/大乱斗抢英雄: 检测备选席, 命中愿望单/手动目标则自动 benchSwap
 
     节奏策略 (事件驱动为主):
       - 默认靠 WS 的 champSelectChanged 每帧判一次, 零额外 HTTP
-      - 仅在目标不在 bench 但用户已手动请求时, 短轮询 (200ms x 5) 等待释放
+      - benchSwap 失败时自动重试 (网络抖动/竞态保护)
+      - 仅在目标不在 bench 但用户已手动请求时, 短轮询 (200ms x 8) 等待释放
 
     返回 True 表示本帧已消费 (触发 phase dispatch 的 break)
     """
-    # 守卫: 非备选席模式直接放行, 不影响 Rift 流程
     if not data.get('benchEnabled'):
         return False
     selection.isHextechMode = True
 
-    # 守卫: 已抢到
     if selection.isHextechGrabbed:
         return False
 
-    # 守卫: 未启用自动抢; 但手动点击 (manualGrabRequested) 不受此限制
     if not cfg.get(cfg.enableAutoAramBench) and not selection.manualGrabRequested:
         return False
 
     bench = set(_getBenchChampionIds(data))
     mine = _getLocalChampionId(data)
 
-    logger.error(
+    logger.debug(
         f"hextech bench={sorted(bench)}, mine={mine}, "
         f"target={selection.hextechTargetId}, wishlist={cfg.get(cfg.hextechChampions)}",
         "autoBenchGrab")
 
     target = _resolveHextechTarget(bench, mine, selection)
     if target is None:
-        logger.error("hextech no target resolved (wishlist empty or no match)",
-                     "autoBenchGrab")
         return False
 
-    # 目标已在备选席: 直接抢
     if target in bench:
-        try:
-            await connector.benchSwap(target)
+        if await _doBenchSwapWithRetry(target):
             selection.isHextechGrabbed = True
-            logger.error(f"hextech grabbed champion {target}", "autoBenchGrab")
+            logger.info(f"hextech grabbed champion {target}", "autoBenchGrab")
             signalBus.hextechGrabbed.emit(target)
             return True
-        except Exception as e:
-            logger.error(f"hextech benchSwap failed for {target}: {e}",
-                         "autoBenchGrab")
-            return False
+        return False
 
-    # 目标不在备选席: 仅在用户手动请求时进入"等待释放"短轮询
     if not selection.manualGrabRequested:
         return False
 
-    for _ in range(5):
-        await asyncio.sleep(0.2)
-        # 重新拉一次 session 取最新 bench (队友可能刚把目标放上来)
+    for _ in range(8):
+        await asyncio.sleep(0.15)
         try:
             sess = await connector.getChampSelectSession()
         except Exception:
             continue
         curBench = set(_getBenchChampionIds(sess))
+        curMine = _getLocalChampionId(sess)
+        if target == curMine:
+            selection.isHextechGrabbed = True
+            logger.info(
+                f"hextech already holding champion {target}", "autoBenchGrab")
+            signalBus.hextechGrabbed.emit(target)
+            return True
         if target in curBench:
-            try:
-                await connector.benchSwap(target)
+            if await _doBenchSwapWithRetry(target):
                 selection.isHextechGrabbed = True
                 logger.info(
                     f"hextech grabbed champion {target} (after poll)",
                     "autoBenchGrab")
                 signalBus.hextechGrabbed.emit(target)
                 return True
-            except Exception as e:
-                logger.warning(
-                    f"hextech benchSwap failed for {target}: {e}",
-                    "autoBenchGrab")
-                return False
+            return False
 
     return False
 
@@ -1624,7 +1667,7 @@ async def showOpggBuild(data, selection: ChampionSelection):
     if championId == 0:
         return False
 
-    if selection.queueId == None:
+    if selection.queueId is None:
         if data.get('benchEnabled'):
             mode = "aram"
         elif len(data['myTeam']) == 2:

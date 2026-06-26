@@ -1,4 +1,5 @@
 from typing import List
+import re as _re
 
 from PyQt5.QtWidgets import (QHBoxLayout, QWidget, QFrame, QVBoxLayout, QSpacerItem,
                              QSizePolicy, QLabel, QHBoxLayout, QWidget, QLabel, QFrame,
@@ -157,17 +158,23 @@ class ChampionTitleBar(ColorAnimationFrame):
             self.pickRateLabel.setText(f"{data['averagePlace']:.2f}")
 
             self.banRateTextLabel.setText(self.tr("Pick Rate"))
-            self.banRateLabel.setText(f"{data['pickRate']*100:.2f}%")
+            if data.get('pickRate') is not None:
+                self.banRateLabel.setText(f"{data['pickRate']*100:.2f}%")
+            else:
+                self.banRateLabel.setText("--")
         else:
+            wr = data.get('winRate')
+            pr = data.get('pickRate')
+            br = data.get('banRate')
             self.winRateTextLabel.setText(self.tr("Win Rate"))
-            self.winRateLabel.setText(f"{data['winRate']*100:.2f}%")
+            self.winRateLabel.setText(f"{wr*100:.2f}%" if wr is not None else "--")
 
             self.pickRateTextLabel.setText(self.tr("Pick Rate"))
-            self.pickRateLabel.setText(f"{data['pickRate']*100:.2f}%")
+            self.pickRateLabel.setText(f"{pr*100:.2f}%" if pr is not None else "--")
 
-            if banRate := data['banRate']:
+            if br is not None:
                 self.banRateTextLabel.setText(self.tr("Ban Rate"))
-                self.banRateLabel.setText(f"{banRate*100:.2f}%")
+                self.banRateLabel.setText(f"{br*100:.2f}%")
             else:
                 self.banRateTextLabel.setVisible(False)
                 self.banRateLabel.setVisible(False)
@@ -1132,8 +1139,19 @@ class ChampionAugmentsWidget(BuildWidgetBase):
     def __init__(self, parent: QWidget = None):
         super().__init__(parent)
 
-        self.hBoxLayout = QHBoxLayout(self)
+        self.vBox = QVBoxLayout(self)
+        self.titleLayout = QHBoxLayout()
+        self.hBoxLayout = QHBoxLayout()
         self.augmentsLayouts = [QVBoxLayout() for _ in range(3)]
+
+        self.tierTitles = [
+            QLabel(self.tr("Silver")),
+            QLabel(self.tr("Gold")),
+            QLabel(self.tr("Prismatic")),
+        ]
+        for t in self.tierTitles:
+            t.setObjectName("subtitleLabel")
+            t.setAlignment(Qt.AlignCenter)
 
         self.vLine1 = SeparatorLine(QFrame.Shape.VLine)
         self.vLine2 = SeparatorLine(QFrame.Shape.VLine)
@@ -1150,13 +1168,31 @@ class ChampionAugmentsWidget(BuildWidgetBase):
             layout.setAlignment(Qt.AlignTop)
             layout.setSpacing(12)
 
+        self.titleLayout.setContentsMargins(0, 0, 0, 6)
+        self.titleLayout.setSpacing(0)
+
         self.hBoxLayout.setSpacing(12)
-        self.hBoxLayout.setContentsMargins(13, 11, 13, 11)
+        self.hBoxLayout.setContentsMargins(13, 0, 13, 11)
         self.hBoxLayout.addLayout(self.augmentsLayouts[0])
         self.hBoxLayout.addWidget(self.vLine1)
         self.hBoxLayout.addLayout(self.augmentsLayouts[1])
         self.hBoxLayout.addWidget(self.vLine2)
         self.hBoxLayout.addLayout(self.augmentsLayouts[2])
+
+        # Place titles above each of the 3 columns (positions correspond to columns in hBoxLayout)
+        # Layout structure: col1 | vline1 | col2 | vline2 | col3
+        colStretches = [1, 0, 1, 0, 1]
+        for i, w in enumerate([self.tierTitles[0], None, self.tierTitles[1], None, self.tierTitles[2]]):
+            if w is not None:
+                self.titleLayout.addWidget(w, stretch=colStretches[i])
+            else:
+                # vLine spacer width ~ 2+24px to align with separators
+                self.titleLayout.addSpacing(16)
+
+        self.vBox.setContentsMargins(0, 11, 0, 0)
+        self.vBox.setSpacing(0)
+        self.vBox.addLayout(self.titleLayout)
+        self.vBox.addLayout(self.hBoxLayout)
 
     def __clearLayouts(self):
         for layout in self.augmentsLayouts:
@@ -1200,32 +1236,110 @@ class AugmentItemBar(QFrame):
         self.name = QLabel(data['name'])
 
         self.firstRateLayout = QHBoxLayout()
-        self.firstRateText = QLabel(f"{data['play']:,} "+self.tr("Games"))
-        self.firstRate = QLabel(
-            f"{data['firstPlace'] / data['play'] * 100:.2f}%")
+
+        is_mayhem = 'winRate' in data and 'pickRate' in data
+        self._isMayhem = is_mayhem
+        if is_mayhem:
+            pick_rate = data.get('pickRate', 0) or 0
+            score = data.get('winRate', 0) or 0
+            # 紧凑两列: 左登场率(带进度条), 右评级(带颜色)
+            self.firstRateText = QLabel(self.tr("Pick Rate"))
+            self.firstRateValue = QLabel(f"{pick_rate:.1f}%")
+            self.firstRate = QLabel(self.tr("Rating"))
+            self.firstRateValue2 = QLabel(f"{score:.0f}")
+            self._pickBar = QFrame()
+            self._pickBar.setFixedHeight(3)
+            self._pickBar.setMaximumWidth(52)
+            self._updatePickBar(pick_rate)
+            self._updateScoreColor(self.firstRateValue2, score)
+            self._winTooltip = self.tr("Rating")
+            self._pickTooltip = self.tr("Pick Rate")
+        else:
+            self.firstRateText = QLabel(f"{data['play']:,} "+self.tr("Games"))
+            self.firstRate = QLabel(
+                f"{data['firstPlace'] / data['play'] * 100:.2f}%")
+            self._winTooltip = self.tr("First Rate")
+            self._pickTooltip = None
+
+        desc = data.get('desc') or data.get('tooltip') or ''
+        if desc:
+            desc = _re.sub(r'<[^>]+>', '', desc)
+            desc = _re.sub(r'\?\s*', '', desc)
+            desc = _re.sub(r'\s+', ' ', desc).strip()
+            self.setToolTip(desc)
+            self.installEventFilter(ToolTipFilter(self, 200))
 
         self.__initWidget()
         self.__initLayout()
+
+    def _updatePickBar(self, pickRate):
+        """根据登场率设置进度条宽度比例和颜色"""
+        ratio = max(0.0, min(1.0, pickRate / 100.0))
+        # 登场率越高颜色越突出
+        if ratio >= 0.3:
+            color = "#46a0fc"
+        elif ratio >= 0.1:
+            color = "#7eb8ef"
+        else:
+            color = "#9aa5b1"
+        width = max(4, int(52 * ratio))
+        self._pickBar.setFixedWidth(width)
+        self._pickBar.setStyleSheet(
+            f"background: {color}; border-radius: 1px;")
+
+    @staticmethod
+    def _updateScoreColor(label, score):
+        """根据表现分着色: 高分绿, 中分橙, 低分灰"""
+        if score >= 80:
+            color = "#3d9d3d"
+        elif score >= 50:
+            color = "#d99a2b"
+        else:
+            color = "#9aa5b1"
+        label.setStyleSheet(
+            f"color: {color}; font-weight: 600;")
 
     def __initWidget(self):
         self.icon.setFixedSize(32, 32)
         self.name.setAlignment(Qt.AlignCenter)
         self.name.setObjectName("bodyLabel")
 
-        self.firstRateText.setObjectName("grayBodyLabel")
-        self.firstRate.setObjectName("boldBodyLabel")
+        if self._isMayhem:
+            self.firstRateText.setObjectName("grayBodyLabel")
+            self.firstRateValue.setObjectName("boldBodyLabel")
+            self.firstRate.setObjectName("grayBodyLabel")
+            self.firstRateValue2.setObjectName("boldBodyLabel")
+        else:
+            self.firstRateText.setObjectName("grayBodyLabel")
+            self.firstRate.setObjectName("boldBodyLabel")
 
-        self.firstRate.setToolTip(self.tr("First Rate"))
+        self.firstRate.setToolTip(self._winTooltip)
         self.firstRate.installEventFilter(ToolTipFilter(self.firstRate, 100))
+        if self._pickTooltip:
+            self.firstRateText.setToolTip(self._pickTooltip)
+            self.firstRateText.installEventFilter(
+                ToolTipFilter(self.firstRateText, 100))
 
     def __initLayout(self):
         self.firstRateLayout.setContentsMargins(0, 0, 0, 0)
         self.firstRateLayout.setAlignment(Qt.AlignLeft)
-        self.firstRateLayout.setSpacing(0)
-        self.firstRateLayout.addWidget(self.firstRateText)
-        self.firstRateLayout.addSpacerItem(QSpacerItem(
-            0, 0, QSizePolicy.Expanding, QSizePolicy.Fixed))
-        self.firstRateLayout.addWidget(self.firstRate)
+        self.firstRateLayout.setSpacing(4)
+
+        if self._isMayhem:
+            # 左: 登场率标签 + 值 + 进度条
+            self.firstRateLayout.addWidget(self.firstRateText)
+            self.firstRateLayout.addWidget(self.firstRateValue)
+            self.firstRateLayout.addWidget(self._pickBar)
+            self.firstRateLayout.addSpacerItem(QSpacerItem(
+                0, 0, QSizePolicy.Expanding, QSizePolicy.Fixed))
+            # 右: 表现分标签 + 值(带颜色)
+            self.firstRateLayout.addWidget(self.firstRate)
+            self.firstRateLayout.addWidget(self.firstRateValue2)
+        else:
+            self.firstRateLayout.addWidget(self.firstRateText)
+            self.firstRateLayout.addSpacerItem(QSpacerItem(
+                0, 0, QSizePolicy.Expanding, QSizePolicy.Fixed))
+            self.firstRateLayout.addWidget(self.firstRate)
 
         self.nameLayout.setContentsMargins(0, 0, 0, 0)
         self.nameLayout.setSpacing(0)

@@ -108,6 +108,13 @@ class AuxiliaryInterface(SeraphineInterface):
                 "Accept match making automatically after the number of seconds you set"),
             cfg.enableAutoAcceptMatching, cfg.autoAcceptMatchingDelay,
             self.bpGroup)
+        self.autoStartMatchmakingCard = AutoAcceptMatchingCard(
+            self.tr("Auto start matchmaking"),
+            self.tr(
+                "Start searching for match automatically when in lobby"),
+            cfg.enableAutoStartMatchmaking, cfg.autoStartMatchmakingDelay,
+            self.bpGroup, delayRange=(0, 30),
+            delayLabelText=self.tr("Delay seconds after entering lobby:"))
         self.autoAcceptSwapingCard = AutoAcceptSwapingCard(
             self.tr("Auto accept swaping"),
             self.tr(
@@ -158,6 +165,19 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.hextechChampions,
             self.bpGroup)
 
+        self.hextechAssistCard = SwitchSettingCard(
+            Icon.GAME,
+            self.tr("海克斯强化辅助"),
+            self.tr("在 ARAM Mayhem 游戏中, 根据已选强化推荐后续选择 (仅 queueId 2400)"),
+            cfg.enableHextechAssist,
+            self.bpGroup)
+        self.hextechAssistAutoShowCard = SwitchSettingCard(
+            Icon.EYES,
+            self.tr("自动显示辅助页"),
+            self.tr("游戏开始时自动切换到 OPGG 海克斯辅助页"),
+            cfg.hextechAssistAutoShow,
+            self.bpGroup)
+
         self.__initWidget()
         self.__initLayout()
 
@@ -185,11 +205,14 @@ class AuxiliaryInterface(SeraphineInterface):
 
         # BP
         self.bpGroup.addSettingCard(self.autoAcceptMatchingCard)
+        self.bpGroup.addSettingCard(self.autoStartMatchmakingCard)
         self.bpGroup.addSettingCard(self.autoAcceptSwapingCard)
         self.bpGroup.addSettingCard(self.autoSelectChampionCard)
         self.bpGroup.addSettingCard(self.autoBanChampionsCard)
         self.bpGroup.addSettingCard(self.autoSetSpellCard)
         self.bpGroup.addSettingCard(self.hextechChampionCard)
+        self.bpGroup.addSettingCard(self.hextechAssistCard)
+        self.bpGroup.addSettingCard(self.hextechAssistAutoShowCard)
 
         # 游戏
         self.gameGroup.addSettingCard(self.autoReconnectCard)
@@ -386,7 +409,7 @@ class ProfileBackgroundCard(ExpandGroupSettingCard):
     async def __onApplyButtonClicked(self):
         contentId = connector.manager.getSkinAugments(self.chosenSkinId)
 
-        if contentId == None:
+        if contentId is None:
             await connector.setProfileBackground(self.chosenSkinId)
             return
 
@@ -943,7 +966,8 @@ class SpectateCard(ExpandGroupSettingCard):
 
 class AutoAcceptMatchingCard(ExpandGroupSettingCard):
     def __init__(self, title, content, enableConfigItem: ConfigItem = None,
-                 delayConfigItem: ConfigItem = None, parent=None):
+                 delayConfigItem: ConfigItem = None, parent=None, delayRange=(0, 11),
+                 delayLabelText=None):
         super().__init__(Icon.CIRCLEMARK, title, content, parent)
 
         self.statusLabel = QLabel(self)
@@ -951,7 +975,8 @@ class AutoAcceptMatchingCard(ExpandGroupSettingCard):
         self.inputWidget = QWidget(self.view)
         self.inputLayout = QHBoxLayout(self.inputWidget)
 
-        self.secondsLabel = QLabel(self.tr("Delay seconds after match made:"))
+        self.secondsLabel = QLabel(self)
+        self._delayLabelText = delayLabelText
         self.lineEdit = SpinBox()
 
         self.switchButtonWidget = QWidget(self.view)
@@ -961,6 +986,7 @@ class AutoAcceptMatchingCard(ExpandGroupSettingCard):
 
         self.enableConfigItem = enableConfigItem
         self.delayConfigItem = delayConfigItem
+        self._delayRange = delayRange
 
         self.__initLayout()
         self.__initWidget()
@@ -986,7 +1012,9 @@ class AutoAcceptMatchingCard(ExpandGroupSettingCard):
         self.addGroupWidget(self.switchButtonWidget)
 
     def __initWidget(self):
-        self.lineEdit.setRange(0, 11)
+        self.secondsLabel.setText(
+            self._delayLabelText or self.tr("Delay seconds after match made:"))
+        self.lineEdit.setRange(*self._delayRange)
         self.lineEdit.setValue(cfg.get(self.delayConfigItem))
         self.lineEdit.setSingleStep(1)
         self.lineEdit.setMinimumWidth(250)
@@ -1805,7 +1833,7 @@ class AutoBanChampionCard(ExpandGroupSettingCard):
         """
 
         dark = """
-            SpinBox:disabled {    
+            SpinBox:disabled {
                 color: rgba(255, 255, 255, 150);
                 background-color: rgba(255, 255, 255, 0.0419);
                 border: 1px solid rgba(255, 255, 255, 0.0698);

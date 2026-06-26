@@ -3,11 +3,12 @@ import os
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 from PyQt5.QtGui import QFont
-from PyQt5.QtCore import Qt, QTranslator, QAbstractNativeEventFilter
+from PyQt5.QtCore import Qt, QTranslator, QAbstractNativeEventFilter, QTimer
 from app.common.qfluentwidgets import FluentTranslator
 from qasync import QApplication, QEventLoop
 import asyncio
 import ctypes
+import signal
 import sys
 from app.common.config import cfg, VERSION, BETA
 from app.common.logger import logger
@@ -79,6 +80,17 @@ def main():
 
     # 安装 Windows 关机消息过滤器, 避免关机被异步 closeEvent / 托盘最小化阻塞
     app.installNativeEventFilter(_ShutdownFilter(app))
+
+    # 允许 Ctrl+C 退出: Windows 下 qasync 事件循环不会主动处理 SIGINT,
+    # 用一个短间隔定时器让解释器有机会执行 Python 信号处理函数
+    def _sigint_handler(*_):
+        logger.info("SIGINT received, quitting application", TAG)
+        QTimer.singleShot(0, app.quit)
+    signal.signal(signal.SIGINT, _sigint_handler)
+
+    _sigint_wakeup = QTimer()
+    _sigint_wakeup.timeout.connect(lambda: None)
+    _sigint_wakeup.start(200)
 
     eventLoop = QEventLoop(app)
     asyncio.set_event_loop(eventLoop)

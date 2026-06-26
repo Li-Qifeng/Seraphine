@@ -94,6 +94,59 @@
         <source>First Rate</source>
         <translation>第一率</translation>
     </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1217"/>
+        <source>Performance Score</source>
+        <translation>表现分</translation>
+    </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1248"/>
+        <source>Score</source>
+        <translation>表现分</translation>
+    </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1248"/>
+        <source>Rating</source>
+        <translation>评级</translation>
+    </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1148"/>
+        <source>Silver</source>
+        <translation>银色</translation>
+    </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1149"/>
+        <source>Gold</source>
+        <translation>金色</translation>
+    </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1150"/>
+        <source>Prismatic</source>
+        <translation>棱彩</translation>
+    </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1246"/>
+        <source>Pick Rate</source>
+        <translation>选择率</translation>
+    </message>
+</context>
+<context>
+    <name>ChampionAugmentsWidget</name>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1148"/>
+        <source>Silver</source>
+        <translation>银色</translation>
+    </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1149"/>
+        <source>Gold</source>
+        <translation>金色</translation>
+    </message>
+    <message>
+        <location filename="../../view/opgg_build_interface.py" line="1150"/>
+        <source>Prismatic</source>
+        <translation>棱彩</translation>
+    </message>
 </context>
 <context>
     <name>AutoAcceptMatchingCard</name>
@@ -674,6 +727,21 @@ If champions set by lane are not available, default settings will be used.</sour
         <source>Auto set your summoner spells when champion selection begins</source>
         <translation>当你的英雄选择开始时自动设置召唤师技能</translation>
     </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="112"/>
+        <source>Auto start matchmaking</source>
+        <translation>自动开始匹配</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="113"/>
+        <source>Start searching for match automatically when in lobby</source>
+        <translation>在房间内时自动开始搜索对局</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="117"/>
+        <source>Delay seconds after entering lobby:</source>
+        <translation>进入房间后延迟秒数：</translation>
+    </message>
 </context>
 <context>
     <name>CareerInterface</name>
@@ -877,7 +945,7 @@ If champions set by lane are not available, default settings will be used.</sour
     <message>
         <location filename="../../view/opgg_build_interface.py" line="165"/>
         <source>Pick Rate</source>
-        <translation>登场率</translation>
+        <translation>选择率</translation>
     </message>
     <message>
         <location filename="../../view/opgg_build_interface.py" line="169"/>
@@ -1417,7 +1485,7 @@ If champions set by lane are not available, default settings will be used.</sour
     <message>
         <location filename="../../view/opgg_tier_interface.py" line="155"/>
         <source>Pick Rate</source>
-        <translation>登场率</translation>
+        <translation>选择率</translation>
     </message>
     <message>
         <location filename="../../view/opgg_tier_interface.py" line="156"/>
@@ -3287,6 +3355,11 @@ when they are used by Seraphine, which will cost more time</source>
 </context>
 <context>
     <name>TeamView</name>
+    <message>
+        <location filename="../../view/search_interface.py" line="448"/>
+        <source>Hextech</source>
+        <translation>海克斯</translation>
+    </message>
     <message>
         <location filename="../../view/search_interface.py" line="630"/>
         <source>Winner</source>

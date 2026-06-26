@@ -16,14 +16,14 @@ from app.components.champion_icon_widget import RoundIcon
 from app.components.profile_level_icon_widget import RoundLevelAvatar
 from app.components.summoner_name_button import SummonerName
 from app.components.color_label import ColorLabel
-from app.components.animation_frame import CardWidget, ColorAnimationFrame
+from app.components.animation_frame import ColorAnimationFrame
 from app.common.style_sheet import StyleSheet
 from app.common.icons import Icon
 from app.common.signals import signalBus
 from app.common.config import cfg
 from app.lol.connector import connector
 from app.lol.tools import (parseGames, parseSummonerData,
-                           getRecentTeammates, parseDetailRankInfo, SERVERS_NAME, SERVERS_SUBSET)
+                           getRecentTeammates, parseDetailRankInfo)
 from ..components.seraphine_interface import SeraphineInterface
 
 
@@ -157,7 +157,8 @@ class CareerInterface(SeraphineInterface):
         self.filterComboBox.addItems([
             self.tr('All'),
             self.tr('Normal'),
-            self.tr("A.R.A.M."),
+            self.tr("大乱斗"),
+            self.tr("海克斯大乱斗"),
             self.tr("Ranked Solo"),
             self.tr("Ranked Flex")
         ])
@@ -308,7 +309,7 @@ class CareerInterface(SeraphineInterface):
             }
 
             QTableView {
-                border: 1px solid rgba(0, 0, 0, 0.095); 
+                border: 1px solid rgba(0, 0, 0, 0.095);
                 border-radius: 6px;
                 background: rgba(255, 255, 255, 0.667);
             }
@@ -321,7 +322,7 @@ class CareerInterface(SeraphineInterface):
             }
 
             QTableView {
-                border: 1px solid rgb(35, 35, 35); 
+                border: 1px solid rgb(35, 35, 35);
                 border-radius: 6px;
                 background: rgba(255, 255, 255, 0.051);
             }
@@ -363,17 +364,35 @@ class CareerInterface(SeraphineInterface):
     @asyncSlot()
     async def __changeToCurrentSummoner(self):
         self.setLoadingPageEnabled(True)
-        summoner = await connector.getCurrentSummoner()
+        try:
+            summoner = await connector.getCurrentSummoner()
+        except Exception:
+            InfoBar.warning(
+                self.tr("Connection error"),
+                self.tr("Cannot connect to LOL client."),
+                orient=Qt.Vertical,
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=3000,
+                parent=self.window())
+            self.setLoadingPageEnabled(False)
+            return
         await self.updateInterface(summoner=summoner)
         self.setLoadingPageEnabled(False)
 
     @asyncSlot()
     async def refresh(self):
-        if self.puuid:
-            index = self.filterComboBox.currentIndex()
-            await self.updateInterface(puuid=self.puuid)
-            self.filterComboBox.setCurrentIndex(index)
-            self.__onfilterComboBoxChanged(index)
+        if not self.puuid:
+            return
+
+        if self.loadGamesTask and not self.loadGamesTask.done():
+            self.loadGamesTask.cancel()
+
+        index = self.filterComboBox.currentIndex()
+        await self.updateInterface(puuid=self.puuid)
+        self.filterComboBox.blockSignals(True)
+        self.filterComboBox.setCurrentIndex(index)
+        self.filterComboBox.blockSignals(False)
+        self.__onfilterComboBoxChanged(index)
 
     async def updateInterface(self, puuid=None, summoner=None):
         '''
@@ -390,8 +409,19 @@ class CareerInterface(SeraphineInterface):
             self.recentTeammatesFlyout.close()
             self.recentTeammatesFlyout = None
 
-        if summoner is None:
-            summoner = await connector.getSummonerByPuuid(puuid)
+        try:
+            if summoner is None:
+                summoner = await connector.getSummonerByPuuid(puuid)
+        except Exception as e:
+            InfoBar.warning(
+                self.tr("Connection error"),
+                self.tr("Cannot connect to LOL client, displaying cached data."),
+                orient=Qt.Vertical,
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=3000,
+                parent=self.window())
+            self.setLoadingPageEnabled(False)
+            return
 
         if 'errorCode' in summoner:
             InfoBar.error(self.tr("Get summoner infomation error"),
@@ -409,7 +439,19 @@ class CareerInterface(SeraphineInterface):
         rankTask = asyncio.create_task(
             connector.getRankedStatsByPuuid(summoner['puuid']))
 
-        info = await parseSummonerData(summoner, rankTask, self.loadGamesTask)
+        try:
+            info = await parseSummonerData(summoner, rankTask, self.loadGamesTask)
+        except Exception as e:
+            InfoBar.warning(
+                self.tr("Data load failed"),
+                self.tr("Failed to load game data, displaying cached data."),
+                orient=Qt.Vertical,
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=3000,
+                parent=self.window())
+            self.setLoadingPageEnabled(False)
+            return
+
         await self.repaintInterface(info)
 
     async def repaintInterface(self, info):
@@ -536,8 +578,10 @@ class CareerInterface(SeraphineInterface):
         elif index == 2:
             targetId = 450
         elif index == 3:
-            targetId = 420
+            targetId = 2400
         elif index == 4:
+            targetId = 420
+        elif index == 5:
             targetId = 440
         else:
             targetId = 0
@@ -577,7 +621,7 @@ class CareerInterface(SeraphineInterface):
         return res
 
     def isLoginSummoner(self):
-        return self.loginSummonerPuuid == None or self.loginSummonerPuuid == self.puuid
+        return self.loginSummonerPuuid is None or self.loginSummonerPuuid == self.puuid
 
     def __onRecentTeammatesButtonClicked(self):
         view = TeammatesFlyOut()

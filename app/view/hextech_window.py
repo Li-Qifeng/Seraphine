@@ -375,12 +375,23 @@ class HextechWindow(OpggWindowBase):
             info = AramBuff.getInfoByChampionId(championId)
             if not info:
                 return ""
+            # AramBuff 数据来自 jddld.com, key 为拼音缩写
+            buffItems = [
+                ('zcsh', '造成伤害', '%', 100),
+                ('sdsh', '受到伤害', '%', 100),
+                ('zlxl', '治疗增益', '%', 100),
+                ('hdxn', '护盾增益', '%', 100),
+                ('jnjs', '技能急速', '', 0),
+                ('renxing', '韧性', '', 0),
+            ]
             parts = []
-            for k in ('damage_dealt', 'damage_taken', 'healing',
-                      'shielding', 'ability_haste'):
-                v = info.get(k)
-                if v is not None and v != 0:
-                    parts.append(f"{k}: {v}")
+            for key, label, suffix, default in buffItems:
+                v = info.get(key)
+                if v is not None and str(v) != str(default) and v != '':
+                    parts.append(f"{label}: {v}{suffix}")
+            desc = info.get('description', '')
+            if desc:
+                parts.append(desc.replace('(', '（').replace(')', '）'))
             return "\n".join(parts) if parts else ""
         except Exception:
             return ""

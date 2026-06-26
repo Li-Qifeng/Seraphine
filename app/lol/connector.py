@@ -86,15 +86,20 @@ def retry(count=5, retry_sep=0):
             exce = None
             for _ in range(count):
                 try:
-                    async with connector.semaphore:
+                    # connector.close() 会把 semaphore 重置为 None, 此时客户端已断开,
+                    # 仍有 in-flight 请求会走到这里 -- 直接执行, 不再受并发限制
+                    if connector.semaphore is None:
                         res = await func(*args, **kwargs)
+                    else:
+                        async with connector.semaphore:
+                            res = await func(*args, **kwargs)
                 except CancelledError:
                     # Fix: 使用 task.cancel() 偶尔会停不下 task -- By Hpero4
                     #   在调用 cancel() 时, 会从调用栈的最底抛出 CancelledError, 最终传递到 loop 终止 task;
-                    #   由于 CancelledError 是 BaseException 的子类,
-                    #   若 task 恰好跑到被 retry 装饰的函数中, 会被 retry 中的 BaseException 捕获并吞掉, 从而无事发生
+                    #   CancelledError 是 BaseException 的子类, 必须在 except Exception 之前单独 raise,
+                    #   否则会被吞掉导致 cancel 无效
                     raise
-                except BaseException as e:
+                except Exception as e:
                     time.sleep(retry_sep)
                     exce = e
 
@@ -790,6 +795,80 @@ class LolClientConnector(QObject):
         res = await self.__post("/lol-matchmaking/v1/ready-check/accept")
         return res
 
+    async def getLobbyStatus(self):
+        try:
+            res = await self.__get("/lol-lobby/v2/lobby")
+            return await res.json()
+        except Exception:
+            return None
+
+    async def getMatchmakingStatus(self):
+        """获取匹配状态, 兼容 teambuilder (aram/aram_mayhem/arena) 队列.
+
+        teambuilder 队列的状态在 /lol-lobby-team-builder/v1/matchmaking 下,
+        普通队列在 /lol-matchmaking/v1/search 下. 这里优先查 teambuilder,
+        失败再回退到 /lol-matchmaking/v1/search.
+        """
+        try:
+            res = await self.__get("/lol-lobby-team-builder/v1/matchmaking")
+            if res.status == 200:
+                return await res.json()
+        except Exception:
+            pass
+        try:
+            res = await self.__get("/lol-matchmaking/v1/search")
+            if res.status == 200:
+                return await res.json()
+        except Exception:
+            return None
+        return None
+
+    async def startMatchmaking(self):
+        """开始匹配, 兼容 teambuilder 队列.
+
+        对于 teambuilder 队列 (aram/aram_mayhem/arena 等), POST /lol-matchmaking/v1/search
+        会返回 500 错误 (Invalid function), 正确端点是 POST /lol-lobby/v2/lobby/matchmaking/search.
+        实际成功与否以 GET matchmaking 状态为准.
+        """
+        try:
+            res = await self.__post("/lol-lobby/v2/lobby/matchmaking/search", data={})
+            status = res.status
+            if status in (200, 204):
+                return True
+            # 500/其他状态码: 可能是端点不对, 尝试老端点
+        except Exception as e:
+            logger.warning(f"startMatchmaking tb endpoint failed: {e}", TAG)
+
+        try:
+            res = await self.__post("/lol-matchmaking/v1/search", data={})
+            status = res.status
+            if status in (200, 204):
+                return True
+        except Exception as e:
+            logger.warning(f"startMatchmaking failed: {e}", TAG)
+
+        # 即使两个端点都返回非 200/204, 也查询状态确认是否实际进入队列
+        # (国服 teambuilder 队列即使返回 500 也可能已实际开始匹配)
+        try:
+            mm = await self.getMatchmakingStatus()
+            if mm and mm.get('isCurrentlyInQueue') is True:
+                return True
+            if mm and mm.get('searchState') in ('Searching', 'Found', 'Accepted'):
+                return True
+        except Exception:
+            pass
+        return False
+
+    async def isLobbyReadyToSearch(self):
+        lobby = await self.getLobbyStatus()
+        if not lobby:
+            return False
+        can_start = lobby.get('canStartActivity')
+        if can_start is not None:
+            return can_start
+        queue_id = lobby.get('gameConfig', {}).get('queueId')
+        return queue_id is not None
+
     @retry()
     async def getGameflowSession(self):
         # NOTE: 该接口在自定义模式下可能返回上一局的 teamOne/teamTwo 脏数据,
@@ -1240,6 +1319,31 @@ class JsonManager:
         self.cherryAugments = {
             item['id']: item
             for item in augments}
+
+        # 预填充强化稀有度到 static_data 映射, 供战绩页面 AugmentRow 着色
+        # cherry-augments.json 中每个条目应含 rarity 字段 (位掩码: &1=silver, &4=gold, &8=prismatic)
+        try:
+            from app.lol.static_data import registerAugmentRarity
+            filled_count = 0
+            sample_logged = False
+            for aid, raw in self.cherryAugments.items():
+                if not isinstance(raw, dict):
+                    continue
+                rarity = raw.get('rarity')
+                if rarity is not None:
+                    registerAugmentRarity(aid, rarity)
+                    filled_count += 1
+                # 首次记录一条样本, 确认字段名 (调试用)
+                if not sample_logged:
+                    sample_logged = True
+                    logger.warning(
+                        f"[cherry-augments] sample aid={aid} keys={list(raw.keys())}",
+                        TAG)
+            logger.warning(
+                f"[cherry-augments] total={len(self.cherryAugments)} "
+                f"rarity_filled={filled_count}", TAG)
+        except Exception as e:
+            logger.warning(f"Failed to pre-fill augment rarity: {e}", TAG)
 
     def getItemIconPath(self, iconId):
         if iconId != 0:

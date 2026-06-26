@@ -28,6 +28,7 @@ from app.components.search_line_edit import SearchLineEdit
 from app.components.summoner_name_button import SummonerName
 from app.components.animation_frame import ColorAnimationFrame, CardWidget
 from app.components.color_label import ColorLabel, DeathsLabel
+from app.components.game_infobar_widget import AugmentRow
 from app.lol.connector import connector
 from app.lol.exceptions import SummonerGamesNotFound, SummonerNotFound
 from app.lol.tools import parseGameData, parseGameDetailData, parseGamesDataConcurrently
@@ -372,15 +373,16 @@ class GameDetailView(QFrame):
             return
 
         isCherry = game["queueId"] == 1700
+        isMayhem = game["queueId"] == 2400
         self.titleBar.updateTitleBar(game)
 
         team1 = game["teams"][100]
         team2 = game["teams"][200]
 
-        self.teamView1.updateTeam(team1, isCherry, self.tr("1st"))
+        self.teamView1.updateTeam(team1, isCherry, self.tr("1st"), isMayhem)
         self.teamView1.updateSummoners(team1["summoners"])
 
-        self.teamView2.updateTeam(team2, isCherry, self.tr("2nd"))
+        self.teamView2.updateTeam(team2, isCherry, self.tr("2nd"), isMayhem)
         self.teamView2.updateSummoners(team2["summoners"])
 
         self.extraTeamView1.setVisible(isCherry)
@@ -443,6 +445,8 @@ class TeamView(QFrame, ColorChangeable):
         self.csIconLabel = RoundedLabel(radius=0, borderWidth=0)
         self.goldIconLabel = RoundedLabel(radius=0, borderWidth=0)
         self.dmgIconLabel = QLabel()
+        # 海克斯强化表头列 (仅海克斯大乱斗模式显示, 与 SummonerInfoBar.augmentRow 等宽对齐)
+        self.augmentHeaderLabel = QLabel(self.tr("Hextech"))
 
         self.kills = QLabel()
         self.slash1 = QLabel()
@@ -493,6 +497,13 @@ class TeamView(QFrame, ColorChangeable):
 
         self.dmgIconLabel.setObjectName("dmgIconLabel")
         self.bansButton.clicked.connect(self.__onBansButtonClicked)
+
+        # 海克斯表头列: 固定宽度与 AugmentRow.FIXED_WIDTH 对齐, 默认隐藏
+        from app.components.game_infobar_widget import AugmentRow
+        self.augmentHeaderLabel.setFixedWidth(AugmentRow.FIXED_WIDTH)
+        self.augmentHeaderLabel.setAlignment(Qt.AlignCenter)
+        self.augmentHeaderLabel.setObjectName("augmentHeaderLabel")
+        self.augmentHeaderLabel.setVisible(False)
 
     def __initToolTip(self):
         self.towerIconLabel.setToolTip(self.tr("Tower destroyed"))
@@ -592,6 +603,8 @@ class TeamView(QFrame, ColorChangeable):
         self.titleBarLayout.addSpacing(28)
         self.titleBarLayout.addWidget(self.dmgIconLabel)
         self.titleBarLayout.addSpacing(7)
+        # 海克斯表头列 (与 SummonerInfoBar 的 augmentRow 对齐, 默认隐藏)
+        self.titleBarLayout.addWidget(self.augmentHeaderLabel)
 
         self.summonersLayout.setContentsMargins(2, 4, 2, 2)
         self.summonersLayout.setSpacing(4)
@@ -602,10 +615,13 @@ class TeamView(QFrame, ColorChangeable):
         self.vBoxLayout.addSpacing(8)
         self.vBoxLayout.addLayout(self.summonersLayout)
 
-    def updateTeam(self, team, isCherry, result):
+    def updateTeam(self, team, isCherry, result, isMayhem=False):
         if not self.isToolTipInit:
             self.isToolTipInit = True
             self.__initToolTip()
+
+        # 海克斯大乱斗模式: 显示海克斯表头列
+        self.augmentHeaderLabel.setVisible(isMayhem)
 
         win = team['win']
         baronIcon = team['baronIcon']
@@ -756,6 +772,12 @@ class SummonerInfoBar(QFrame):
         self.goldLabel = QLabel()
         self.demageLabel = QLabel()
 
+        # 海克斯大乱斗: 强化图标行 (仅 queueId=2400 时有数据)
+        augmentIds = summoner.get("augmentIds") or []
+        championId = summoner.get("championId")
+        self.augmentRow = AugmentRow(
+            augmentIds, championId=championId) if augmentIds else None
+
         self.__initWidget(summoner)
         self.__initLayout()
 
@@ -879,6 +901,10 @@ class SummonerInfoBar(QFrame):
         self.hBoxLayout.addWidget(self.csLabel)
         self.hBoxLayout.addWidget(self.goldLabel)
         self.hBoxLayout.addWidget(self.demageLabel)
+        # 海克斯强化图标 (仅在海克斯大乱斗对局详情中显示)
+        if self.augmentRow:
+            self.hBoxLayout.addSpacing(8)
+            self.hBoxLayout.addWidget(self.augmentRow)
 
 
 class GameTitleBar(QFrame, ColorChangeable):
@@ -1159,7 +1185,8 @@ class SearchInterface(SeraphineInterface):
         self.filterComboBox.addItems([
             self.tr('All'),
             self.tr('Normal'),
-            self.tr("A.R.A.M."),
+            self.tr("大乱斗"),
+            self.tr("海克斯大乱斗"),
             self.tr("Ranked Solo"),
             self.tr("Ranked Flex")
         ])
@@ -1177,10 +1204,8 @@ class SearchInterface(SeraphineInterface):
         self.vBoxLayout.setContentsMargins(30, 32, 30, 30)
 
     def setEnabled(self, a0: bool) -> None:
-        self.gamesView.gameDetailView.clear()
-        self.gamesView.gamesTab.clear()
-        self.searchLineEdit.clear()
-
+        # 仅禁用交互控件, 不清空已加载的战绩数据
+        # (客户端断开后保留数据供查看, 符合 "保留最后用户数据" 的需求)
         self.searchLineEdit.setEnabled(a0)
         self.searchLineEdit.searchButton.setEnabled(a0)
 
@@ -1234,43 +1259,55 @@ class SearchInterface(SeraphineInterface):
 
         self.gamesView.gameDetailView.clear()
 
-        # NOTE 如果是生涯和搜索反复横跳, 就不重新启 loadgames 任务了
-        if puuid != self.puuid:
-            if self.gameLoadingTask:
-                self.gameLoadingTask.cancel()
+        try:
+            # NOTE 如果是生涯和搜索反复横跳, 就不重新启 loadgames 任务了
+            if puuid != self.puuid:
+                if self.gameLoadingTask:
+                    self.gameLoadingTask.cancel()
 
-                while not self.gameLoadingTask.cancelled() \
-                        and not self.gameLoadingTask.done():
-                    await asyncio.sleep(.3)
+                    while not self.gameLoadingTask.cancelled() \
+                            and not self.gameLoadingTask.done():
+                        await asyncio.sleep(.3)
 
-            self.puuid = summoner['puuid']
-            self.gamesView.gamesTab.clear()
+                self.puuid = summoner['puuid']
+                self.gamesView.gamesTab.clear()
 
-            # 先加载两页，让用户看着
-            try:
-                games = await connector.getSummonerGamesByPuuid(self.puuid, 0, 19)
-            except SummonerGamesNotFound:
-                games = []
-            else:
-                games = await parseGamesDataConcurrently(games['games'])
+                # 先加载两页，让用户看着
+                try:
+                    games = await connector.getSummonerGamesByPuuid(self.puuid, 0, 19)
+                except SummonerGamesNotFound:
+                    games = []
+                else:
+                    games = await parseGamesDataConcurrently(games['games'])
 
-            if len(games) == 0:
-                self.gamesView.gamesTab.nextButton.setVisible(False)
-                self.gamesView.gamesTab.prevButton.setVisible(False)
-                self.filterComboBox.setEnabled(False)
-                self.gamesView.setLoadingPageEnable(False)
-                return False
+                if len(games) == 0:
+                    self.gamesView.gamesTab.nextButton.setVisible(False)
+                    self.gamesView.gamesTab.prevButton.setVisible(False)
+                    self.filterComboBox.setEnabled(False)
+                    self.gamesView.setLoadingPageEnable(False)
+                    return False
 
-            self.gamesView.gamesTab.updateQueueIdMap(games)
+                self.gamesView.gamesTab.updateQueueIdMap(games)
 
-            # 启动任务，往 gamesTab 里丢数据
-            # NOTE 既然创建新任务, 并且刷新了self.puuid 就应该用self的, 否则就违背了loadGames判断的初衷
+                # 启动任务，往 gamesTab 里丢数据
+                # NOTE 既然创建新任务, 并且刷新了self.puuid 就应该用self的, 否则就违背了loadGames判断的初衷
 
-            self.gameLoadingTask = asyncio.create_task(
-                self.__loadGames(self.puuid))
+                self.gameLoadingTask = asyncio.create_task(
+                    self.__loadGames(self.puuid))
 
-        self.gamesView.gamesTab.showTheFirstPage()
-        self.gamesView.setLoadingPageEnable(False)
+            self.gamesView.gamesTab.showTheFirstPage()
+        except Exception as e:
+            logger.error(f"searchAndShowFirstPage failed: {e}", TAG)
+            InfoBar.error(
+                self.tr("Search failed"),
+                self.tr("Failed to load match history data."),
+                orient=Qt.Vertical,
+                duration=5000,
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                parent=self)
+            return False
+        finally:
+            self.gamesView.setLoadingPageEnable(False)
 
         self.__addSearchHistroy(name)
 
@@ -1432,7 +1469,7 @@ class SearchInterface(SeraphineInterface):
         tabs = self.gamesView.gamesTab
         tabs.clearTabs()
 
-        ids = (-1, 430, 450, 420, 440)
+        ids = (-1, 430, 450, 2400, 420, 440)
         tabs.queueId = ids[index]
 
         self.gamesView.setLoadingPageEnable(True)

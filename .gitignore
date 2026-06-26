@@ -33,3 +33,6 @@ run_console.log
 # 忽略虚拟环境
 venv
 seraphine
+
+# 忽略 IDE 内部文件
+.trae/

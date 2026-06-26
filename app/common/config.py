@@ -5,9 +5,9 @@ import sys
 from PyQt5.QtCore import QLocale, QSize
 
 
-from .qfluentwidgets import (qconfig, QConfig, ConfigItem, FolderValidator, BoolValidator,
+from .qfluentwidgets import (qconfig, QConfig, ConfigItem, BoolValidator,
                              OptionsConfigItem, OptionsValidator, ConfigSerializer,
-                             RangeConfigItem, RangeValidator, EnumSerializer, ColorConfigItem)
+                             RangeConfigItem, RangeValidator, ColorConfigItem)
 
 
 class Language(Enum):
@@ -90,9 +90,14 @@ class Config(QConfig):
     enableAutoReconnect = ConfigItem("Functions",
                                      "EnableAutoReconnect", False,
                                      BoolValidator())
+    enableAutoStartMatchmaking = ConfigItem("Functions",
+                                            "EnableAutoStartMatchmaking", False,
+                                            BoolValidator())
 
     autoAcceptMatchingDelay = RangeConfigItem(
         "Functions", "AutoAcceptMatchingDelay", 0, RangeValidator(0, 11))
+    autoStartMatchmakingDelay = RangeConfigItem(
+        "Functions", "AutoStartMatchmakingDelay", 2, RangeValidator(0, 30))
 
     enableAutoSelectTimeoutCompleted = ConfigItem("Functions",
                                                   "EnableAutoSelectTimeoutCompleted", False,
@@ -214,6 +219,14 @@ class Config(QConfig):
         "Functions", "AutoShowHextechWindow", True, BoolValidator())
     enableHextechWindowOnTop = ConfigItem(
         "Functions", "EnableHextechWindowOnTop", False, BoolValidator())
+
+    # 海克斯强化选择辅助 (ARAM Mayhem 游戏中推荐)
+    enableHextechAssist = ConfigItem(
+        "Functions", "EnableHextechAssist", True, BoolValidator())
+    hextechAssistAutoShow = ConfigItem(
+        "Functions", "HextechAssistAutoShow", True, BoolValidator())
+
+    lastSummoner = ConfigItem("Other", "LastSummoner", {})
 
 YEAR = 2023
 AUTHOR = "Zzaphkiel"

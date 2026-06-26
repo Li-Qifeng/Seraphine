@@ -1,18 +1,18 @@
-class SummonerNotFound(BaseException):
+class SummonerNotFound(Exception):
     pass
 
 
-class SummonerGamesNotFound(BaseException):
+class SummonerGamesNotFound(Exception):
     pass
 
 
-class SummonerRankInfoNotFound(BaseException):
+class SummonerRankInfoNotFound(Exception):
     pass
 
 
-class SummonerNotInGame(BaseException):
+class SummonerNotInGame(Exception):
     pass
 
 
-class RetryMaximumAttempts(BaseException):
+class RetryMaximumAttempts(Exception):
     pass

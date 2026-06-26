@@ -12,7 +12,7 @@ import asyncio
 from aiohttp.client_exceptions import ClientConnectorError
 from qasync import asyncClose, asyncSlot
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QTimer
-from PyQt5.QtGui import QIcon, QImage
+from PyQt5.QtGui import QIcon, QImage, QColor
 from PyQt5.QtWidgets import QApplication, QSystemTrayIcon
 
 from app.common.qfluentwidgets import (NavigationItemPosition, InfoBar, InfoBarPosition, Action,
@@ -50,6 +50,8 @@ from app.lol.tools import (parseAllyGameInfo, parseGameInfoByGameflowSession,
 from app.lol.aram import AramBuff
 from app.lol.champions import ChampionAlias
 from app.lol.opgg import opgg
+from app.lol.static_data import static_data
+from app.lol.live_client import liveClient
 
 import threading
 
@@ -94,12 +96,19 @@ class MainWindow(FluentWindow):
 
         logger.critical("Seraphine listerners started", TAG)
 
-        self.currentSummoner = None
+        self.currentSummoner = cfg.get(cfg.lastSummoner) or None
 
         self.isGaming = False
         self.isTrayExit = False
         self.tasklistEnabled = True
         self.championSelection = ChampionSelection()
+        self._autoStartTask = None
+
+        # 海克斯辅助: 游戏内 3 秒轮询 Live Client API 采集已选强化
+        self.hextechAssistTimer = QTimer(self)
+        self.hextechAssistTimer.setInterval(3000)
+        self.hextechAssistTimer.timeout.connect(
+            lambda: asyncio.ensure_future(self.__onHextechAssistTick()))
 
         self.lastTipsTime = time.time()
         self.lastTipsType = None
@@ -121,7 +130,36 @@ class MainWindow(FluentWindow):
 
         logger.critical("Seraphine initialized", TAG)
 
+        QTimer.singleShot(0, lambda: asyncio.ensure_future(self.__initOfflineServices()))
+
         self.__silentStart()
+
+    async def __initOfflineServices(self):
+        try:
+            await static_data.ensure_loaded()
+        except Exception:
+            pass
+        try:
+            await opgg.start()
+            # 切换到 tier 界面后再初始化, 否则当前界面仍是 homeInterface,
+            # __updateInterface 会因早期返回而不拉取数据 (导致必须连接客户端才能加载)
+            self.opggWindow.setHomeInterfaceEnabled(False)
+            await self.opggWindow.initWindow()
+        except Exception as e:
+            logger.warning(f"Failed to pre-start OPGG: {e}", TAG)
+        if self.currentSummoner:
+            await self.__updateAvatarIconName()
+            # 用 lastSummoner 加载生涯页面 (客户端未连接时显示缓存的召唤师信息,
+            # 战绩/段位数据因 LCU 不可用而为空, parseSummonerData 已有容错)
+            try:
+                self.careerInterface.setLoginSummonerPuuid(
+                    self.currentSummoner.get('puuid'))
+                await self.careerInterface.updateInterface(
+                    summoner=self.currentSummoner)
+                # 客户端未连接时停留在生涯页面, 而不是启动页
+                self.checkAndSwitchTo(self.careerInterface)
+            except Exception as e:
+                logger.warning(f"Failed to load career with lastSummoner: {e}", TAG)
 
     def __initConfig(self):
         folder = cfg.get(cfg.lolFolder)
@@ -571,6 +609,8 @@ class MainWindow(FluentWindow):
     @asyncSlot(int)
     async def __onLolClientChanged(self, pid):
         logger.critical(f"League of Legends client changed: {pid}", TAG)
+        self.currentSummoner = None
+        self.careerInterface.setLoginSummonerPuuid(None)
         await self.__onLolClientEnded()
         self.processListener.runningPid = pid
         await self.__onLolClientStarted(pid)
@@ -580,39 +620,55 @@ class MainWindow(FluentWindow):
         logger.critical("League of Legends client ended", TAG)
 
         if self.searchInterface.gameLoadingTask:
-            self.searchInterface.puuid = 0
+            self.searchInterface.gameLoadingTask.cancel()
             self.searchInterface.gameLoadingTask = None
 
+        if self.careerInterface.loadGamesTask and not self.careerInterface.loadGamesTask.done():
+            self.careerInterface.loadGamesTask.cancel()
+            self.careerInterface.loadGamesTask = None
+
+        # 停止海克斯辅助轮询
+        self.hextechAssistTimer.stop()
+        self.opggWindow.hextechAssistInterface.clearState()
+
         await connector.close()
-        await opgg.close()
 
         self.isClientProcessRunning = False
-        self.currentSummoner = None
-        self.careerInterface.setLoginSummonerPuuid(None)
 
         await self.__updateAvatarIconName()
 
-        self.startInterface.showLoadingPage()
-        self.careerInterface.setLoadingPageEnabled(True)
         self.opggWindow.setHomeInterfaceEnabled(True)
 
         self.setWindowTitle("Seraphine")
 
-        self.checkAndSwitchTo(self.startInterface)
-        self.__lockInterface()
+        # 有 lastSummoner 时保留在生涯页面 (显示上次召唤师信息), 不切到启动页
+        if self.currentSummoner and self.careerInterface.puuid:
+            self.checkAndSwitchTo(self.careerInterface)
+        else:
+            self.startInterface.showLoadingPage()
+            self.checkAndSwitchTo(self.startInterface)
+            self.__lockInterface()
 
     async def __updateAvatarIconName(self):
         if self.currentSummoner:
             try:
                 iconId = self.currentSummoner['profileIconId']
-                icon = await connector.getProfileIcon(iconId)
+                try:
+                    icon = await connector.getProfileIcon(iconId)
+                except Exception:
+                    cached_icon = f"app/resource/game/profile icons/{iconId}.jpg"
+                    icon = cached_icon if os.path.exists(cached_icon) else "app/resource/images/game.png"
                 name = (self.currentSummoner.get("gameName")
                         or self.currentSummoner['displayName'])
 
-                server = SERVERS_NAME.get(connector.server) or connector.server
-                name += self.tr(" (") + server + self.tr(")")
+                server = (self.currentSummoner.get('server')
+                          or (SERVERS_NAME.get(connector.server) or connector.server if getattr(connector, 'server', None) else ''))
+                suffix = self.tr(" (") + server + self.tr(")") if server else ""
+                if getattr(connector, 'lcuSess', None) is None:
+                    suffix = suffix + self.tr(" (offline)") if suffix else self.tr(" (offline)")
+                name += suffix
 
-                subset = SERVERS_SUBSET.get(connector.server)
+                subset = SERVERS_SUBSET.get(connector.server) if getattr(connector, 'server', None) else None
 
                 if subset and not self.avatarWidget.toolTip():
                     tooltip = self.tr(", ").join(subset)
@@ -656,11 +712,33 @@ class MainWindow(FluentWindow):
     @asyncSlot(dict)
     async def __onCurrentSummonerProfileChanged(self, data: dict):
         self.currentSummoner = data
+        self.__cacheCurrentSummoner(data)
 
         await asyncio.gather(self.__updateAvatarIconName(),
                              self.careerInterface.updateNameIconExp(data))
 
         logger.debug(f"Update Summoner Info : {data}", TAG)
+
+    def __cacheCurrentSummoner(self, data: dict):
+        if not data or not data.get('summonerId'):
+            return
+        try:
+            cached = {
+                'summonerId': data.get('summonerId'),
+                'puuid': data.get('puuid'),
+                'displayName': data.get('displayName'),
+                'gameName': data.get('gameName'),
+                'tagLine': data.get('tagLine'),
+                'profileIconId': data.get('profileIconId'),
+                'summonerLevel': data.get('summonerLevel'),
+                'xpSinceLastLevel': data.get('xpSinceLastLevel'),
+                'xpUntilNextLevel': data.get('xpUntilNextLevel'),
+                'privacy': data.get('privacy'),
+                'server': getattr(connector, 'server', None),
+            }
+            cfg.set(cfg.lastSummoner, cached)
+        except Exception as e:
+            logger.warning(f"Failed to cache current summoner: {e}", TAG)
 
     def __autoStartLolClient(self):
         if self.isClientProcessRunning:
@@ -838,15 +916,20 @@ class MainWindow(FluentWindow):
             if self.stackedWidget.currentWidget() is self.gameInfoInterface:
                 self.switchTo(self.careerInterface)
 
+            self.__scheduleAutoStartMatchmaking()
+
         elif status == 'ReadyCheck':
             title = self.tr("Ready check")
             await self.__onMatchMade()
         elif status == 'Matchmaking':
             title = self.tr("Match making")
             await self.__onGameEnd()
-        elif status == "Reconnect":  # 等待重连
+        elif status == "Reconnect":
             title = self.tr("Waiting reconnect")
             await self.__onReconnect()
+
+        if status != 'Lobby':
+            self.__cancelAutoStartMatchmaking()
 
         self.isGaming = isGaming
 
@@ -854,7 +937,7 @@ class MainWindow(FluentWindow):
             self.opggWindow.setStaysOnTopEnabled(False)
             self.hextechWindow.hide()
 
-        if title != None:
+        if title is not None:
             self.setWindowTitle("Seraphine - " + title)
 
     async def __onMatchMade(self):
@@ -885,6 +968,46 @@ class MainWindow(FluentWindow):
                 await connector.reconnect()
 
         asyncio.create_task(reconnect())
+
+    def __scheduleAutoStartMatchmaking(self):
+        if not cfg.get(cfg.enableAutoStartMatchmaking):
+            return
+        logger.error("Auto-start matchmaking: scheduled (entered lobby)", TAG)
+        self.__cancelAutoStartMatchmaking()
+
+        async def autoStart():
+            delay = cfg.get(cfg.autoStartMatchmakingDelay)
+            await asyncio.sleep(delay)
+            try:
+                cur_status = await connector.getGameStatus()
+                if cur_status != 'Lobby':
+                    logger.error(
+                        f"Auto-start matchmaking: status changed to {cur_status}, abort", TAG)
+                    return
+                if not await connector.isLobbyReadyToSearch():
+                    logger.error("Auto-start matchmaking: lobby not ready, abort", TAG)
+                    return
+                search_status = await connector.getMatchmakingStatus()
+                if search_status and search_status.get('searchState') in ('Searching', 'Found', 'Accepted'):
+                    logger.error(
+                        f"Auto-start matchmaking: already in state {search_status.get('searchState')}, abort", TAG)
+                    return
+                ok = await connector.startMatchmaking()
+                if ok:
+                    logger.error("Auto-start matchmaking: started successfully", TAG)
+                else:
+                    logger.error("Auto-start matchmaking: startMatchmaking returned False", TAG)
+            except Exception as e:
+                logger.error(f"Auto-start matchmaking error: {e}", TAG)
+            finally:
+                self._autoStartTask = None
+
+        self._autoStartTask = asyncio.create_task(autoStart())
+
+    def __cancelAutoStartMatchmaking(self):
+        if self._autoStartTask and not self._autoStartTask.done():
+            self._autoStartTask.cancel()
+        self._autoStartTask = None
 
     # 进入英雄选择界面时触发
     async def __onChampionSelectBegin(self):
@@ -938,28 +1061,20 @@ class MainWindow(FluentWindow):
         except Exception:
             pass
 
-        # 海克斯/大乱斗抢人: benchEnabled 时直接调用, 不依赖 phase (ARAM 的 phase 可能不是 FINALIZATION)
-        if data.get('benchEnabled'):
-            await autoBenchGrab(data, self.championSelection)
-
         phase = {
             'PLANNING': [autoSetSummonerSpell, autoShow],
             'BAN_PICK': [autoSetSummonerSpell, autoBan, autoPick, autoComplete, autoSwap, showOpggBuild],
-            'FINALIZATION': [autoSetSummonerSpell, autoBenchGrab, autoTrade, showOpggBuild],
+            'FINALIZATION': [autoSetSummonerSpell, autoTrade, showOpggBuild],
         }
 
         for func in phase.get(data['timer']['phase'], []):
             if await func(data, self.championSelection):
                 break
 
-        # 更新头像
         await self.gameInfoInterface.updateAllyIcon(data['myTeam'])
 
-        # 更新楼层顺序
         self.gameInfoInterface.updateAllySummonersOrder(data['myTeam'])
 
-        # 海克斯/大乱斗抢人: 绕过 phase 机制, 备选席模式直接调用
-        # (ARAM 的 phase 可能不是 FINALIZATION, 依赖 phase dispatch 会漏掉)
         if data.get('benchEnabled'):
             await autoBenchGrab(data, self.championSelection)
 
@@ -1013,7 +1128,7 @@ class MainWindow(FluentWindow):
         # 更新己方召唤师楼层顺序至角色顺序
         async def sortAllySummonersByGameRole():
             order = getAllyOrderByGameRole(session, currentSummonerId)
-            if order == None:
+            if order is None:
                 return
 
             interface = self.gameInfoInterface
@@ -1037,9 +1152,36 @@ class MainWindow(FluentWindow):
 
         self.checkAndSwitchTo(self.gameInfoInterface)
 
+        # ARAM Mayhem: 启动海克斯辅助轮询
+        if queueId == 2400 and cfg.get(cfg.enableHextechAssist):
+            self.hextechAssistTimer.start()
+            # 自动切到 OPGG 海克斯辅助页 (若开启自动显示)
+            if cfg.get(cfg.hextechAssistAutoShow):
+                try:
+                    championId = await self.__getChampionIdFromLiveClient()
+                    if championId and championId > 0:
+                        self.opggWindow.showHextechAssist(championId)
+                except Exception as e:
+                    logger.warning(f"Hextech assist auto show failed: {e}", TAG)
+
     async def __onGameEnd(self):
+        # 停止海克斯辅助轮询
+        self.hextechAssistTimer.stop()
+        self.opggWindow.hextechAssistInterface.clearState()
+
         if not cfg.get(cfg.enableReserveGameinfo):
             self.gameInfoInterface.clear()
+
+    async def __onHextechAssistTick(self):
+        """海克斯辅助定时轮询: 采集已选强化并刷新推荐列表"""
+        try:
+            from app.lol.augment_live import fetchCurrentAugments
+            liveData = await fetchCurrentAugments()
+            if liveData:
+                signalBus.liveGameDataUpdated.emit(liveData)
+                self.opggWindow.hextechAssistInterface.updateLiveState(liveData)
+        except Exception as e:
+            logger.warning(f"Hextech assist tick failed: {e}", TAG)
 
     def __checkWindowSize(self):
         if (dpi := self.devicePixelRatioF()) == 1.0:
@@ -1077,11 +1219,135 @@ class MainWindow(FluentWindow):
         self.searchInterface.waitingForDrawSelect(gameId)
         await self.searchInterface.updateGameDetailView(gameId, self.careerInterface.puuid)
 
-    def showOpggWindow(self):
+    @asyncSlot()
+    async def showOpggWindow(self):
         self.opggWindow.show()
         self.opggWindow.showNormal()
-
         self.opggWindow.raise_()
+
+        # 自动获取当前英雄和模式, 切换 OPGG 到对应界面
+        if not self.isClientProcessRunning:
+            return
+        try:
+            await self.__autoSyncOpggToCurrentGame()
+        except Exception as e:
+            logger.warning(f"Auto sync OPGG to current game failed: {e}", TAG)
+
+    async def __autoSyncOpggToCurrentGame(self):
+        """根据当前游戏状态自动切换 OPGG 模式和英雄"""
+        try:
+            status = await connector.getGameStatus()
+        except Exception as e:
+            logger.error(f"Auto sync OPGG: getGameStatus failed: {e}", TAG)
+            return
+
+        # 用 error 级别记录, 确保写入日志文件 (项目日志级别为 ERROR)
+        logger.error(f"Auto sync OPGG: status={status}", TAG)
+
+        # 仅在选人或游戏中自动切换
+        if status not in ('ChampSelect', 'InProgress', 'Lobby', 'ReadyCheck'):
+            return
+
+        championId = 0
+        queueId = 0
+
+        if status == 'ChampSelect':
+            try:
+                session = await connector.getChampSelectSession()
+            except Exception:
+                return
+            if not session:
+                return
+            # 从选人会话提取当前玩家英雄
+            cellId = session.get('localPlayerCellId', 0)
+            for p in session.get('myTeam', []):
+                if p.get('cellId') == cellId:
+                    championId = p.get('championId', 0) or p.get(
+                        'championPickIntent', 0)
+                    break
+            # 选人会话本身不含 queueId, 通过 gameflow 获取
+            try:
+                gf = await connector.getGameflowSession()
+                queueId = gf.get('gameData', {}).get(
+                    'queue', {}).get('id', 0) if gf else 0
+            except Exception:
+                queueId = 0
+        elif status == 'InProgress':
+            # 游戏中: 从 gameflow 获取 queueId
+            try:
+                session = await connector.getGameflowSession()
+                data = session.get('gameData', {}) if session else {}
+                queueId = data.get('queue', {}).get('id', 0)
+            except Exception as e:
+                logger.error(
+                    f"Auto sync OPGG: getGameflowSession failed: {e}", TAG)
+            # 游戏中: 从 Live Client API 获取当前英雄
+            championId = await self.__getChampionIdFromLiveClient()
+
+        mode = self.__queueIdToOpggMode(queueId, status)
+        logger.error(
+            f"Auto sync OPGG: championId={championId}, queueId={queueId}, mode={mode}", TAG)
+
+        if not mode:
+            return
+
+        # ARAM Mayhem 游戏中: 切到海克斯辅助页 (而非 build 页)
+        if mode == 'aram_mayhem' and status == 'InProgress' \
+                and cfg.get(cfg.enableHextechAssist):
+            if championId and championId > 0:
+                self.opggWindow.showHextechAssist(championId)
+            return
+
+        if championId and championId > 0:
+            # 有英雄: 跳转到 build 页 (信号处理会自动设置 mode combobox)
+            signalBus.toOpggBuildInterface.emit(championId, mode, "")
+        else:
+            # 无英雄: 仅切换模式, 刷新当前界面
+            self.opggWindow.setModeByData(mode)
+
+    async def __getChampionIdFromLiveClient(self) -> int:
+        """从 Live Client API (端口 2999) 获取当前游戏中英雄 ID, 失败返回 0"""
+        try:
+            active_name = await liveClient.getActivePlayerName()
+            data = await liveClient.getAllGameData()
+            if not data or not isinstance(data, dict):
+                return 0
+            all_players = data.get('allPlayers', [])
+            if not isinstance(all_players, list):
+                return 0
+            for p in all_players:
+                if not isinstance(p, dict):
+                    continue
+                # 匹配活跃玩家 (summonerName 或 riotIdName)
+                p_name = p.get('summonerName') or p.get('riotIdName') or ''
+                if active_name and p_name and (
+                        p_name == active_name or active_name.startswith(p_name)):
+                    champion_name = p.get('championName', '')
+                    if champion_name:
+                        try:
+                            return connector.manager.getChampionIdByName(champion_name)
+                        except Exception:
+                            return 0
+                    break
+        except Exception as e:
+            logger.error(
+                f"Auto sync OPGG: Live Client API failed: {e}", TAG)
+        return 0
+
+    def __queueIdToOpggMode(self, queueId, status):
+        """queueId -> OPGG mode 字符串"""
+        if queueId == 450:
+            return 'aram'
+        if queueId == 2400:
+            return 'aram_mayhem'
+        if queueId in (1700, 1710):
+            return 'arena'
+        if queueId == 1300:
+            return 'nexus_blitz'
+        if queueId in (900, 1900):
+            return 'urf'
+        # 排位/其他
+        return 'ranked' if status in ('ChampSelect', 'InProgress') else ""
 
     @asyncSlot()
     async def showHextechWindow(self):
