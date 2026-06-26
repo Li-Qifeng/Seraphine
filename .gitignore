@@ -21,6 +21,14 @@ render.html
 
 # 忽略日志文件
 log
+run_console.log
+*.log
+
+# pytest 缓存
+.pytest_cache
+
+# ruff 缓存
+.ruff_cache
 
 # 忽略虚拟环境
 venv
