@@ -1,0 +1,20 @@
+[tool.ruff]
+target-version = "py38"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+]
+ignore = [
+    "E501",   # line too long (existing codebase)
+    "F403",   # star imports (used throughout project for exceptions)
+    "F405",   # undefined name from star imports
+    "F841",   # unused local variable (existing code)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/common/qfluentwidgets/*" = ["E", "F", "W"]
+"__init__.py" = ["F401"]

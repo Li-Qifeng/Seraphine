@@ -56,7 +56,7 @@ def needLcu():
 def retry(count=5, retry_sep=0):
     def decorator(func):
         async def wrapper(*args, **kwargs):
-            logger.info(f"call %s" % func.__name__, TAG)
+            logger.info("call %s" % func.__name__, TAG)
 
             # 获取函数的参数信息
             func_params = inspect.signature(func).parameters
@@ -444,7 +444,7 @@ class LolClientConnector(QObject):
         res = await self.__get("/lol-summoner/v1/current-summoner")
         res = await res.json()
 
-        if not "summonerId" in res:
+        if "summonerId" not in res:
             raise ReferenceError()
 
         return res
@@ -567,7 +567,7 @@ class LolClientConnector(QObject):
     @retry()
     async def getSummonerByName(self, name):
         params = {"name": name}
-        res = await self.__get(f"/lol-summoner/v1/summoners", params)
+        res = await self.__get("/lol-summoner/v1/summoners", params)
         res = await res.json()
 
         return res
@@ -977,7 +977,7 @@ class LolClientConnector(QObject):
         }
 
         res = await self.__post(
-            f"/lol-spectator/v1/spectate/launch", data=data)
+            "/lol-spectator/v1/spectate/launch", data=data)
 
         res = await res.read()
 

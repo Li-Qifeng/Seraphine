@@ -2,7 +2,6 @@ import os
 import stat
 import threading
 import asyncio
-from copy import deepcopy
 
 from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QSize, QObject
 from PyQt5.QtWidgets import (QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout,

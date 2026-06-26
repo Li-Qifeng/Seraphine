@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QFrame
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtProperty
-from PyQt5.QtGui import QColor, QPainter, QPainterPath
+from PyQt5.QtGui import QColor, QPainter
 from app.common.qfluentwidgets import BackgroundAnimationWidget, isDarkTheme
 
 from app.common.style_sheet import ColorChangeable

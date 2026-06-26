@@ -1,11 +1,10 @@
 import json
 import os
-import re
-from functools import lru_cache, wraps
+from functools import lru_cache
 
 import aiohttp
 
-from app.common.config import cfg, LOCAL_PATH
+from app.common.config import LOCAL_PATH
 from app.common.logger import logger
 from app.common.util import getLolClientVersion
 
@@ -82,7 +81,7 @@ class AramBuff:
                 res = await session.get(url, params=params, proxy=None, ssl=False)
                 data = await res.json()
         except Exception:
-            logger.warning(f"Getting Aram buff failed", self.TAG)
+            logger.warning("Getting Aram buff failed", self.TAG)
             return
 
         if data.get('code') != 1:

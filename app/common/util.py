@@ -184,7 +184,7 @@ def getLolClientPids(path):
 
     pids = []
 
-    if not b'LeagueClientUx.exe' in processes:
+    if b'LeagueClientUx.exe' not in processes:
         return pids
 
     arr = processes.split()

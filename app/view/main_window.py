@@ -11,14 +11,13 @@ import pyperclip
 import asyncio
 from aiohttp.client_exceptions import ClientConnectorError
 from qasync import asyncClose, asyncSlot
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QTimer, QPoint
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QTimer
 from PyQt5.QtGui import QIcon, QImage
 from PyQt5.QtWidgets import QApplication, QSystemTrayIcon
 
 from app.common.qfluentwidgets import (NavigationItemPosition, InfoBar, InfoBarPosition, Action,
                                        FluentWindow, SplashScreen, MessageBox, SmoothScrollArea,
-                                       ToolTipFilter, FluentIcon, ToolTipPosition, FluentWindowBase,
-                                       Flyout, FlyoutAnimationType)
+                                       ToolTipFilter, FluentIcon, ToolTipPosition, Flyout, FlyoutAnimationType)
 
 from app.view.start_interface import StartInterface
 from app.view.setting_interface import SettingInterface
@@ -325,7 +324,7 @@ class MainWindow(FluentWindow):
 
         InfoBar.error(
             self.tr("LCU request error"),
-            self.tr(f"Connect API") + f" {api}: {msg}",
+            self.tr("Connect API") + f" {api}: {msg}",
             duration=5000,
             orient=Qt.Vertical,
             parent=self,
@@ -921,7 +920,8 @@ class MainWindow(FluentWindow):
 
         # 诊断: 确认 ARAM 的 timer.phase 值 (不受 logLevel 限制)
         try:
-            import os, json
+            import os
+            import json
             phaseDebug = os.path.join(
                 os.environ.get('APPDATA', ''), 'Seraphine',
                 'hextech_phase_debug.json')

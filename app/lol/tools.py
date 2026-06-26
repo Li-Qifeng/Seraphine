@@ -1503,7 +1503,7 @@ async def autoBenchGrab(data, selection: ChampionSelection):
 
     target = _resolveHextechTarget(bench, mine, selection)
     if target is None:
-        logger.error(f"hextech no target resolved (wishlist empty or no match)",
+        logger.error("hextech no target resolved (wishlist empty or no match)",
                      "autoBenchGrab")
         return False
 
