@@ -1047,27 +1047,6 @@ class LolClientConnector(QObject):
         res = await self.__post('/lol-chat/v1/friend-requests', data=data)
 
     @retry()
-    def sendNotificationMsg(self, title, content):
-        data = {
-            "critical": True,
-            "data": {
-                "details": content,
-                "title": title,
-            },
-            "detailKey": 'pre_translated_details',
-            "dismissible": True,
-            "id": 0,
-            "state": 'toast',
-            "titleKey": 'pre_translated_title',
-            "type": 'ranked_summary',
-        }
-
-        res = self.__post(
-            "/player-notifications/v1/notifications", data=data).json()
-
-        return res
-
-    @retry()
     async def playAgain(self):
         res = await self.__post("/lol-lobby/v2/play-again")
 
