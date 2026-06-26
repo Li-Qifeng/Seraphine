@@ -631,7 +631,11 @@ class MainWindow(FluentWindow):
             name = self.tr("Start LOL")
             self.avatarWidget.setToolTip("")
 
-        self.avatarWidget.avatar = QImage(icon).scaled(
+        img = QImage(icon)
+        if img.isNull():
+            img = QImage(24, 24, QImage.Format_ARGB32)
+            img.fill(QColor(0, 0, 0, 0))
+        self.avatarWidget.avatar = img.scaled(
             24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.avatarWidget.name = name
 

@@ -772,7 +772,12 @@ class SummonerInfoBar(QFrame):
         self.summonerName.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Minimum)
 
-        self.runeIcon.setPicture(QPixmap(summoner["runeIcon"]))
+        rune_pm = QPixmap(summoner["runeIcon"])
+        if not rune_pm.isNull():
+            self.runeIcon.setPixmap(rune_pm)
+            self.runeIcon.havePic = True
+        else:
+            self.runeIcon.havePic = False
         self.runeIcon.setFixedSize(23, 23)
         self.spell1Icon.setFixedSize(18, 18)
         self.spell1Icon.setPicture(summoner["spell1Icon"])

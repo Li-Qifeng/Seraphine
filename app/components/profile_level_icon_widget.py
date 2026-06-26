@@ -70,6 +70,7 @@ class RoundLevelAvatar(QWidget):
         self.iconPath = icon
 
         self.image = QPixmap(self.iconPath)
+        self.havePic = not self.image.isNull()
 
         self.setFixedSize(self.diameter, self.diameter)
 
@@ -97,6 +98,9 @@ class RoundLevelAvatar(QWidget):
             self.paintXpSinceLastLevel = self.xpSinceLastLevel
             self.callUpdate = False
 
+        if not self.havePic or self.image.isNull():
+            return
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
@@ -108,6 +112,9 @@ class RoundLevelAvatar(QWidget):
             width = image.width() - 10
             height = image.height() - 10
             image = image.copy(5, 5, width, height)
+
+        if image.isNull():
+            return
 
         scaledImage = image.scaled(size,
                                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
@@ -125,7 +132,13 @@ class RoundLevelAvatar(QWidget):
 
     def updateIcon(self, icon: str, xpSinceLastLevel=None, xpUntilNextLevel=None, text=""):
         self.iconPath = icon
-        self.image = QPixmap(self.iconPath)
+        pm = QPixmap(self.iconPath)
+        if pm.isNull():
+            self.havePic = False
+            self.image = QPixmap()
+        else:
+            self.havePic = True
+            self.image = pm
 
         if xpSinceLastLevel is not None and xpUntilNextLevel is not None:
             self.xpSinceLastLevel = xpSinceLastLevel

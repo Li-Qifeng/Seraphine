@@ -11,7 +11,11 @@ class NavigationAvatarWidget(NavigationWidget):
         super().__init__(isSelectable=False, parent=parent)
 
         self.name = name
-        self.avatar = QImage(avatar).scaled(
+        img = QImage(avatar)
+        if img.isNull():
+            img = QImage(24, 24, QImage.Format_ARGB32)
+            img.fill(QColor(0, 0, 0, 0))
+        self.avatar = img.scaled(
             24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
 
