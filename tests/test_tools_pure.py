@@ -1,8 +1,8 @@
 """
-Tests for pure parsing functions from app/lol/tools.py.
+Tests for pure parsing functions from app/lol/tools_pure.py.
 
 Pure functions (no LCU connection required, no Qt dependency) are imported
-directly from app.lol.tools. Tests that require connector/Qt are placed in
+directly from app.lol.tools_pure. Tests that require connector/Qt are placed in
 separate test files with appropriate fixtures.
 """
 import sys
@@ -11,9 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-
-from app.lol.tools import (
+from app.lol.tools_pure import (
     translateTier,
     timeStampToStr,
     timeStampToShortStr,
