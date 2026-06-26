@@ -350,7 +350,7 @@ class MainWindow(FluentWindow):
 
         try:
             releasesInfo = github.checkUpdate()
-        except:
+        except Exception:
             self.checkUpdateFailed.emit()
             return
 
@@ -362,7 +362,7 @@ class MainWindow(FluentWindow):
             noticeInfo = github.getNotice()
             sha = noticeInfo['sha']
             content = noticeInfo['content']
-        except:
+        except Exception:
             self.fetchNoticeFailed.emit()
             return
 
@@ -623,7 +623,7 @@ class MainWindow(FluentWindow):
                                       ToolTipPosition.TOP)
                     )
 
-            except:
+            except Exception:
                 icon = "app/resource/images/game.png"
                 name = self.tr("Start LOL")
                 self.avatarWidget.setToolTip("")
@@ -784,7 +784,7 @@ class MainWindow(FluentWindow):
 
         try:
             self.careerInterface.w.close()
-        except:
+        except Exception:
             pass
 
         self.checkAndSwitchTo(self.careerInterface)
@@ -891,7 +891,7 @@ class MainWindow(FluentWindow):
 
         try:
             queueId = gSession['gameData']['queue']['id']
-        except:
+        except (KeyError, TypeError):
             queueId = None
 
         self.championSelection.queueId = queueId

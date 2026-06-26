@@ -1133,7 +1133,7 @@ class LockConfigCard(SettingCard):
             currentMode = stat.S_IMODE(os.lstat(path).st_mode)
             if currentMode == 0o444:
                 self.switchButton.setChecked(True)
-        except:
+        except OSError:
             self.switchButton.setEnabled(False)
             pass
 
@@ -1166,7 +1166,7 @@ class LockConfigCard(SettingCard):
 
             if currentMode != mode:
                 return False
-        except:
+        except OSError:
             self.switchButton.setEnabled(False)
             return False
 
@@ -1237,7 +1237,7 @@ class FriendRequestCard(ExpandGroupSettingCard):
 
         try:
             await connector.sendFriendRequest(self.lineEdit.text())
-        except:
+        except Exception:
             info('error', self.tr("Summoner not found"),
                  self.tr("Please check the summoner's name and retry"))
         else:

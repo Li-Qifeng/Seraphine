@@ -53,14 +53,14 @@ class ChampionAlias:
 
             with open(self.CHAMPION_CFG_PATH, 'w') as f:
                 json.dump(ChampionAlias.data, f)
-        except:
+        except Exception:
             logger.info("Update champions alias FAILED", self.TAG)
             ChampionAlias.data = None
 
     def __needUpdate(self):
         try:
             lolVersion = getLolClientVersion()
-        except:
+        except Exception:
             return True
 
         if not os.path.exists(self.CHAMPION_CFG_PATH):
@@ -69,7 +69,7 @@ class ChampionAlias:
         with open(self.CHAMPION_CFG_PATH, 'r') as f:
             try:
                 ChampionAlias.data = json.loads(f.read())
-            except:
+            except json.JSONDecodeError:
                 return True
 
         return ChampionAlias.getDataVersion() != lolVersion

@@ -241,7 +241,7 @@ class LolClientConnector(QObject):
 
         try:
             self.port, self.token, self.server = getPortTokenServerByPid(pid)
-        except:
+        except Exception:
             signalBus.getCmdlineError.emit()
             return
 
@@ -292,7 +292,7 @@ class LolClientConnector(QObject):
     async def close(self):
         try:
             await self.listener.close()
-        except:
+        except Exception:
             pass
 
         if self.lcuSess:
@@ -1266,7 +1266,7 @@ class JsonManager:
         if iconId != 0:
             try:
                 return self.items[iconId]
-            except:
+            except KeyError:
                 logger.error(f"getItemIconPath, iconId: {iconId}", tag=TAG)
 
         return "/lol-game-data/assets/ASSETS/Items/Icons2D/gp_ui_placeholder.png"
@@ -1280,7 +1280,7 @@ class JsonManager:
     def getRuneIconPath(self, runeId):
         try:
             return self.runes[runeId]['icon']
-        except:
+        except KeyError:
             for item in self.perks['styles']:
                 if item['id'] == runeId:
                     return item['iconPath']
@@ -1357,7 +1357,7 @@ class JsonManager:
     def getSkinListByChampionName(self, championName):
         try:
             return [item for item in self.champions[championName]["skins"].items()]
-        except:
+        except (KeyError, TypeError):
             return []
 
     def getSkinIdByChampionAndSkinName(self, championName, skinName):
@@ -1381,7 +1381,7 @@ class JsonManager:
         try:
             return self.cherryAugments[augmentId]['augmentSmallIconPath']
 
-        except:
+        except (KeyError, TypeError):
             return "/lol-game-data/assets/ASSETS/Items/Icons2D/gp_ui_placeholder.png"
 
     def getAugmentsName(self, augmentId):

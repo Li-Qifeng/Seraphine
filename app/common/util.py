@@ -128,7 +128,7 @@ def getTasklistPath():
             cmd = f'{path} /FI "imagename eq LeagueClientUx.exe" /NH'
             _ = subprocess.check_output(cmd, shell=True)
             return path
-        except:
+        except (subprocess.CalledProcessError, OSError):
             pass
 
     return None
@@ -279,7 +279,7 @@ def getPortTokenServerByPid(pid):
 
     try:
         return getPortTokenServerByPidViaPsutil(pid)
-    except:
+    except Exception:
         return getPortTokenServerByPidViaWmic()
 
 
@@ -327,7 +327,7 @@ def getFileProperties(fname):
             strInfo[propName] = win32api.GetFileVersionInfo(fname, strInfoPath)
 
         props['StringFileInfo'] = strInfo
-    except:
+    except (win32api.error, KeyError):
         return {}
     else:
         return props

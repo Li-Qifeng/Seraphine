@@ -138,7 +138,7 @@ async def parseSummonerData(summoner, rankTask, gameTask):
 
     try:
         gamesInfo = await gameTask
-    except:
+    except Exception:
         champions = []
         games = {}
     else:
@@ -820,7 +820,7 @@ async def parseAllyGameInfo(session, currentSummonerId, queueID, useSGP=False):
             tasks = [getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId)
                      for item in session['myTeam']]
             summoners = await asyncio.gather(*tasks)
-        except:
+        except Exception:
             tasks = [parseSummonerGameInfo(item, queueID, currentSummonerId)
                      for item in session['myTeam']]
             summoners = await asyncio.gather(*tasks)
@@ -889,7 +889,7 @@ async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSG
                      for item in team]
             summoners = await asyncio.gather(*tasks)
 
-        except:
+        except Exception:
             tasks = [parseSummonerGameInfo(item, queueId, currentSummonerId)
                      for item in team]
             summoners = await asyncio.gather(*tasks)
@@ -1059,7 +1059,7 @@ async def parseSummonerGameInfo(item, queueId, currentSummonerId):
                         origGamesInfo['games'].append(game)
 
                 begIdx = endIdx + 1
-    except:
+    except Exception:
         gamesInfo = []
     else:
         tasks = [parseGameData(game)
@@ -1154,7 +1154,7 @@ async def getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId):
                         origGamesInfo['games'].append(game)
 
                 begIdx = endIdx + 1
-    except:
+    except Exception:
         gamesInfo = []
     else:
         summonerName, tagLine = getNameTagLineFromGame(

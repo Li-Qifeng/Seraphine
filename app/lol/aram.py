@@ -44,7 +44,7 @@ class AramBuff:
         """
         try:
             lolVersion = getLolClientVersion()
-        except:
+        except Exception:
             return True
 
         if not os.path.exists(self.ARAM_CFG_PATH):
@@ -53,7 +53,7 @@ class AramBuff:
         with open(self.ARAM_CFG_PATH, 'r') as f:
             try:
                 AramBuff.data = json.loads(f.read())
-            except:
+            except json.JSONDecodeError:
                 return True
 
             # 兼容老版本的 json
@@ -81,7 +81,7 @@ class AramBuff:
             async with aiohttp.ClientSession() as session:
                 res = await session.get(url, params=params, proxy=None, ssl=False)
                 data = await res.json()
-        except:
+        except Exception:
             logger.warning(f"Getting Aram buff failed", self.TAG)
             return
 
@@ -103,7 +103,7 @@ class AramBuff:
             with open(self.ARAM_CFG_PATH, 'w') as f:
                 json.dump(AramBuff.data, f)
 
-        except:
+        except (KeyError, TypeError):
             logger.warning(f"Parse Aram buff failed, data: {data}", self.TAG)
             return
 
