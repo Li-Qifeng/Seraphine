@@ -974,8 +974,17 @@ class MainWindow(FluentWindow):
 
         # 如果是进游戏后开的软件，需要先把友方信息更新上去
         async def paintAllySummonersInfo():
-            # TODO 自定义时, 若队伍成员<5, 会触发重新加载导致性能浪费
-            if self.gameInfoInterface.allyChampions and len(self.gameInfoInterface.allyChampions) >= 5:
+            # 如果已经加载过且数量与当前队伍人数匹配，避免重复加载
+            ally_team = None
+            for team_key in ('teamOne', 'teamTwo'):
+                team = session['gameData'].get(team_key, [])
+                if any(p.get('summonerId') == currentSummonerId for p in team):
+                    ally_team = team
+                    break
+            expected_ally_count = len(ally_team) if ally_team else 0
+
+            if self.gameInfoInterface.allyChampions and expected_ally_count > 0 \
+                    and len(self.gameInfoInterface.allyChampions) >= expected_ally_count:
                 return
 
             info = await parseGameInfoByGameflowSession(
