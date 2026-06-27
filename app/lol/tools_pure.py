@@ -1,6 +1,12 @@
 import time
 from typing import List, Optional, TypedDict
 
+# auto honor 策略枚举字符串常量, 与 config.cfg.autoHonorStrategy 取值对齐
+HONOR_STRATEGY_FRIENDS_FIRST = "friends_first"
+HONOR_STRATEGY_FRIENDS_ONLY = "friends_only"
+HONOR_STRATEGY_BEST_SCORE = "best_score"
+HONOR_STRATEGY_RANDOM = "random"
+
 
 TIER_MAP = {
     'Iron': ['坚韧黑铁', '黑铁'],
@@ -101,6 +107,106 @@ def parseGames(games, targetId=0):
                     losses += 1
 
     return hitGames, kills, deaths, assists, wins, losses
+
+
+def _extractHonorCandidates(eogStats: Optional[dict]) -> list:
+    """从 EOG stats 提取 honor 候选列表.
+
+    TODO(真机验证): EOG stats 实际字段结构待抓包确认. 这里做兼容:
+    优先取 eogStats['honorables'], 其次 eogStats['teams'][*]['summoners'],
+    兜底返回空列表. 每个候选项至少尝试取 puuid/summonerId/score.
+    """
+    if not isinstance(eogStats, dict):
+        return []
+
+    candidates = eogStats.get('honorables')
+    if isinstance(candidates, list) and candidates:
+        return candidates
+
+    teams = eogStats.get('teams') or eogStats.get('teams', [])
+    if isinstance(teams, list):
+        flat = []
+        for t in teams:
+            if isinstance(t, dict):
+                summoners = t.get('summoners') or t.get('players') or []
+                if isinstance(summoners, list):
+                    flat.extend(summoners)
+        if flat:
+            return flat
+    return []
+
+
+def _candidateField(c: dict, *keys, default=None):
+    """从候选 dict 中按优先级取第一个非空字段 (兼容多种 schema)."""
+    for k in keys:
+        v = c.get(k)
+        if v is not None and v != "":
+            return v
+    return default
+
+
+def pickHonorTarget(eogStats: Optional[dict],
+                    friendsPuuids: set,
+                    strategy: str = HONOR_STRATEGY_FRIENDS_FIRST,
+                    currentPuuid: Optional[str] = None) -> Optional[dict]:
+    """从本局 EOG 数据选择 auto honor 目标.
+
+    Args:
+        eogStats: connector.getEogStats() 返回值
+        friendsPuuids: 好友 puuid 集合, 用于 friends_first/friends_only 策略
+        strategy: HONOR_STRATEGY_* 之一
+        currentPuuid: 当前召唤师 puuid, 用于排除自己 (不可给自己点赞)
+
+    Returns:
+        选中的候选 dict 或 None (无可用候选).
+    """
+    candidates = _extractHonorCandidates(eogStats)
+    if not candidates:
+        return None
+
+    # 归一化候选项: 统一字段名 (puuid/summonerId/score)
+    normalized = []
+    for c in candidates:
+        if not isinstance(c, dict):
+            continue
+        puuid = _candidateField(c, 'puuid', 'playerUuid', 'summonerPuuid')
+        if currentPuuid and puuid == currentPuuid:
+            continue  # 不能给自己点赞
+        if puuid is None and 'summonerId' not in c:
+            continue
+        score = _candidateField(c, 'score', 'honorScore', 'voteCount', default=0)
+        try:
+            score = float(score or 0)
+        except (TypeError, ValueError):
+            score = 0.0
+        normalized.append({
+            'puuid': puuid,
+            'summonerId': _candidateField(c, 'summonerId', 'summonerID'),
+            'summonerName': _candidateField(c, 'summonerName', 'name', 'gameName'),
+            'score': score,
+        })
+
+    if not normalized:
+        return None
+
+    friend_pool = [c for c in normalized
+                   if c['puuid'] and c['puuid'] in friendsPuuids]
+
+    if strategy == HONOR_STRATEGY_FRIENDS_ONLY:
+        pool = friend_pool
+        if not pool:
+            return None
+    elif strategy == HONOR_STRATEGY_FRIENDS_FIRST:
+        pool = friend_pool if friend_pool else normalized
+    elif strategy == HONOR_STRATEGY_BEST_SCORE:
+        pool = normalized
+    elif strategy == HONOR_STRATEGY_RANDOM:
+        import random
+        return random.choice(normalized)
+    else:
+        pool = normalized  # 未知策略退回 best_score 行为
+
+    return max(pool, key=lambda c: c['score'])
 
 
 def parseRankInfo(info, unranked_text=None, unknown_text=None, is_english=False):

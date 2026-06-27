@@ -53,6 +53,7 @@ from app.lol.champions import ChampionAlias
 from app.lol.opgg import opgg
 from app.lol.static_data import static_data
 from app.lol.live_client import liveClient
+from app.lol.tools_pure import pickHonorTarget
 
 import threading
 
@@ -909,6 +910,7 @@ class MainWindow(FluentWindow):
             title = self.tr("Waiting for status")
         elif status == 'EndOfGame':
             title = self.tr("End of game")
+            asyncio.create_task(self.__autoHonor())
         elif status == 'Lobby':
             title = self.tr("Lobby")
             await self.__onGameEnd()
@@ -969,6 +971,49 @@ class MainWindow(FluentWindow):
                 await connector.reconnect()
 
         asyncio.create_task(reconnect())
+
+    async def __autoHonor(self):
+        """EndOfGame 阶段自动给队友点赞.
+
+        策略可配置: friends_first (默认) / friends_only / best_score / random.
+        所有 honor 端点结构需真机验证, 任何异常都仅记日志不中断流程.
+        """
+        if not cfg.get(cfg.enableAutoHonor):
+            return
+
+        try:
+            await asyncio.sleep(cfg.get(cfg.autoHonorDelay))
+
+            strategy = cfg.get(cfg.autoHonorStrategy)
+            eog = await connector.getEogStats()
+            if not eog:
+                logger.debug("Auto honor: no EOG stats, skip", TAG)
+                return
+
+            friends = await connector.getFriends()
+            friendsPuuid = {f.get("puuid") for f in friends
+                            if isinstance(f, dict) and f.get("puuid")}
+            currentPuuid = self.currentSummoner.get("puuid") \
+                if isinstance(self.currentSummoner, dict) else None
+
+            target = pickHonorTarget(eog, friendsPuuid, strategy, currentPuuid)
+            if not target:
+                logger.debug("Auto honor: no valid target, skip", TAG)
+                return
+
+            summonerId = target.get("summonerId")
+            if summonerId is None:
+                logger.debug(f"Auto honor: target has no summonerId: {target}", TAG)
+                return
+
+            ok = await connector.submitHonor(summonerId, "HEART")
+            name = target.get("summonerName") or summonerId
+            if ok:
+                logger.info(f"Auto honored: {name} (strategy={strategy})", TAG)
+            else:
+                logger.warning(f"Auto honor submit failed: {name}", TAG)
+        except Exception as e:
+            logger.warning(f"Auto honor failed: {e}", TAG)
 
     def __scheduleAutoStartMatchmaking(self):
         if not cfg.get(cfg.enableAutoStartMatchmaking):
@@ -1172,6 +1217,116 @@ class MainWindow(FluentWindow):
 
         if not cfg.get(cfg.enableReserveGameinfo):
             self.gameInfoInterface.clear()
+
+        # 战犯/躺赢狗诊断: EndOfGame→Lobby 阶段异步评分并写缓存
+        if cfg.get(cfg.enableWarCriminal):
+            asyncio.create_task(self.__diagnoseLastGame())
+
+    async def __diagnoseLastGame(self):
+        """诊断上一局, 把 verdict 写入 war_criminal_cache.
+
+        失败不阻塞流程, 仅日志. 海克斯大乱斗 (queueId=2400) 与
+        ARAM/排位均参与诊断.
+        """
+        try:
+            from app.lol.war_criminal import (
+                diagnoseTeam, verdictLabel, ParticipantStats)
+            from app.lol.war_criminal_cache import setVerdict
+            from app.lol.tools import parseGameDetailData
+
+            # 拿当前召唤师 puuid, 用于判断嫌疑者
+            currentPuuid = None
+            if isinstance(self.currentSummoner, dict):
+                currentPuuid = self.currentSummoner.get('puuid')
+            if not currentPuuid:
+                logger.debug("WarCriminal: no current puuid", TAG)
+                return
+
+            # 取上一局 summary (返回 list[dict])
+            games = await connector.getSummonerGamesByPuuid(
+                currentPuuid, 0, 1)
+            if not games:
+                logger.debug("WarCriminal: no recent game", TAG)
+                return
+            lastGame = games[0] if isinstance(games, list) else None
+            if not isinstance(lastGame, dict):
+                return
+            gameId = lastGame.get('gameId')
+            if not gameId:
+                return
+
+            # 拿本局详情
+            detail = await connector.getGameDetailByGameId(gameId)
+            if not detail:
+                logger.debug(f"WarCriminal: no detail for {gameId}", TAG)
+                return
+
+            # 解析双方队伍 (注意签名: parseGameDetailData(puuid, game))
+            parsed = await parseGameDetailData(currentPuuid, detail)
+            if not parsed:
+                return
+
+            queueId = parsed.get('queueId') or detail.get('queueId')
+            sensitivity = cfg.get(cfg.warCriminalSensitivity)
+
+            # 评两队 (我方/敌方), 各按胜负判定
+            teams = parsed.get('teams') or {}
+            for tidStr, teamInfo in teams.items():
+                summoners = (teamInfo or {}).get('summoners') or []
+                if len(summoners) < 2:
+                    continue
+                # 该队是否获胜: 优先用 teamInfo.win, 兜底用 summoner[0].win
+                teamWin = bool(teamInfo.get('win'))
+                if teamInfo.get('win') is None:
+                    teamWin = bool(summoners[0].get('win', False))
+
+                teamStats = []
+                for s in summoners:
+                    teamStats.append(ParticipantStats(
+                        puuid=s.get('puuid'),
+                        championId=s.get('championId', 0) or 0,
+                        kills=s.get('kills', 0) or 0,
+                        deaths=s.get('deaths', 0) or 0,
+                        assists=s.get('assists', 0) or 0,
+                        damage=s.get('demage', 0) or 0,
+                        damageTaken=s.get('damageTaken', 0) or 0,
+                        totalHeal=s.get('totalHeal', 0) or 0,
+                        shieldOnTeammates=s.get('shieldOnTeammates', 0) or 0,
+                        ccTime=s.get('ccTime', 0) or 0,
+                        gold=s.get('gold', 0) or 0,
+                        cs=s.get('cs', 0) or 0,
+                        visionScore=s.get('visionScore', 0) or 0,
+                        win=teamWin,
+                        augmentIds=s.get('augmentIds') or [],
+                    ))
+
+                result = await diagnoseTeam(teamStats, queueId, teamWin,
+                                              sensitivity)
+                if not result:
+                    continue
+
+                verdict = result.get('verdict')
+                label = verdictLabel(verdict, teamWin)
+                suspect = result.get('suspect') or {}
+                isCurrentSuspect = (
+                    suspect.get('puuid') is not None and
+                    suspect.get('puuid') == currentPuuid)
+
+                # 写缓存 (UI 会过滤 no_clear_suspect 不显示)
+                setVerdict(
+                    gameId=gameId,
+                    verdict=verdict,
+                    label=label,
+                    isCurrentSuspect=isCurrentSuspect,
+                    score=result.get('score', 0.0),
+                    evidence=result.get('evidence') or [],
+                )
+                logger.info(
+                    f"WarCriminal verdict: game={gameId} team={tidStr} "
+                    f"verdict={verdict} suspect_is_current={isCurrentSuspect}",
+                    TAG)
+        except Exception as e:
+            logger.warning(f"WarCriminal diagnose failed: {e}", TAG)
 
     async def __onHextechAssistTick(self):
         """海克斯辅助定时轮询: 采集已选强化并刷新推荐列表"""

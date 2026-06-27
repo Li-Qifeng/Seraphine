@@ -1135,6 +1135,52 @@ class LolClientConnector(QObject):
 
         return await res.read()
 
+    async def getFriends(self) -> list:
+        """获取好友列表, 用于 auto honor 识别可点赞好友.
+
+        返回 list[dict], 每个 dict 含 puuid/summonerId/name 等字段.
+        失败返回空列表.
+        """
+        try:
+            res = await self.__get("/lol-chat/v1/friends")
+            if res.status != 200:
+                return []
+            data = await res.json()
+            return data if isinstance(data, list) else []
+        except (aiohttp.ClientError, json.JSONDecodeError, AttributeError) as e:
+            logger.debug(f"getFriends failed: {e}", TAG)
+            return []
+
+    async def getEogStats(self) -> Optional[dict]:
+        """获取本局 EndOfGame 队友点赞候选与评分.
+
+        TODO(真机验证): 端点 /lol-end-of-game/v1/eog-stats 可能随客户端版本变动,
+        实际字段 (honorables/score/summonerId) 也需真机抓包确认. 失败返回 None.
+        """
+        try:
+            res = await self.__get("/lol-end-of-game/v1/eog-stats")
+            if res.status != 200:
+                return None
+            return await res.json()
+        except (aiohttp.ClientError, json.JSONDecodeError, AttributeError) as e:
+            logger.debug(f"getEogStats failed: {e}", TAG)
+            return None
+
+    async def submitHonor(self, summonerId, honorCategory: str = "HEART") -> bool:
+        """提交本局队友点赞.
+
+        TODO(真机验证): 端点与 body schema (summonerId/honorCategory) 需真机抓包确认.
+        honorCategory 通常为 HEART/LEADER/GREAT_SHOT 等. 成功返回 True.
+        """
+        try:
+            data = {"summonerId": summonerId, "honorCategory": honorCategory}
+            res = await self.__post(
+                "/lol-honor-store/v1/ballot", data=data)
+            return res.status in (200, 204)
+        except (aiohttp.ClientError, AttributeError) as e:
+            logger.warning(f"submitHonor failed: {e}", TAG)
+            return False
+
     @retry()
     async def getClientZoom(self) -> int:
         res = await self.__get("/riotclient/zoom-scale")

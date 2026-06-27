@@ -327,8 +327,45 @@ class AugmentRow(QFrame):
             pass
 
 
+class _VerdictBadge(QLabel):
+    """战犯/躺赢狗徽章: 文本+着色的小标签.
+
+    颜色规则:
+    - 战犯 (war_criminal): 红底
+    - 躺赢狗 (carried_dog): 黄底
+    - 团队低迷 (team_underperformed): 灰底
+    - 无明显异常 (no_clear_suspect): 不渲染 (上游会过滤掉)
+    仅当 isSuspect=True 时着色高亮 (当前召唤师是嫌疑者).
+    """
+
+    _COLORS = {
+        '战犯': ('#c0392b', '#fff5f5'),
+        '躺赢狗': ('#d4a017', '#fffae6'),
+        '团队低迷': ('#7f8c8d', '#f5f5f5'),
+    }
+
+    def __init__(self, label: str, isSuspect: bool = False, parent=None):
+        super().__init__(parent)
+        self.setText(label)
+        self.setAlignment(Qt.AlignCenter)
+        self.setFixedHeight(22)
+        fm = self.fontMetrics()
+        w = max(36, fm.horizontalAdvance(label) + 16)
+        self.setFixedWidth(w)
+
+        fg, bg = self._COLORS.get(label, ('#555555', '#f0f0f0'))
+        if not isSuspect:
+            # 非嫌疑者: 灰化
+            fg, bg = '#888888', '#f5f5f5'
+        self.setStyleSheet(
+            f"_VerdictBadge {{ color: {fg}; background: {bg}; "
+            f"border: 1px solid {fg}; border-radius: 4px; "
+            f"font: bold 11px 'Segoe UI'; padding: 0 4px; }}")
+
+
 class GameInfoBar(ColorAnimationFrame):
-    def __init__(self, game: dict = None, parent: QWidget = None):
+    def __init__(self, game: dict = None, parent: QWidget = None,
+                 verdictLabel: str = None, verdictIsSuspect: bool = False):
         if game['remake']:
             type = 'remake'
         elif game['win']:
@@ -337,6 +374,8 @@ class GameInfoBar(ColorAnimationFrame):
             type = 'lose'
 
         self.gameId = game['gameId']
+        self.verdictLabel = verdictLabel
+        self.verdictIsSuspect = verdictIsSuspect
 
         super().__init__(type=type, parent=parent)
         self.hBoxLayout = QHBoxLayout(self)
@@ -397,3 +436,8 @@ class GameInfoBar(ColorAnimationFrame):
         else:
             self.hBoxLayout.addSpacing(15)
         self.hBoxLayout.addWidget(self.mapTime)
+        # 战犯/躺赢狗徽章 (仅当本局有 verdict 命中时显示)
+        if self.verdictLabel:
+            self.hBoxLayout.addSpacing(8)
+            self.hBoxLayout.addWidget(
+                _VerdictBadge(self.verdictLabel, self.verdictIsSuspect))

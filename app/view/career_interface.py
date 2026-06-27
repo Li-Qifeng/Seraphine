@@ -551,13 +551,31 @@ class CareerInterface(SeraphineInterface):
 
         if 'gameCount' in self.games:
 
-            for bar in [GameInfoBar(game) for game in self.games['games']]:
+            for bar in [self.__makeGameInfoBar(game)
+                        for game in self.games['games']]:
                 bar.setMaximumHeight(86)
                 self.gameInfoLayout.addWidget(bar)
                 self.gameInfoLayout.addSpacing(5)
 
             self.gameInfoLayout.addSpacerItem(
                 QSpacerItem(1, 1, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+    def __makeGameInfoBar(self, game: dict) -> 'GameInfoBar':
+        """创建战绩卡片, 若战犯缓存命中则附加 verdict 徽章."""
+        verdictLabel = None
+        verdictIsSuspect = False
+        try:
+            from app.lol.war_criminal_cache import getVerdict
+            cached = getVerdict(game.get('gameId'))
+            if cached and cached.get('verdict') not in (
+                    None, 'no_clear_suspect'):
+                verdictLabel = cached.get('label')
+                verdictIsSuspect = bool(cached.get('isCurrentSuspect'))
+        except Exception:
+            pass
+
+        return GameInfoBar(game, verdictLabel=verdictLabel,
+                           verdictIsSuspect=verdictIsSuspect)
 
     def __onfilterComboBoxChanged(self, index):
         self.gameInfoArea.delegate.vScrollBar.resetValue(0)
