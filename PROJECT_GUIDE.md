@@ -137,7 +137,7 @@ push 到 main 分支
 │    connector.py   LcuWebSocket + LolClientConnector（REST）  │
 │    tools.py       纯业务逻辑/解析/自动 B/P 状态机            │
 │    opgg.py / aram.py / champions.py   外部数据源客户端       │
-│    exceptions.py  5 个自定义异常（均继承 BaseException）     │
+│    exceptions.py  5 个自定义异常（均继承 Exception）      │
 └───────────────▲─────────────────────────────────────────────┘
                 │ 依赖
 ┌───────────────┴─────────────────────────────────────────────┐
@@ -402,7 +402,7 @@ WaitingForStatus   → 仅更新标题
 | `opgg.py` | OPGG 异步客户端 + 数据解析（带 LRU 缓存） | `Opgg`, `opgg`, `OpggDataParser` |
 | `aram.py` | 大乱斗 Buff 数据（jddld.com，版本化缓存） | `AramBuff` |
 | `champions.py` | 英雄昵称/关键词（gtimg.cn，版本化缓存，模糊搜索） | `ChampionAlias` |
-| `exceptions.py` | 5 个自定义异常（均继承 BaseException） | `SummonerNotFound`, `SummonerGamesNotFound`, `SummonerRankInfoNotFound`, `SummonerNotInGame`, `RetryMaximumAttempts` |
+| `exceptions.py` | 5 个自定义异常（均继承 Exception） | `SummonerNotFound`, `SummonerGamesNotFound`, `SummonerRankInfoNotFound`, `SummonerNotInGame`, `RetryMaximumAttempts` |
 
 ### `app/view/`（表现层）
 
@@ -554,7 +554,7 @@ raw = await connector.getMyEndpoint(someId)
 data = parseMyData(raw)
 ```
 
-**要点**：所有 LCU 调用必经 `@retry`（自动诊断+重试+异常上报）和 `@needLcu`（守卫未连接）；**I/O 留在 connector，纯转换放 tools**；端点 URL 参考 [mingweisamuel/lcu-schema](https://www.mingweisamuel.com/lcu-schema/tool/) 或 [Hextechdocs](https://hextechdocs.dev/tag/lcu/)。
+**要点**：所有 LCU 调用必经 `@retry`（自动诊断+重试+异常上报）和 `@needLcu`（守卫未连接）；**I/O 留在 connector，纯转换放 tools**；端点 URL 参考 [mingweisamuel/lcu-schema](https://www.mingweisamuel.com/lcu-schema/tool/) 或 [Hextechdocs](https://hextechdocs.dev/tag/lcu/)。**新增方法应标注返回类型**（`dict`/`list`/`str`/`bool`/`bytes`/`Optional[dict]`/`aiohttp.ClientResponse` 等），与现有 connector.py 标注风格保持一致。
 
 ### 4.5 异步任务规范
 
@@ -562,7 +562,7 @@ data = parseMyData(raw)
 - ✅ 并行取数用 `asyncio.gather`（如同时取 N 个召唤师）。
 - ✅ 受 `connector.semaphore` 约束（已内置于 `@retry`），不要绕开。
 - ✅ 长耗时后台 I/O 用 `StoppableThread`，不阻塞 UI 循环。
-- ❌ **禁止**在主循环上做同步阻塞 I/O（如 `requests.get`）——目前 `util.getLoginSummonerByPid`、`sendNotificationMsg` 有此问题（见 §5.3），属待修。
+- ❌ **禁止**在主循环上做同步阻塞 I/O（如 `requests.get`）——目前 `util.sendNotificationMsg` 有此问题（见 §5.3），属待修。`getLoginSummonerByPid` 已改造为 aiohttp 异步（见 §5.3 ⑦）。
 - ⚠️ **`CancelledError` 必须能穿透** `@retry`——装饰器已 `except CancelledError: raise`，新增类似装饰器时要照搬。
 - ⚠️ `asyncSlot` 返回的是 task，需等待结果要 `await`（见 `main_window.py:504-528` 注释）。
 
@@ -606,7 +606,7 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 
 ### 4.8 错误处理规范
 
-**5 个自定义异常**（`app/lol/exceptions.py`，均继承 `BaseException`）的使用场景：
+**5 个自定义异常**（`app/lol/exceptions.py`，均继承 `Exception`）的使用场景：
 
 | 异常 | 何时抛 | retry 行为 |
 |---|---|---|
@@ -620,7 +620,7 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 - ✅ 业务方法在对应"未找到"场景**主动抛**上述异常，让上层统一处理。
 - ❌ **禁止裸 `except:` 或 `except Exception: pass`**（见 §5.3，全仓 31 处待清理）；要捕获就写明异常类型并至少 `logger.warning`。
 - ✅ 对 LCU 未就绪场景依赖 `ReferenceError`（`@needLcu` 抛出），`@retry` 会静默吞掉，**不要**再额外弹窗。
-- ⚠️ 自定义异常继承 `BaseException` 是有意为之（绕过 `except Exception`），但意味着 `except BaseException` 会一并捕获 `CancelledError`/`KeyboardInterrupt`——新写装饰器须显式放行 `CancelledError`。
+- ⚠️ `@retry` 装饰器用 `except CancelledError: raise` 显式放行取消，再用 `except Exception as e:` 兜底——新增类似装饰器须照搬此模式。
 
 ### 4.9 打包发布流程
 
@@ -654,26 +654,25 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 
 | 位置 | 标记 | 现象 | 影响 | 建议 |
 |---|---|---|---|---|
-| `app/lol/connector.py:798` | FIXME | `getGameflowSession()` 在「刚打完一局→开自定义→玩家在红方且蓝方无人」时会**泄露上一局蓝方名单**（teamOne/teamTwo） | 自动查对手可能拿到错误阵容 | 客户端 API 上游 quirk；需在 `parseGameInfoByGameflowSession` 做去重/校验 |
+| `app/lol/connector.py:883` | FIXME | `getGameflowSession()` 在「刚打完一局→开自定义→玩家在红方且蓝方无人」时会**泄露上一局蓝方名单**（teamOne/teamTwo） | 自动查对手可能拿到错误阵容 | 客户端 API 上游 quirk；需在 `parseGameInfoByGameflowSession` 做去重/校验 |
 
 ### 5.2 未完成 TODO 清单
 
 | 位置 | TODO 内容 | 性质 |
 |---|---|---|
-| `app/common/style_sheet.py:180,187` | 开放用户自定义样式设置 | 功能增强 |
 | `app/lol/aram.py:43` | 暂未提供历史版本数据查询接口（需服务端配合） | 功能增强 |
 | `app/view/search_interface.py:1388` | 某处可以弹个窗（作者留，需求不明） | 小优化 |
 
 > 另有大量 `# NOTE -- By Hpero4/Zzaphkiel` 注释，记录异步任务生命周期、puuid 刷新语义等，非待办但**改这些区域前务必读注释**。
 
-> 历史已解决：`mode_filter_widget.py` 筛选功能已接入 `GameInfoInterface`；`tools.py` `rollAndSwapBack`（海克斯大乱斗已无摇骰子机制）已删除；`main_window.py` 自定义模式 <5 人重载已加 `allyChampions` + `expected_ally_count` 守卫；`search_line_edit.py` / `search_interface.py` 焦点与分页绘制 FIXME 已无对应代码标记。
+> 历史已解决：`mode_filter_widget.py` 筛选功能已接入 `GameInfoInterface`；`tools.py` `rollAndSwapBack`（海克斯大乱斗已无摇骰子机制）已删除；`main_window.py` 自定义模式 <5 人重载已加 `allyChampions` + `expected_ally_count` 守卫；`search_line_edit.py` / `search_interface.py` 焦点与分页绘制 FIXME 已无对应代码标记；`style_sheet.py:180,187` team1/team2 预组队高亮色已开放用户自定义（`TeamColorSettingCard`，参见 §6.3）。
 
 ### 5.3 代码质量问题（现状→风险→建议）
 
 #### ① 测试套件（已有初步覆盖）
-- **现状**：已有 `tests/test_tools_pure.py`，覆盖 `translateTier`、`timeStampToStr`、`separateTeams`、`parseSummonerOrder`、`sortedSummonersByGameRole`、`parseGames`、`parseRankInfo`、`parseDetailRankInfo` 共 35 个用例。`requirements.txt` 已添加 `pytest>=8.0`。
-- **运行方式**：`python -m pytest tests/`
-- **建议**：后续给 connector 层用 mock LCU server 做契约测试；CI 加 lint（`ruff`/`flake8`）+ 测试 job 以阻止回归。
+- **现状**：已有 `tests/test_tools_pure.py`（35 用例，覆盖 `translateTier`、`timeStampToStr`、`separateTeams`、`parseSummonerOrder`、`sortedSummonersByGameRole`、`parseGames`、`parseRankInfo`、`parseDetailRankInfo`）和 `tests/test_connector_contract.py`（31 用例，mock 私有 HTTP 方法注入预设 LCU 响应，验证 connector 公共方法的返回值结构、异常分支、响应转换契约，覆盖 `getSummonerByPuuid` / `getSummonerGamesByPuuid` / `getRankedStatsByPuuid` / `getCurrentSummoner` / `getGameStatus` / `getMapSide` / `getLobbyStatus` / `getMatchmakingStatus` / `isLobbyReadyToSearch` / `isInTencent` / `getLoginSummonerByPid` / `startMatchmaking`）。`requirements.txt` 已含 `pytest>=8.0`。
+- **运行方式**：`python -m pytest tests/`（共 66 passed）。CI 在非 Windows 环境通过 `tests/conftest.py` stub `winreg/win32api/win32gui` 使 connector 可导入。
+- **建议**：后续给 `tools.py` 的 `parseGameInfoByGameflowSession` / `parseAllyGameInfo` 等带状态依赖的函数补测试；CI 加 lint（`ruff`/`flake8`）+ 测试 job 以阻止回归。
 
 #### ② 裸 `except` / 静默吞异常（已清理）
 - **现状**：原约 31 处裸 `except:` / `except Exception: pass` 已全部清理（跨 8 文件，含 `util.py`、`aram.py`、`champions.py`、`static_data.py`、`connector.py`、`main_window.py`、`opgg.py`、`opgg_hextech_assist_interface.py`、`hextech_window.py`、`animation_frame.py`）。现统一为具体异常类型 + `logger.debug`/`warning`。
@@ -681,9 +680,9 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 - **建议**：后续仅在外部边界保留兜底，内部代码逐步收敛到具体异常类型。
 
 #### ③ 类型注解缺失（部分覆盖）
-- **现状**：`app/lol/tools_pure.py` 已定义 `SummonerParsedData`/`GameSummary`/`GameDetail`/`TeamParticipant`/`TeamGameInfo` 等 `TypedDict`，`tools.py` 中 `parseSummonerData`/`parseGameData`/`parseGameDetailData`/`parseAllyGameInfo`/`parseGameInfoByGameflowSession`/`parseSummonerGameInfo`/`getSummonerGamesInfoViaSGP` 已标注返回类型。
-- **残留**：`connector.py` 的 ~70 个端点方法、`JsonManager`、`opgg.py` 等仍返回无类型 dict。
-- **建议**：后续渐进式补全；可选 `mypy`/`pyright` CI。
+- **现状**：`app/lol/tools_pure.py` 已定义 `SummonerParsedData`/`GameSummary`/`GameDetail`/`TeamParticipant`/`TeamGameInfo` 等 `TypedDict`，`tools.py` 中 `parseSummonerData`/`parseGameData`/`parseGameDetailData`/`parseAllyGameInfo`/`parseGameInfoByGameflowSession`/`parseSummonerGameInfo`/`getSummonerGamesInfoViaSGP` 已标注返回类型。`connector.py` 公共 LCU 端点方法（约 50 个，含 getter/setter/action）与私有 HTTP 方法（`__get/__post/__put/__delete/__patch/__sgp__get`）及 `__json_retry_get` 均已标注返回类型（`dict`/`list`/`str`/`int`/`bool`/`bytes`/`None`/`Optional[dict]`/`Union[dict, list]`/`aiohttp.ClientResponse`）。
+- **残留**：`JsonManager` 的访问方法、`opgg.py`、`tools.py` 中部分辅助函数仍无类型注解。
+- **建议**：后续渐进式补全 `JsonManager` 与 `opgg.py`；可选 `mypy`/`pyright` CI。
 
 #### ④ 自定义异常继承 `BaseException` 的脆弱性（已修复）
 - **现状**：`app/lol/exceptions.py` 中 5 个自定义异常均继承 `Exception`（非 `BaseException`）；`@retry` 装饰器用 `except CancelledError: raise` 显式放行取消，再用 `except Exception as e:` 兜底，已不会误捕 `KeyboardInterrupt`/`SystemExit`。
@@ -702,7 +701,7 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 #### ⑦ 死代码 / 调试代码（已清理）
 - **现状**：原列出的 3 项已全部处理：
   - `OpggWindow` 隐藏 debug 按钮及其处理函数 `__onDebugButtonClicked` 已移除。
-  - `getLoginSummonerByPid` 已加 `(requests.RequestException, ValueError)` 异常处理与 `timeout=3`。
+  - `getLoginSummonerByPid` 已从同步 `requests` 改为 `aiohttp.ClientSession` 异步实现（含 `BasicAuth` + `TCPConnector(ssl=False)` + `ClientTimeout(total=3)`），异常分支捕获 `aiohttp.ClientError`/`asyncio.TimeoutError`/`ValueError` 返回 `{}`；调用链已改造（`start_interface.__onPushButtonClicked` 用 `@asyncSlot` + `asyncio.gather` 并发预取多客户端召唤师信息后传给 `ChangeClientMessageBox`，避免阻塞 Qt 事件循环）。`requests` import 已从 connector.py 移除。
   - `sendNotificationMsg` 经核实为同步工具方法，沿用现状。
 - **建议**：保持定期核查，避免新的调试代码遗留。
 
@@ -779,12 +778,12 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 ### 6.3 新功能方向建议（由 TODO + enhancement issue 推导）
 
-- **样式自定义**：开放 QSS 颜色/主题给用户（`style_sheet.py:180,187` TODO）。
 - **历史版本数据**：ARAM 等数据支持查历史版本（`aram.py:43` TODO，需服务端配合）。
-- **测试基础设施**：引入更多 connector 层契约测试（§5.3 ①）。
-- **类型化数据模型**：用 TypedDict/dataclass 描述 LCU 返回（§5.3 ③）。
+- **更多样式自定义**：team1/team2 预组队高亮色已开放；后续可考虑开放更多 QSS 颜色项（如 GameInfo 卡片背景、辅助色等）给用户。
+- **测试基础设施**：connector 层契约测试已建立（`tests/test_connector_contract.py`，31 用例）；后续可补 `tools.py` 带 connector 依赖的解析函数测试、CI lint job。
+- **类型化数据模型**：connector 公共方法返回类型已标注；后续可补 `JsonManager`、`opgg.py`，并引入 `mypy`/`pyright` CI。
 
-> 已完成方向：GameInfo 按队列模式筛选（`mode_filter_widget.py` 已接入 `GameInfoInterface`）；自定义模式 <5 人重载守卫（`main_window.py`）；rollAndSwapBack 删除（海克斯大乱斗无摇骰子）。
+> 已完成方向：GameInfo 按队列模式筛选（`mode_filter_widget.py` 已接入 `GameInfoInterface`）；自定义模式 <5 人重载守卫（`main_window.py`）；rollAndSwapBack 删除（海克斯大乱斗无摇骰子）；team1/team2 预组队高亮色开放用户自定义（`TeamColorSettingCard`，cfg 项 `team1Color`/`team2Color`，经 `signalBus.customColorChanged` 触发刷新）；`getLoginSummonerByPid` 异步化改造。
 
 ---
 
