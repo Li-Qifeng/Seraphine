@@ -232,6 +232,14 @@ class LolClientConnector(QObject):
         self.dqLock = threading.Lock()
         self.callStack = deque(maxlen=10)
 
+        # 状态锁: 保护 start/close 临界区, 防止多客户端切换时
+        # close 与 start 并发执行 (例如 lolClientEnded 与 lolClientChanged
+        # 信号触发的 task 在 asyncio 事件循环中交错).
+        # 用 hasattr 守卫, 使 close() 末尾的 self.__init__() 不会重置此锁,
+        # 否则等待旧锁的 task 会永远阻塞.
+        if not hasattr(self, '_stateLock'):
+            self._stateLock = asyncio.Lock()
+
     async def autoStart(self):
         '''
         只是为了 debug 的时候省事罢了
@@ -242,24 +250,25 @@ class LolClientConnector(QObject):
         await self.start(pid)
 
     async def start(self, pid):
-        self.pid = pid
+        async with self._stateLock:
+            self.pid = pid
 
-        try:
-            self.port, self.token, self.server = getPortTokenServerByPid(pid)
-        except Exception:
-            signalBus.getCmdlineError.emit()
-            return
+            try:
+                self.port, self.token, self.server = getPortTokenServerByPid(pid)
+            except Exception:
+                signalBus.getCmdlineError.emit()
+                return
 
-        self.semaphore = asyncio.Semaphore(self.maxRefCnt)
+            self.semaphore = asyncio.Semaphore(self.maxRefCnt)
 
-        await self.__initSessions()
-        self.__initPlatformInfo()
-        await self.__initManager()
-        self.__initFolder()
-        await self.__runListener()
-        await self.__initRuneStyle()
+            await self.__initSessions()
+            self.__initPlatformInfo()
+            await self.__initManager()
+            self.__initFolder()
+            await self.__runListener()
+            await self.__initRuneStyle()
 
-        logger.critical(f"connector started, server: {self.server}", TAG)
+            logger.critical(f"connector started, server: {self.server}", TAG)
 
     async def __runListener(self):
         self.listener = LcuWebSocket(self.port, self.token)
@@ -295,18 +304,19 @@ class LolClientConnector(QObject):
         await self.listener.start()
 
     async def close(self):
-        try:
-            await self.listener.close()
-        except (AttributeError, RuntimeError) as e:
-            logger.debug(f"listener close skipped: {e}", TAG)
+        async with self._stateLock:
+            try:
+                await self.listener.close()
+            except (AttributeError, RuntimeError) as e:
+                logger.debug(f"listener close skipped: {e}", TAG)
 
-        if self.lcuSess:
-            await self.lcuSess.close()
+            if self.lcuSess:
+                await self.lcuSess.close()
 
-        if self.sgpSess:
-            await self.sgpSess.close()
+            if self.sgpSess:
+                await self.sgpSess.close()
 
-        self.__init__()
+            self.__init__()
 
     async def __initSessions(self):
         self.lcuSess = aiohttp.ClientSession(
