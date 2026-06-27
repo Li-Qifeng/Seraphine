@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 
 import aiohttp
 
@@ -60,7 +61,7 @@ class ChampionAlias:
     def __needUpdate(self):
         try:
             lolVersion = getLolClientVersion()
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             return True
 
         if not os.path.exists(self.CHAMPION_CFG_PATH):

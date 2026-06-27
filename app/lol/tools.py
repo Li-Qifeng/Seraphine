@@ -3,6 +3,7 @@ import time
 import ctypes
 import os
 from copy import deepcopy
+from typing import Optional
 
 import asyncio
 from PyQt5.QtCore import QObject
@@ -21,6 +22,13 @@ from .tools_pure import (
     parseSummonerOrder,
     sortedSummonersByGameRole,
     parseGames,
+)
+from .tools_pure import (
+    SummonerParsedData,
+    GameSummary,
+    GameDetail,
+    TeamParticipant,
+    TeamGameInfo,
 )
 
 
@@ -104,7 +112,7 @@ async def getRecentTeammates(games, puuid):
     return ret
 
 
-async def parseSummonerData(summoner, rankTask, gameTask):
+async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
     iconId = summoner['profileIconId']
     try:
         icon = await connector.getProfileIcon(iconId)
@@ -167,7 +175,7 @@ async def parseSummonerData(summoner, rankTask, gameTask):
     }
 
 
-async def parseGameData(game):
+async def parseGameData(game) -> GameSummary:
     timeStamp = game["gameCreation"]  # 毫秒级时间戳
     time = timeStampToStr(game['gameCreation'])
     shortTime = timeStampToShortStr(game['gameCreation'])
@@ -271,7 +279,7 @@ async def parseGameData(game):
     }
 
 
-async def parseGameDetailData(puuid, game):
+async def parseGameDetailData(puuid, game) -> GameDetail:
     queueId = game['queueId']
     mapId = game['mapId']
 
@@ -664,7 +672,7 @@ def parseDetailRankInfo(rankInfo):
     return _parseDetailRankInfoPure(rankInfo, pt.rankedSolo, pt.rankedFlex, is_english)
 
 
-async def parseAllyGameInfo(session, currentSummonerId, queueID, useSGP=False):
+async def parseAllyGameInfo(session, currentSummonerId, queueID, useSGP=False) -> TeamGameInfo:
 
     if useSGP and connector.isInTencent():
         # 如果是国服就优先尝试 SGP
@@ -695,7 +703,7 @@ async def parseAllyGameInfo(session, currentSummonerId, queueID, useSGP=False):
     return {'summoners': summoners, 'champions': champions, 'order': order, "isAram": session.get('benchEnabled', False)}
 
 
-async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSGP=False):
+async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSGP=False) -> Optional[TeamGameInfo]:
     data = session['gameData']
     queueId = data['queue']['id']
 
@@ -830,7 +838,7 @@ async def parseGamesDataConcurrently(games):
     return await asyncio.gather(*tasks)
 
 
-async def parseSummonerGameInfo(item, queueId, currentSummonerId):
+async def parseSummonerGameInfo(item, queueId, currentSummonerId) -> Optional[TeamParticipant]:
     summonerId = item.get('summonerId', None)
 
     if item.get('nameVisibilityType') == 'HIDDEN':
@@ -929,7 +937,7 @@ async def parseSummonerGameInfo(item, queueId, currentSummonerId):
     }
 
 
-async def getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId):
+async def getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId) -> Optional[TeamParticipant]:
     '''
     使用 SGP 接口取战绩信息
     '''
@@ -1806,17 +1814,6 @@ async def autoShow(data, selection: ChampionSelection):
                 selection.isChampionShowed = True
 
                 return True
-
-
-async def rollAndSwapBack():
-    """
-    摇骰子并切换回之前的英雄
-    todo: 界面
-    """
-    championId = await connector.getCurrentChampion()
-
-    await connector.reroll()
-    await connector.benchSwap(championId)
 
 
 async def fixLCUWindowViaExe():

@@ -1,4 +1,5 @@
 import time
+from typing import List, Optional, TypedDict
 
 
 TIER_MAP = {
@@ -232,3 +233,177 @@ def parseDetailRankInfo(rankInfo, ranked_solo_text=None, ranked_flex_text=None, 
             f'{flexPreviousSeasonEndTier} {flexPreviousSeasonEndDivision}',
         ],
     ]
+
+
+# ---------------------------------------------------------------------------
+# 数据层返回类型 (TypedDict)
+#
+# 这些结构对应 tools.py 中 parseGameData / parseSummonerData /
+# parseGameDetailData 等解析函数返回的 dict, 供 IDE 补全与调用方校验.
+# 注: 字段标注 total=False 表示所有字段均可选 (解析过程中可能因数据缺失而省略),
+#     与现有解析逻辑的容错行为一致.
+# ---------------------------------------------------------------------------
+
+
+class RankTierInfo(TypedDict, total=False):
+    """单队列段位信息 (parseRankInfo 中 solo/flex 子结构)."""
+    tier: str
+    icon: str
+    division: str
+    lp: object  # int 或 str
+
+
+class RankInfo(TypedDict, total=False):
+    """parseSummonerData 返回的 rankInfo."""
+    solo: RankTierInfo
+    flex: RankTierInfo
+
+
+class GameSummary(TypedDict, total=False):
+    """parseGameData 返回的单局摘要 (用于战绩栏)."""
+    queueId: int
+    gameId: int
+    time: str
+    shortTime: str
+    name: str
+    map: str
+    duration: str
+    remake: bool
+    win: bool
+    championId: int
+    championIcon: object
+    spell1Icon: object
+    spell2Icon: object
+    champLevel: int
+    kills: int
+    deaths: int
+    assists: int
+    itemIcons: List[object]
+    runeIcon: object
+    cs: int
+    gold: int
+    timeStamp: int
+    position: Optional[str]
+    augmentIds: List[int]
+
+
+class GamesAggregate(TypedDict, total=False):
+    """parseSummonerData 返回的 games 聚合."""
+    gameCount: int
+    wins: int
+    losses: int
+    kills: int
+    deaths: int
+    assists: int
+    games: List[GameSummary]
+
+
+class ChampionStat(TypedDict, total=False):
+    """getRecentChampions 中的单项."""
+    championId: int
+    icon: object
+    name: str
+    total: int
+    wins: int
+    losses: int
+    kills: int
+    deaths: int
+    assists: int
+
+
+class SummonerParsedData(TypedDict, total=False):
+    """parseSummonerData 的返回结构 (生涯页/搜索页)."""
+    name: str
+    icon: object
+    level: int
+    xpSinceLastLevel: int
+    xpUntilNextLevel: int
+    puuid: str
+    rankInfo: RankInfo
+    games: GamesAggregate
+    champions: List[ChampionStat]
+    isPublic: bool
+    tagLine: Optional[str]
+
+
+class TeamParticipant(TypedDict, total=False):
+    """parseGameDetailData 中队伍内单个召唤师.
+
+    也兼容 parseSummonerGameInfo / getSummonerGamesInfoViaSGP 返回的
+    对局信息项 (额外含 cellId / selectedPosition / fateFlag / kda 等).
+    """
+    name: str
+    puuid: str
+    isPublic: bool
+    isCurrent: bool
+    championId: int
+    championIcon: object
+    spell1Icon: object
+    spell2Icon: object
+    kills: int
+    deaths: int
+    assists: int
+    gold: int
+    runeIcon: object
+    itemIcons: List[object]
+    rankInfo: object
+    subteamPlacement: Optional[int]
+    # parseSummonerGameInfo / getSummonerGamesInfoViaSGP 额外字段
+    tagLine: Optional[str]
+    icon: object
+    level: int
+    xpSinceLastLevel: int
+    xpUntilNextLevel: int
+    summonerId: int
+    gamesInfo: List[GameSummary]
+    kda: List[int]
+    cellId: Optional[int]
+    selectedPosition: Optional[str]
+    fateFlag: Optional[str]
+    recentlyChampionName: str
+
+
+class TeamDetail(TypedDict, total=False):
+    """parseGameDetailData 中单支队伍信息."""
+    win: Optional[bool]
+    bans: List[object]
+    baronKills: int
+    baronIcon: str
+    dragonKills: int
+    dragonIcon: str
+    riftHeraldKills: int
+    riftHeraldIcon: str
+    inhibitorKills: int
+    inhibitorIcon: str
+    hordeKills: int
+    towerKills: int
+    towerIcon: str
+    kills: int
+    deaths: int
+    assists: int
+    gold: int
+    summoners: List[TeamParticipant]
+
+
+class GameDetail(TypedDict, total=False):
+    """parseGameDetailData 的返回结构 (对局详情)."""
+    queueId: int
+    map: str
+    name: str
+    win: Optional[bool]
+    remake: Optional[bool]
+    cherryResult: Optional[int]
+    teams: dict
+    gameId: int
+
+
+class TeamGameInfo(TypedDict, total=False):
+    """parseAllyGameInfo / parseGameInfoByGameflowSession 的返回结构.
+
+    summoners 元素的具体字段由 parseSummonerGameInfo / getSummonerGamesInfoViaSGP
+    产生, 详见 TeamParticipant 与 ChampionStat.
+    """
+    summoners: List[dict]
+    champions: dict  # {summonerId: championId}
+    order: List[int]
+    isAram: bool

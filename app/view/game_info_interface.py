@@ -8,7 +8,8 @@ from PyQt5.QtGui import QPixmap, QColor, QPalette
 from qasync import asyncSlot
 
 from ..common.qfluentwidgets import (TransparentTogglePushButton,
-                                     ToolTipFilter, ToolTipPosition, setCustomStyleSheet)
+                                     ToolTipFilter, ToolTipPosition, setCustomStyleSheet,
+                                     PushButton, Flyout)
 
 from app.common.style_sheet import StyleSheet
 from app.common.signals import signalBus
@@ -17,6 +18,7 @@ from app.components.profile_level_icon_widget import RoundLevelAvatar
 from app.components.summoner_name_button import SummonerName
 from app.components.animation_frame import ColorAnimationFrame
 from app.components.color_label import DeathsLabel
+from app.components.mode_filter_widget import ModeFilterWidget
 from app.lol.tools import parseSummonerOrder
 from app.lol.connector import connector
 from app.lol.aram import AramBuff
@@ -36,6 +38,10 @@ class GameInfoInterface(SeraphineInterface):
 
         self.allyGamesView = SummonersGamesView()
         self.enemyGamesView = SummonersGamesView()
+
+        self.filterButton = PushButton(self.tr("Filter"))
+        self.filterButton.setFixedHeight(32)
+        self.modeFilterWidget = ModeFilterWidget()
 
         # 保存召唤师的英雄信息
         # {summonerId: championId}
@@ -66,6 +72,13 @@ class GameInfoInterface(SeraphineInterface):
         self.rightVBoxLayout = QVBoxLayout()
         self.rightVBoxLayout.setContentsMargins(0, 0, 0, 0)
         self.rightVBoxLayout.setSpacing(8)
+
+        self.filterLayout = QHBoxLayout()
+        self.filterLayout.setContentsMargins(0, 0, 0, 0)
+        self.filterLayout.addStretch(1)
+        self.filterLayout.addWidget(self.filterButton, alignment=Qt.AlignRight)
+
+        self.rightVBoxLayout.addLayout(self.filterLayout)
         self.rightVBoxLayout.addWidget(self.summonersGamesView, stretch=1)
 
         self.hBoxLayout.addWidget(self.summonersView, stretch=2)
@@ -74,6 +87,17 @@ class GameInfoInterface(SeraphineInterface):
     def __connectSignalToSlot(self):
         self.summonersView.currentTeamChanged.connect(
             self.__onCurrentTeamChanged)
+        self.filterButton.clicked.connect(self.__onFilterButtonClicked)
+        self.modeFilterWidget.setCallback(self.__onFilterChanged)
+
+    def __onFilterButtonClicked(self):
+        Flyout.make(self.modeFilterWidget, self.filterButton, self)
+
+    def __onFilterChanged(self):
+        queueIds = self.modeFilterWidget.getFilterMode()
+        view = self.summonersGamesView.currentWidget()
+        if isinstance(view, SummonersGamesView):
+            view.applyFilter(queueIds)
 
     def updateAllySummonersOrder(self, team: list):
         if len(self.allyOrder) == 0:
@@ -571,6 +595,10 @@ class SummonersGamesView(QFrame):
 
         self.items = {}
 
+    def applyFilter(self, queueIds: set):
+        for games in self.items.values():
+            games.applyFilter(queueIds)
+
 
 class Games(QFrame):
 
@@ -611,14 +639,27 @@ class Games(QFrame):
         self.vBoxLayout.addLayout(self.gamesLayout)
         self.gamesLayout.setContentsMargins(0, 0, 0, 0)
 
-        games = summoner['gamesInfo']
+        self.allGames = summoner['gamesInfo']
+        self.applyFilter(set())
+
+    def applyFilter(self, queueIds: set):
+        """按 queueId 筛选对局; 空集合表示显示全部."""
+        # 清空现有 GameTab
+        while self.gamesLayout.count():
+            item = self.gamesLayout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        games = self.allGames
+        if queueIds:
+            games = [g for g in games if g.get('queueId') in queueIds]
 
         for game in games:
             tab = GameTab(game)
             self.gamesLayout.addWidget(tab, stretch=1)
 
         if len(games) < 11:
-            self.gamesLayout.addStretch(11-len(games))
+            self.gamesLayout.addStretch(11 - len(games))
             spacing = self.gamesLayout.spacing()
             self.gamesLayout.addSpacing(spacing * (11 - len(games)))
 

@@ -285,8 +285,8 @@ class ChangeClientMessageBox(MessageBoxBase):
 
         for i, pid in enumerate(self.pids):
             summoner = connector.getLoginSummonerByPid(pid)
-            item = (summoner.get("gameName") or summoner['displayName']) + \
-                self.tr(", ") + self.tr("PID: ") + str(pid)
+            name = summoner.get("gameName") or summoner.get('displayName') or f"PID {pid}"
+            item = name + self.tr(", ") + self.tr("PID: ") + str(pid)
 
             if pid == connector.pid:
                 item += " " + self.tr("(current)")

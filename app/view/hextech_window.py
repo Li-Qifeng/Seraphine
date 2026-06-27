@@ -366,7 +366,7 @@ class HextechWindow(OpggWindowBase):
     async def _getChampionName(self, championId):
         try:
             return connector.manager.getChampionNameById(championId)
-        except Exception:
+        except (AttributeError, KeyError, ValueError):
             return str(championId)
 
     @staticmethod
@@ -393,7 +393,7 @@ class HextechWindow(OpggWindowBase):
             if desc:
                 parts.append(desc.replace('(', '（').replace(')', '）'))
             return "\n".join(parts) if parts else ""
-        except Exception:
+        except (AttributeError, KeyError, TypeError):
             return ""
 
 

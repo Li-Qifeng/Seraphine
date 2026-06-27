@@ -22,7 +22,7 @@ from app.common.util import getLolClientWindowPos
 from app.common.qfluentwidgets import (FramelessWindow, isDarkTheme, BackgroundAnimationWidget,
                                        FluentTitleBar,  ComboBox, BodyLabel, ToolTipFilter,
                                        ToolTipPosition, IndeterminateProgressRing, setTheme,
-                                       Theme, PushButton, SearchLineEdit, ToolButton,
+                                       Theme, SearchLineEdit, ToolButton,
                                        FlyoutViewBase, Flyout, FlyoutAnimationType)
 from app.components.transparent_button import TransparentToggleButton
 from app.components.multi_champion_select import ChampionSelectFlyout
@@ -134,10 +134,6 @@ class OpggWindow(OpggWindowBase):
         self.tierComboBox = ComboBox()
         self.positionComboBox = ComboBox()
 
-        self.debugButton = PushButton()
-        self.debugButton.setFixedSize(33, 33)
-        self.debugButton.clicked.connect(self.__onDebugButtonClicked)
-
         self.versionLabel = BodyLabel()
 
         self.stackedWidget = QStackedWidget()
@@ -158,8 +154,6 @@ class OpggWindow(OpggWindowBase):
         self.__initWindow()
         self.__initLayout()
 
-        # self.debugButton.click()
-        self.debugButton.setVisible(False)
         self.setHomeInterfaceEnabled(True)
 
     def __initWindow(self):
@@ -272,7 +266,6 @@ class OpggWindow(OpggWindowBase):
         self.filterLayout.addWidget(self.regionComboBox)
         self.filterLayout.addWidget(self.tierComboBox)
         self.filterLayout.addWidget(self.positionComboBox)
-        self.filterLayout.addWidget(self.debugButton)
         self.filterLayout.addSpacerItem(QSpacerItem(
             0, 0, QSizePolicy.Expanding,  QSizePolicy.Fixed))
         self.filterLayout.addWidget(self.versionLabel)
@@ -555,14 +548,6 @@ class OpggWindow(OpggWindowBase):
         import asyncio
         asyncio.ensure_future(
             self.hextechAssistInterface.updateForChampion(championId))
-
-    @asyncSlot(bool)
-    async def __onDebugButtonClicked(self, _):
-        await opgg.start()
-        await connector.autoStart()
-        await ChampionAlias.checkAndUpdate()
-
-        await self.initWindow()
 
     async def initWindow(self):
         self.__onFilterTextChanged(1)

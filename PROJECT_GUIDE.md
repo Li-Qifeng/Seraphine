@@ -654,24 +654,19 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 
 | 位置 | 标记 | 现象 | 影响 | 建议 |
 |---|---|---|---|---|
-| `app/common/logger.py:80` | FIXME | `tag` 为 None 时 `log()` 抛异常 | 日志调用方传 None tag 会二次报错 | 入参校验，None 时回退默认 TAG |
 | `app/lol/connector.py:798` | FIXME | `getGameflowSession()` 在「刚打完一局→开自定义→玩家在红方且蓝方无人」时会**泄露上一局蓝方名单**（teamOne/teamTwo） | 自动查对手可能拿到错误阵容 | 客户端 API 上游 quirk；需在 `parseGameInfoByGameflowSession` 做去重/校验 |
-| `app/components/search_line_edit.py:153` | FIX #379 | 特定条件下搜索栏候选条反复得到/失去焦点，导致 **UI 卡死** | 搜索体验受损 | 已有临时修复；重写 completer 焦点处理 |
-| `app/view/search_interface.py:1281` | FIXME | 对局 Tabs 绘制时若 StackWidget 切换，会画错帧或抛 `AttributeError` | 罕见但偶发崩溃 | 绘制前校验 widget 有效性 + 加锁 |
-| `app/view/search_interface.py:1284` | FIXME | 选中第 2 页（>11 条）以后的对局时，选中高亮不绘制 | 视觉缺陷 | 修正分页后的索引计算 |
 
 ### 5.2 未完成 TODO 清单
 
 | 位置 | TODO 内容 | 性质 |
 |---|---|---|
-| `app/common/style_sheet.py:178,185` | 开放用户自定义样式设置 | 功能增强 |
-| `app/components/mode_filter_widget.py:9` | GameInfoInterface 添加筛选功能 | 功能增强 |
-| `app/lol/aram.py:43` | 暂未提供历史版本数据查询接口 | 功能增强 |
-| `app/lol/tools.py:1817` | 「掷骰子并切回上一个英雄」功能界面未实现 | 半成品 |
-| `app/view/main_window.py:922` | 自定义模式队伍成员<5 时触发重载，造成性能浪费 | 性能优化 |
-| `app/view/search_interface.py:1344` | 某处可以弹个窗（作者留） | 小优化 |
+| `app/common/style_sheet.py:180,187` | 开放用户自定义样式设置 | 功能增强 |
+| `app/lol/aram.py:43` | 暂未提供历史版本数据查询接口（需服务端配合） | 功能增强 |
+| `app/view/search_interface.py:1388` | 某处可以弹个窗（作者留，需求不明） | 小优化 |
 
 > 另有大量 `# NOTE -- By Hpero4/Zzaphkiel` 注释，记录异步任务生命周期、puuid 刷新语义等，非待办但**改这些区域前务必读注释**。
+
+> 历史已解决：`mode_filter_widget.py` 筛选功能已接入 `GameInfoInterface`；`tools.py` `rollAndSwapBack`（海克斯大乱斗已无摇骰子机制）已删除；`main_window.py` 自定义模式 <5 人重载已加 `allyChampions` + `expected_ally_count` 守卫；`search_line_edit.py` / `search_interface.py` 焦点与分页绘制 FIXME 已无对应代码标记。
 
 ### 5.3 代码质量问题（现状→风险→建议）
 
@@ -680,20 +675,19 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 - **运行方式**：`python -m pytest tests/`
 - **建议**：后续给 connector 层用 mock LCU server 做契约测试；CI 加 lint（`ruff`/`flake8`）+ 测试 job 以阻止回归。
 
-#### ② 裸 `except` / 静默吞异常（约 31 处，跨 8 文件）
-- **现状**：`util.py`、`aram.py`、`champions.py`、`main_window.py` 等多处 `except: pass` 或 `except: return True`。
-- **风险**：故障被吞，诊断困难；与 `@retry` 叠加时行为不可预测。
-- **建议**：写明异常类型；至少 `logger.warning`；典型 offender：`connector.getPortTokenServerByPid` 回退、`AramBuff.__needUpdate`、`MainWindow.__updateAvatarIconName`。
+#### ② 裸 `except` / 静默吞异常（已清理）
+- **现状**：原约 31 处裸 `except:` / `except Exception: pass` 已全部清理（跨 8 文件，含 `util.py`、`aram.py`、`champions.py`、`static_data.py`、`connector.py`、`main_window.py`、`opgg.py`、`opgg_hextech_assist_interface.py`、`hextech_window.py`、`animation_frame.py`）。现统一为具体异常类型 + `logger.debug`/`warning`。
+- **残留**：仍有约 19 处 `except Exception:`（如 `parseSummonerData`、`parseGameData` 等），属**有意兜底**（外部数据格式不可控），均带 `logger.warning` 或回退逻辑，非静默吞。
+- **建议**：后续仅在外部边界保留兜底，内部代码逐步收敛到具体异常类型。
 
-#### ③ 类型注解缺失
-- **现状**：数据层 `parseGameData`/`JsonManager` 等返回**无类型嵌套 dict**，调用方靠记忆。
-- **风险**：易错、IDE 补全失效、难重构。
-- **建议**：用 `TypedDict`/`dataclass` 为关键返回结构建模；渐进式加注解；可选 `mypy`/`pyright` CI。
+#### ③ 类型注解缺失（部分覆盖）
+- **现状**：`app/lol/tools_pure.py` 已定义 `SummonerParsedData`/`GameSummary`/`GameDetail`/`TeamParticipant`/`TeamGameInfo` 等 `TypedDict`，`tools.py` 中 `parseSummonerData`/`parseGameData`/`parseGameDetailData`/`parseAllyGameInfo`/`parseGameInfoByGameflowSession`/`parseSummonerGameInfo`/`getSummonerGamesInfoViaSGP` 已标注返回类型。
+- **残留**：`connector.py` 的 ~70 个端点方法、`JsonManager`、`opgg.py` 等仍返回无类型 dict。
+- **建议**：后续渐进式补全；可选 `mypy`/`pyright` CI。
 
-#### ④ 自定义异常继承 `BaseException` 的脆弱性
-- **现状**：5 个异常均继承 `BaseException`；`@retry` 用 `except BaseException` 兜底会一并捕获 `CancelledError`/`KeyboardInterrupt`。
-- **风险**：`task.cancel()` 偶尔停不下（作者已在 `connector.py:92` 注释并 `except CancelledError: raise` 修补）；新增类似装饰器若漏写此放行会回归 bug。
-- **建议**：长期看，改继承 `Exception` 并改用更精确的捕获更稳；短期至少在所有 `except BaseException` 处强制放行 `CancelledError`。
+#### ④ 自定义异常继承 `BaseException` 的脆弱性（已修复）
+- **现状**：`app/lol/exceptions.py` 中 5 个自定义异常均继承 `Exception`（非 `BaseException`）；`@retry` 装饰器用 `except CancelledError: raise` 显式放行取消，再用 `except Exception as e:` 兜底，已不会误捕 `KeyboardInterrupt`/`SystemExit`。
+- **建议**：新增类似装饰器时照搬 `except CancelledError: raise` 模式即可。
 
 #### ⑤ 硬编码密钥
 - **现状**：`app/lol/aram.py:22` 的 `APP_SECRET` 已改为从环境变量 `SERAPHINE_ARAM_SECRET` 读取，未设置时回退旧的硬编码值。
@@ -705,18 +699,17 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 - **风险**：无法在 macOS/Linux 运行（可接受，目标就是 Windows）；但即便只考虑 Windows，进程发现的 `tasklist`→`psutil`→`wmic` 多级回退路径复杂且各自有裸 except。
 - **建议**：统一收敛到 `util.py` 的薄抽象层，对外只暴露 `getLolClient()` 一类高层 API。
 
-#### ⑦ 死代码 / 调试代码
-- **现状**：
-  - `sendNotificationMsg` 在 async 方法里用同步 `requests` 风格，疑似对协程误调 `.json()`（可能已坏）。
-  - `getLoginSummonerByPid` 是异步代码库里的同步 `requests` 调用。
-  - `OpggWindow` 有隐藏 debug 按钮（`setVisible(False)`）。
-- **风险**：误用导致运行时错误；维护噪音。
-- **建议**：逐一核实，能删则删，能修则改为异步。
+#### ⑦ 死代码 / 调试代码（已清理）
+- **现状**：原列出的 3 项已全部处理：
+  - `OpggWindow` 隐藏 debug 按钮及其处理函数 `__onDebugButtonClicked` 已移除。
+  - `getLoginSummonerByPid` 已加 `(requests.RequestException, ValueError)` 异常处理与 `timeout=3`。
+  - `sendNotificationMsg` 经核实为同步工具方法，沿用现状。
+- **建议**：保持定期核查，避免新的调试代码遗留。
 
-#### ⑧ connector 单例的可变状态竞态
-- **现状**：`connector` 进程内唯一，`port/token/server/manager` 可变；多客户端切换靠 `start()/close()` 复用。
-- **风险**：`__onLolClientChanged` 已知存在竞态窗口。
-- **建议**：切换时先彻底 `close()`（含 WS task cancel、session close）再 `start()`；必要时加状态机锁。
+#### ⑧ connector 单例的可变状态竞态（已加锁保护）
+- **现状**：`connector` 进程内唯一，`port/token/server/manager` 可变；多客户端切换靠 `start()/close()` 复用。`LolClientConnector.__init__` 中新增 `self._stateLock = asyncio.Lock()`（用 `hasattr` 守卫，避免 `close()` 末尾 `self.__init__()` 重置锁），`start()`/`close()` 均在 `async with self._stateLock:` 临界区内执行，防止 `lolClientEnded` 与 `lolClientChanged` 信号触发的 task 在 asyncio 事件循环中交错导致 close 与 start 并发。
+- **残留风险**：`__onLolClientChanged` 内 `close→start` 之间释放锁的窗口仍可能被其他 start 插入（罕见，且 start 内部重建 session 不会崩溃）；in-flight 请求在 close 后遇 `lcuSess is None` 由 `@needLcu` 抛 `ReferenceError`、`@retry` 静默吞掉，属既有行为。
+- **建议**：如需更强保证，可在 `__onLolClientChanged` 层面再加一把可重入锁串行化整个切换流程。
 
 ### 5.4 客户端侧风险（README 已声明）
 
@@ -786,12 +779,12 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 ### 6.3 新功能方向建议（由 TODO + enhancement issue 推导）
 
-- **样式自定义**：开放 QSS 颜色/主题给用户（`style_sheet.py:178,185` TODO）。
-- **GameInfo 筛选**：按队列模式/英雄筛选队友对手数据（`mode_filter_widget.py:9` TODO）。
-- **历史版本数据**：ARAM 等数据支持查历史版本（`aram.py:43` TODO）。
-- **性能优化**：自定义模式 <5 人时不重载（`main_window.py:922` TODO）。
-- **测试基础设施**：引入 pytest + CI lint/test job（§5.3 ①）。
+- **样式自定义**：开放 QSS 颜色/主题给用户（`style_sheet.py:180,187` TODO）。
+- **历史版本数据**：ARAM 等数据支持查历史版本（`aram.py:43` TODO，需服务端配合）。
+- **测试基础设施**：引入更多 connector 层契约测试（§5.3 ①）。
 - **类型化数据模型**：用 TypedDict/dataclass 描述 LCU 返回（§5.3 ③）。
+
+> 已完成方向：GameInfo 按队列模式筛选（`mode_filter_widget.py` 已接入 `GameInfoInterface`）；自定义模式 <5 人重载守卫（`main_window.py`）；rollAndSwapBack 删除（海克斯大乱斗无摇骰子）。
 
 ---
 
