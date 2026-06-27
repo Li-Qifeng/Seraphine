@@ -746,3 +746,125 @@ class QueueFilterCard(ExpandGroupSettingCard):
 
         default = self.configItem.defaultValue
         qconfig.set(self.configItem, default)
+
+
+class TeamColorSettingCard(ExpandGroupSettingCard):
+    """预组队高亮色 (对局信息界面 team1/team2) 设置卡."""
+
+    def __init__(self, title, content=None,
+                 team1ConfigItem: ConfigItem = None,
+                 team2ConfigItem: ConfigItem = None,
+                 parent=None):
+        super().__init__(Icon.BACKGROUNDCOLOR, title, content, parent)
+
+        self.statusLabel = QLabel(self)
+
+        self.inputWidget = QWidget(self.view)
+        self.inputLayout = QGridLayout(self.inputWidget)
+
+        self.team1HintLabel = QLabel(self.tr("Color of team 1:"))
+        self.team2HintLabel = QLabel(self.tr("Color of team 2:"))
+
+        self.team1SettingButton = ColorAnimationFrame(type='team1')
+        self.team2SettingButton = ColorAnimationFrame(type='team2')
+
+        self.resetWidget = QWidget()
+        self.resetLayout = QHBoxLayout(self.resetWidget)
+        self.resetButton = PushButton(self.tr("Reset"))
+
+        self.defaultTeam1Color = QColor(team1ConfigItem.defaultValue)
+        self.defaultTeam2Color = QColor(team2ConfigItem.defaultValue)
+
+        self.team1ConfigItem = team1ConfigItem
+        self.team2ConfigItem = team2ConfigItem
+
+        self.__initWidget()
+        self.__initLayout()
+
+    def __initLayout(self):
+        self.addWidget(self.statusLabel)
+
+        self.inputLayout.setSpacing(19)
+        self.inputLayout.setAlignment(Qt.AlignTop)
+        self.inputLayout.setContentsMargins(48, 18, 44, 18)
+
+        self.inputLayout.addWidget(
+            self.team1HintLabel, 0, 0, alignment=Qt.AlignLeft)
+        self.inputLayout.addWidget(
+            self.team2HintLabel, 1, 0, alignment=Qt.AlignLeft)
+
+        self.inputLayout.addWidget(
+            self.team1SettingButton, 0, 1, alignment=Qt.AlignRight)
+        self.inputLayout.addWidget(
+            self.team2SettingButton, 1, 1, alignment=Qt.AlignRight)
+
+        self.inputLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
+
+        self.resetLayout.setContentsMargins(48, 18, 44, 18)
+        self.resetLayout.addWidget(self.resetButton, 0, Qt.AlignRight)
+        self.resetLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
+
+        self.viewLayout.setSpacing(0)
+        self.viewLayout.setContentsMargins(0, 0, 0, 0)
+        self.addGroupWidget(self.inputWidget)
+        self.addGroupWidget(self.resetWidget)
+
+    def __initWidget(self):
+        self.team1SettingButton.setFixedSize(100, 32)
+        self.team2SettingButton.setFixedSize(100, 32)
+
+        self.resetButton.setMinimumWidth(100)
+
+        self.setValue(qconfig.get(self.team1ConfigItem),
+                      qconfig.get(self.team2ConfigItem))
+
+        self.team1SettingButton.clicked.connect(
+            lambda: self.__onSettingButtonClicked('team1'))
+        self.team2SettingButton.clicked.connect(
+            lambda: self.__onSettingButtonClicked('team2'))
+
+        self.resetButton.clicked.connect(self.__reset)
+
+    def setValue(self, team1Color: QColor = None, team2Color: QColor = None):
+        if team1Color:
+            qconfig.set(self.team1ConfigItem, team1Color)
+
+        if team2Color:
+            qconfig.set(self.team2ConfigItem, team2Color)
+
+        self.__setStatusLabel()
+
+    def __setStatusLabel(self):
+        if (qconfig.get(self.team1ConfigItem) == self.defaultTeam1Color and
+                qconfig.get(self.team2ConfigItem) == self.defaultTeam2Color):
+            self.statusLabel.setText(self.tr("Default color"))
+            self.resetButton.setEnabled(False)
+        else:
+            self.statusLabel.setText(self.tr("Custom color"))
+            self.resetButton.setEnabled(True)
+
+    def __onSettingButtonClicked(self, name):
+        if name == 'team1':
+            configItem = self.team1ConfigItem
+        else:
+            configItem = self.team2ConfigItem
+
+        w = ColorDialog(
+            qconfig.get(configItem), self.tr('Choose color'), self.window(), True)
+        w.colorChanged.connect(
+            lambda color: self.__onColorChanged(color, name))
+        w.exec()
+
+    def __onColorChanged(self, color, name):
+        if name == 'team1':
+            self.setValue(team1Color=color)
+        else:
+            self.setValue(team2Color=color)
+
+        signalBus.customColorChanged.emit(name)
+
+    def __reset(self):
+        self.setValue(self.defaultTeam1Color, self.defaultTeam2Color)
+
+        signalBus.customColorChanged.emit('team1')
+        signalBus.customColorChanged.emit('team2')

@@ -9,9 +9,9 @@ import time
 import traceback
 from asyncio import CancelledError
 from collections import deque
+from typing import Optional, Union
 
 import aiohttp
-import requests
 from PyQt5.QtCore import QObject
 
 from app.common.config import cfg, Language
@@ -19,8 +19,6 @@ from app.common.logger import logger
 from app.common.signals import signalBus
 from app.common.util import getPortTokenServerByPid, getTasklistPath, getLolClientPid
 from app.lol.exceptions import *
-
-requests.packages.urllib3.disable_warnings()
 
 TAG = "Connector"
 
@@ -402,7 +400,7 @@ class LolClientConnector(QObject):
 
         self.manager.perkStyles = res
 
-    async def __json_retry_get(self, url, max_retries=5):
+    async def __json_retry_get(self, url, max_retries=5) -> Union[dict, list]:
         """
         根据 httpStatus 字段值, retry 获取数据
 
@@ -440,7 +438,7 @@ class LolClientConnector(QObject):
         raise RetryMaximumAttempts("Exceeded maximum retry attempts.")
 
     @retry()
-    async def getRuneIcon(self, runeId):
+    async def getRuneIcon(self, runeId) -> str:
         if runeId == 0:
             return "app/resource/images/rune-0.png"
 
@@ -455,7 +453,7 @@ class LolClientConnector(QObject):
         return icon
 
     @retry()
-    async def getCurrentSummoner(self):
+    async def getCurrentSummoner(self) -> dict:
         res = await self.__get("/lol-summoner/v1/current-summoner")
         res = await res.json()
 
@@ -465,12 +463,12 @@ class LolClientConnector(QObject):
         return res
 
     @retry()
-    async def getInstallFolder(self):
+    async def getInstallFolder(self) -> str:
         res = await self.__get("/data-store/v1/install-dir")
         return await res.json()
 
     @retry()
-    async def getProfileIcon(self, iconId):
+    async def getProfileIcon(self, iconId) -> str:
         icon = f"./app/resource/game/profile icons/{iconId}.jpg"
 
         if not os.path.exists(icon):
@@ -483,7 +481,7 @@ class LolClientConnector(QObject):
         return icon
 
     @retry()
-    async def getItemIcon(self, iconId):
+    async def getItemIcon(self, iconId) -> str:
         if iconId == 0:
             return "app/resource/images/item-0.png"
 
@@ -499,7 +497,7 @@ class LolClientConnector(QObject):
         return icon
 
     @retry()
-    async def getAugmentIcon(self, augmentId):
+    async def getAugmentIcon(self, augmentId) -> str:
         icon = f"app/resource/game/augment icons/{augmentId}.png"
 
         if not os.path.exists(icon):
@@ -512,7 +510,7 @@ class LolClientConnector(QObject):
         return icon
 
     @retry()
-    async def getChampionSplashes(self, skinInfo, isCentered: bool):
+    async def getChampionSplashes(self, skinInfo, isCentered: bool) -> str:
         """
         :param skinInfo:
             {
@@ -545,7 +543,7 @@ class LolClientConnector(QObject):
         return image
 
     @retry()
-    async def getSummonerSpellIcon(self, spellId):
+    async def getSummonerSpellIcon(self, spellId) -> str:
         icon = f"app/resource/game/summoner spell icons/{spellId}.png"
 
         if not os.path.exists(icon):
@@ -580,7 +578,7 @@ class LolClientConnector(QObject):
         return icon
 
     @retry()
-    async def getSummonerByName(self, name):
+    async def getSummonerByName(self, name) -> dict:
         params = {"name": name}
         res = await self.__get("/lol-summoner/v1/summoners", params)
         res = await res.json()
@@ -588,7 +586,7 @@ class LolClientConnector(QObject):
         return res
 
     @retry()
-    async def getSummonerByPuuid(self, puuid):
+    async def getSummonerByPuuid(self, puuid) -> dict:
         res = await self.__get(f"/lol-summoner/v2/summoners/puuid/{puuid}")
         res = await res.json()
 
@@ -598,7 +596,7 @@ class LolClientConnector(QObject):
         return res
 
     @retry(5, 1)
-    async def getSummonerGamesByPuuidSlowly(self, puuid, begIndex=0, endIndex=4):
+    async def getSummonerGamesByPuuidSlowly(self, puuid, begIndex=0, endIndex=4) -> list:
         """
         Retrieves a list of summoner games by puuid using a slow and retry mechanism.
 
@@ -625,7 +623,7 @@ class LolClientConnector(QObject):
         return res["games"]
 
     @retry()
-    async def getSummonerGamesByPuuid(self, puuid, begIndex=0, endIndex=4):
+    async def getSummonerGamesByPuuid(self, puuid, begIndex=0, endIndex=4) -> list:
         """
         Retrieves a list of summoner games by PUUID.
 
@@ -652,13 +650,13 @@ class LolClientConnector(QObject):
         return res["games"]
 
     @retry()
-    async def getGameDetailByGameId(self, gameId):
+    async def getGameDetailByGameId(self, gameId) -> dict:
         res = await self.__get(f"/lol-match-history/v1/games/{gameId}")
 
         return await res.json()
 
     @retry()
-    async def getRankedStatsByPuuid(self, puuid):
+    async def getRankedStatsByPuuid(self, puuid) -> dict:
         res = await self.__get(f"/lol-ranked/v1/ranked-stats/{puuid}")
 
         res = await res.json()
@@ -669,7 +667,7 @@ class LolClientConnector(QObject):
         return res
 
     @retry()
-    async def setProfileBackground(self, skinId):
+    async def setProfileBackground(self, skinId) -> dict:
         data = {
             "key": "backgroundSkinId",
             "value": skinId,
@@ -682,7 +680,7 @@ class LolClientConnector(QObject):
         return await res.json()
 
     @retry()
-    async def setProfileBackgroundAugments(self, contentId):
+    async def setProfileBackgroundAugments(self, contentId) -> dict:
         data = {
             'key': 'backgroundSkinAugments',
             'value': contentId
@@ -695,14 +693,14 @@ class LolClientConnector(QObject):
         return await res.json()
 
     @retry()
-    async def setOnlineStatus(self, message):
+    async def setOnlineStatus(self, message) -> dict:
         data = {"statusMessage": message}
         res = await self.__put("/lol-chat/v1/me", data=data)
 
         return await res.json()
 
     @retry()
-    async def setTierShowed(self, queue, tier, division):
+    async def setTierShowed(self, queue, tier, division) -> dict:
         data = {
             "lol": {
                 "rankedLeagueQueue": queue,
@@ -716,11 +714,11 @@ class LolClientConnector(QObject):
         return await res.json()
 
     @retry()
-    async def reconnect(self):
+    async def reconnect(self) -> aiohttp.ClientResponse:
         return await self.__post("/lol-gameflow/v1/reconnect")
 
     @retry()
-    async def removeTokens(self):
+    async def removeTokens(self) -> bytes:
         reference = await self.__get("/lol-chat/v1/me")
         reference = await reference.json()
 
@@ -738,7 +736,7 @@ class LolClientConnector(QObject):
         return await res.read()
 
     @retry()
-    async def setProfileIcon(self, iconId):
+    async def setProfileIcon(self, iconId) -> dict:
         data = {"profileIconId": iconId}
         url = "/lol-summoner/v1/current-summoner/icon"
 
@@ -746,19 +744,19 @@ class LolClientConnector(QObject):
         return await res.json()
 
     @retry()
-    async def getChatMe(self):
+    async def getChatMe(self) -> dict:
         res = await self.__get("/lol-chat/v1/me")
         return await res.json()
 
     @retry()
-    async def getCurrentSummonerProfile(self):
+    async def getCurrentSummonerProfile(self) -> dict:
         url = "/lol-summoner/v1/current-summoner/summoner-profile"
 
         res = await self.__get(url)
         return await res.json()
 
     @retry()
-    async def removePrestigeCrest(self):
+    async def removePrestigeCrest(self) -> dict:
         ref = await self.__get('/lol-regalia/v2/current-summoner/regalia')
         ref = await ref.json()
         bannerType = ref.get("preferredBannerType")
@@ -773,7 +771,7 @@ class LolClientConnector(QObject):
         return await res.json()
 
     @retry()
-    async def create5v5PracticeLobby(self, lobbyName, password):
+    async def create5v5PracticeLobby(self, lobbyName, password) -> dict:
         data = {
             "customGameLobby": {
                 "configuration": {
@@ -794,18 +792,18 @@ class LolClientConnector(QObject):
         return await res.json()
 
     @retry()
-    async def setOnlineAvailability(self, availability):
+    async def setOnlineAvailability(self, availability) -> aiohttp.ClientResponse:
         data = {"availability": availability}
 
         res = await self.__put("/lol-chat/v1/me", data=data)
         return res
 
     @retry()
-    async def acceptMatchMaking(self):
+    async def acceptMatchMaking(self) -> aiohttp.ClientResponse:
         res = await self.__post("/lol-matchmaking/v1/ready-check/accept")
         return res
 
-    async def getLobbyStatus(self):
+    async def getLobbyStatus(self) -> Optional[dict]:
         try:
             res = await self.__get("/lol-lobby/v2/lobby")
             return await res.json()
@@ -813,7 +811,7 @@ class LolClientConnector(QObject):
             logger.debug(f"getLobbyStatus failed: {e}", TAG)
             return None
 
-    async def getMatchmakingStatus(self):
+    async def getMatchmakingStatus(self) -> Optional[dict]:
         """获取匹配状态, 兼容 teambuilder (aram/aram_mayhem/arena) 队列.
 
         teambuilder 队列的状态在 /lol-lobby-team-builder/v1/matchmaking 下,
@@ -835,7 +833,7 @@ class LolClientConnector(QObject):
             return None
         return None
 
-    async def startMatchmaking(self):
+    async def startMatchmaking(self) -> bool:
         """开始匹配, 兼容 teambuilder 队列.
 
         对于 teambuilder 队列 (aram/aram_mayhem/arena 等), POST /lol-matchmaking/v1/search
@@ -871,7 +869,7 @@ class LolClientConnector(QObject):
             logger.debug(f"startMatchmaking verify status failed: {e}", TAG)
         return False
 
-    async def isLobbyReadyToSearch(self):
+    async def isLobbyReadyToSearch(self) -> bool:
         lobby = await self.getLobbyStatus()
         if not lobby:
             return False
@@ -882,49 +880,49 @@ class LolClientConnector(QObject):
         return queue_id is not None
 
     @retry()
-    async def getGameflowSession(self):
+    async def getGameflowSession(self) -> dict:
         # NOTE: 该接口在自定义模式下可能返回上一局的 teamOne/teamTwo 脏数据,
         #       tools.py:parseGameInfoByGameflowSession 中已做去重校验处理
         res = await self.__get("/lol-gameflow/v1/session")
         return await res.json()
 
     @retry()
-    async def getChampSelectSession(self):
+    async def getChampSelectSession(self) -> dict:
         res = await self.__get("/lol-champ-select/v1/session")
         return await res.json()
 
     @retry()
-    async def getGameQueues(self):
+    async def getGameQueues(self) -> list:
         res = await self.__get("/lol-game-queues/v1/queues")
         return await res.json()
 
     # 同意交换英雄
     @retry()
-    async def acceptTrade(self, id):
+    async def acceptTrade(self, id) -> None:
         await self.__post(f"/lol-champ-select/v1/session/trades/{id}/accept")
         await self.__post(f"/lol-champ-select/v1/ongoing-trade/{id}/clear")
 
     # 同意交换楼层
     @retry()
-    async def acceptSwap(self, id):
+    async def acceptSwap(self, id) -> None:
         await self.__post(f"/lol-champ-select/v1/session/swaps/{id}/accept")
         await self.__post(f"/lol-champ-select/v1/ongoing-swap/{id}/clear")
 
     # 备战席交换 (大乱斗/海克斯大乱斗抢英雄)
     @retry()
-    async def benchSwap(self, championId):
+    async def benchSwap(self, championId) -> dict:
         res = await self.__post(f"/lol-champ-select/v1/session/bench/swap/{championId}")
         return await res.json()
 
     # 获取当前选择英雄
     @retry()
-    async def getCurrentChampion(self):
+    async def getCurrentChampion(self) -> int:
         res = await self.__get("/lol-champ-select/v1/current-champion")
         return await res.json()
 
     # 选择英雄
     @retry()
-    async def selectChampion(self, actionsId, championId, completed=None):
+    async def selectChampion(self, actionsId, championId, completed=None) -> bytes:
         data = {
             "championId": championId,
             'type': 'pick',
@@ -940,7 +938,7 @@ class LolClientConnector(QObject):
 
     # 禁用英雄
     @retry()
-    async def banChampion(self, actionsId, championId, completed=None):
+    async def banChampion(self, actionsId, championId, completed=None) -> bytes:
         data = {
             "championId": championId,
             'type': 'ban',
@@ -956,14 +954,14 @@ class LolClientConnector(QObject):
 
     # 获取皮肤轮盘
     @retry()
-    async def getSkinCarousel(self):
+    async def getSkinCarousel(self) -> dict:
         # res = await self.__get("/lol-champ-select/v1/pickable-skin-ids") //这个是所有可用的皮肤，不是自己可用的皮肤--!
         res = await self.__get("/lol-champ-select/v1/skin-carousel-skins")
         return await res.json()
 
     # 选皮肤、召唤师技能
     @retry()
-    async def selectConfig(self, skinId, spell1Id=None, spell2Id=None, wardSkinId=None):
+    async def selectConfig(self, skinId, spell1Id=None, spell2Id=None, wardSkinId=None) -> dict:
         data = {
             "selectedSkinId": skinId
         }
@@ -981,38 +979,38 @@ class LolClientConnector(QObject):
         return await res.json()
 
     @retry()
-    async def getSummonerById(self, summonerId):
+    async def getSummonerById(self, summonerId) -> dict:
         res = await self.__get(f"/lol-summoner/v1/summoners/{summonerId}")
 
         return await res.json()
 
     # @retry()
-    async def getGameStatus(self):
+    async def getGameStatus(self) -> str:
         res = await self.__get("/lol-gameflow/v1/gameflow-phase")
         res = await res.text()
 
         return res[1:-1]
 
     @retry()
-    async def getMapSide(self):
+    async def getMapSide(self) -> str:
         res = await self.__get("/lol-champ-select/v1/pin-drop-notification")
         res = await res.json()
 
         return res.get("mapSide", "")
 
     @retry()
-    async def getReadyCheckStatus(self):
+    async def getReadyCheckStatus(self) -> dict:
         res = await self.__get("/lol-matchmaking/v1/ready-check")
 
         return await res.json()
 
-    async def getCurrentRunePage(self):
+    async def getCurrentRunePage(self) -> dict:
         res = await self.__get("/lol-perks/v1/currentpage")
 
         return await res.json()
 
     @retry()
-    async def deleteCurrentRunePage(self):
+    async def deleteCurrentRunePage(self) -> None:
         try:
             page = await self.getCurrentRunePage()
 
@@ -1029,7 +1027,7 @@ class LolClientConnector(QObject):
                 f"deleteCurrentRunePage error {stack = }, {e =}", TAG)
 
     @retry()
-    async def createRunePage(self, name, primaryId, secondaryId, perks):
+    async def createRunePage(self, name, primaryId, secondaryId, perks) -> None:
         body = {
             "name": name,
             "primaryStyleId": primaryId,
@@ -1042,12 +1040,12 @@ class LolClientConnector(QObject):
         res = await res.json()
 
     @retry()
-    async def setSummonerSpells(self, spell1Id, spell2Id):
+    async def setSummonerSpells(self, spell1Id, spell2Id) -> aiohttp.ClientResponse:
         data = {'spell1Id': spell1Id, 'spell2Id': spell2Id}
 
         return await self.__patch("/lol-champ-select/v1/session/my-selection", data)
 
-    async def spectate(self, summonerName):
+    async def spectate(self, summonerName) -> bytes:
         info = await self.getSummonerByName(summonerName)
         puuid = info.get('puuid')
 
@@ -1071,7 +1069,7 @@ class LolClientConnector(QObject):
 
         return res
 
-    async def spectateDirectly(self, summonerName):
+    async def spectateDirectly(self, summonerName) -> None:
         """
         用命令行唤起客户端，无需等待
         """
@@ -1099,7 +1097,7 @@ class LolClientConnector(QObject):
         subprocess.Popen(['League of Legends.exe', f'{params}'])
         os.chdir(pwd)
 
-    async def dodge(self):
+    async def dodge(self) -> dict:
         data = {
             "destination": 'lcdsServiceProxy',
             "method": 'call',
@@ -1110,18 +1108,18 @@ class LolClientConnector(QObject):
 
         return await res.json()
 
-    async def getConversations(self):
+    async def getConversations(self) -> list:
         res = await self.__get("/lol-chat/v1/conversations")
 
         return await res.json()
 
-    async def getHelp(self):
+    async def getHelp(self) -> dict:
         res = await self.__get("/help")
 
         return await res.json()
 
     @retry()
-    async def sendFriendRequest(self, name):
+    async def sendFriendRequest(self, name) -> None:
         summoner = self.getSummonerByName(name)
         summonerId = summoner['summonerId']
 
@@ -1132,35 +1130,35 @@ class LolClientConnector(QObject):
         res = await self.__post('/lol-chat/v1/friend-requests', data=data)
 
     @retry()
-    async def playAgain(self):
+    async def playAgain(self) -> bytes:
         res = await self.__post("/lol-lobby/v2/play-again")
 
         return await res.read()
 
     @retry()
-    async def getClientZoom(self):
+    async def getClientZoom(self) -> int:
         res = await self.__get("/riotclient/zoom-scale")
 
         return await res.json()
 
-    async def getGameReplay(self, gameId):
+    async def getGameReplay(self, gameId) -> aiohttp.ClientResponse:
         data = {"componentType": "replay-button_match-history", "gameId": gameId}
         res = await self.__post(f"/lol-replays/v1/rofls/{gameId}/download", data=data)
 
         return res
 
-    async def getReplayMetadata(self, gameId):
+    async def getReplayMetadata(self, gameId) -> dict:
         res = await self.__get(f"/lol-replays/v1/metadata/{gameId}")
 
         return await res.json()
 
-    async def getReplayPath(self):
+    async def getReplayPath(self) -> dict:
         res = await self.__get("/lol-replays/v1/rofls/path")
 
         return await res.json()
 
     @retry()
-    async def getSGPtoken(self):
+    async def getSGPtoken(self) -> str:
         res = await self.__json_retry_get("/entitlements/v1/token")
 
         if 'accessToken' not in res:
@@ -1168,12 +1166,12 @@ class LolClientConnector(QObject):
 
         return res['accessToken']
 
-    async def restartClient(self):
+    async def restartClient(self) -> aiohttp.ClientResponse:
         res = await self.__post("/riotclient/kill-and-restart-ux")
 
         return res
 
-    async def getSummonerGamesByPuuidViaSGP(self, puuid, begIdx, endIdx):
+    async def getSummonerGamesByPuuidViaSGP(self, puuid, begIdx, endIdx) -> dict:
         logger.debug(
             f"getSummonerGamesByPuuidViaSGP called, {puuid = }", TAG)
 
@@ -1186,7 +1184,7 @@ class LolClientConnector(QObject):
         res = await self.__sgp__get(url, params)
         return await res.json()
 
-    async def getSummonerGamingInfoByPuuidViaSgp(self, puuid):
+    async def getSummonerGamingInfoByPuuidViaSgp(self, puuid) -> dict:
         logger.debug(
             f"getSummonerGamingInfoByPuuidViaSgp called, {puuid = }", TAG)
 
@@ -1194,7 +1192,7 @@ class LolClientConnector(QObject):
         res = await self.__sgp__get(url)
         return await res.json()
 
-    async def getRankedStatsByPuuidViaSGP(self, puuid):
+    async def getRankedStatsByPuuidViaSGP(self, puuid) -> dict:
         logger.debug(
             f"getRankedStatsByPuuidViaSGP called, {puuid = }", TAG)
 
@@ -1207,7 +1205,7 @@ class LolClientConnector(QObject):
 
         return res
 
-    async def getSummonerByPuuidViaSGP(self, puuid):
+    async def getSummonerByPuuidViaSGP(self, puuid) -> dict:
         """
         该接口的返回值与 `self.getSummonerByPuuid()` 相比，拿不到召唤师的 `tagLine`
         即数字编号信息
@@ -1220,31 +1218,31 @@ class LolClientConnector(QObject):
         res = await self.__sgp__get(url)
         return await res.json()
 
-    def isInTencent(self):
+    def isInTencent(self) -> bool:
         return self.inTencent
 
     @needLcu()
-    async def __get(self, path, params=None):
+    async def __get(self, path, params=None) -> aiohttp.ClientResponse:
         return await self.lcuSess.get(path, params=params, ssl=False)
 
     @needLcu()
-    async def __post(self, path, data=None):
+    async def __post(self, path, data=None) -> aiohttp.ClientResponse:
         headers = {"Content-type": "application/json"}
         return await self.lcuSess.post(path, json=data, headers=headers, ssl=False)
 
     @needLcu()
-    async def __put(self, path, data=None):
+    async def __put(self, path, data=None) -> aiohttp.ClientResponse:
         return await self.lcuSess.put(path, json=data, ssl=False)
 
     @needLcu()
-    async def __delete(self, path):
+    async def __delete(self, path) -> aiohttp.ClientResponse:
         return await self.lcuSess.delete(path, ssl=False)
 
     @needLcu()
-    async def __patch(self, path, data=None):
+    async def __patch(self, path, data=None) -> aiohttp.ClientResponse:
         return await self.lcuSess.patch(path, json=data, ssl=False)
 
-    async def __sgp__get(self, path, params=None):
+    async def __sgp__get(self, path, params=None) -> aiohttp.ClientResponse:
         assert self.inTencent
 
         headers = {
@@ -1253,12 +1251,16 @@ class LolClientConnector(QObject):
 
         return await self.sgpSess.get(path, params=params, ssl=False, headers=headers)
 
-    def getLoginSummonerByPid(self, pid):
+    async def getLoginSummonerByPid(self, pid) -> dict:
         port, token, _ = getPortTokenServerByPid(pid)
         url = f'https://riot:{token}@127.0.0.1:{port}/lol-summoner/v1/current-summoner'
         try:
-            return requests.get(url, verify=False, timeout=3).json()
-        except (requests.RequestException, ValueError) as e:
+            async with aiohttp.ClientSession(
+                    auth=aiohttp.BasicAuth('riot', token),
+                    connector=aiohttp.TCPConnector(ssl=False)) as sess:
+                async with sess.get(url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    return await resp.json()
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
             logger.warning(f"getLoginSummonerByPid {pid} failed: {e}", TAG)
             return {}
 

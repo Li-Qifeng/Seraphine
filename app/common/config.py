@@ -70,6 +70,12 @@ class Config(QConfig):
     darkDeathsNumberColor = ColorConfigItem(
         "Personalization", "DarkDeathsNumberColor", "#ffff8d8d")
 
+    # 预组队高亮色 (对局信息界面)
+    team1Color = ColorConfigItem(
+        "Personalization", "Team1Color", '#27ffb01b')
+    team2Color = ColorConfigItem(
+        "Personalization", "Team2Color", '#27ff3399')
+
     careerGamesNumber = RangeConfigItem("Functions", "CareerGamesNumber", 20,
                                         RangeValidator(10, 100))
     apiConcurrencyNumber = RangeConfigItem("Functions", "ApiConcurrencyNumber", 1,

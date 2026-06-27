@@ -17,7 +17,7 @@ from app.components.seraphine_interface import SeraphineInterface
 from app.components.setting_cards import (LineEditSettingCard, GameTabColorSettingCard,
                                           LooseSwitchSettingCard, ProxySettingCard,
                                           DeathsNumberColorSettingCard, ThemeColorSettingCard,
-                                          QueueFilterCard)
+                                          QueueFilterCard, TeamColorSettingCard)
 from app.components.message_box import MultiPathSettingMsgBox
 
 
@@ -193,6 +193,12 @@ class SettingInterface(SeraphineInterface):
             cfg.lightDeathsNumberColor, cfg.darkDeathsNumberColor,
             self.personalizationGroup
         )
+        self.teamColorSettingCard = TeamColorSettingCard(
+            self.tr("Team color"),
+            self.tr("Change the highlight color of premade teams in game info"),
+            cfg.team1Color, cfg.team2Color,
+            self.personalizationGroup
+        )
         self.zoomCard = ComboBoxSettingCard(
             cfg.dpiScale,
             Icon.ZOOMFIT,
@@ -292,6 +298,7 @@ class SettingInterface(SeraphineInterface):
         self.personalizationGroup.addSettingCard(self.gameTabColorSettingCard)
         self.personalizationGroup.addSettingCard(
             self.deathNumberColorSettingCard)
+        self.personalizationGroup.addSettingCard(self.teamColorSettingCard)
         self.personalizationGroup.addSettingCard(self.zoomCard)
         self.personalizationGroup.addSettingCard(self.languageCard)
 

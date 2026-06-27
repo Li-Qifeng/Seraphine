@@ -248,7 +248,7 @@ class WaitingForLolMessageBox(MessageBoxBase):
 
 
 class ChangeClientMessageBox(MessageBoxBase):
-    def __init__(self, pids, parent=None):
+    def __init__(self, pids, summoners, parent=None):
         super().__init__(parent)
 
         self.myYesButton = PrimaryPushButton(
@@ -257,6 +257,7 @@ class ChangeClientMessageBox(MessageBoxBase):
             self.tr('Cancel'), self.buttonGroup)
 
         self.pids = pids
+        self.summoners = summoners
 
         self.titleLabel = TitleLabel()
         self.content = BodyLabel()
@@ -283,8 +284,9 @@ class ChangeClientMessageBox(MessageBoxBase):
             self.tr('Please select the target LOL client:'))
         self.content.setContentsMargins(8, 0, 5, 0)
 
+        currentIdx = 0
         for i, pid in enumerate(self.pids):
-            summoner = connector.getLoginSummonerByPid(pid)
+            summoner = self.summoners.get(pid, {})
             name = summoner.get("gameName") or summoner.get('displayName') or f"PID {pid}"
             item = name + self.tr(", ") + self.tr("PID: ") + str(pid)
 

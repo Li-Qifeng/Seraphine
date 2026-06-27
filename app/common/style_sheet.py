@@ -177,15 +177,13 @@ def __getTextColor():
 # 对局信息界面提示组队的颜色
 @colorManager.registerColor('team1')
 def __getTeam1Color():
-    # TODO: 开放用户自定义设置
-    color = QColor.fromRgb(255, 176, 27, 39)
+    color = cfg.get(cfg.team1Color)
     return __getStyleSheetColor(color)
 
 
 @colorManager.registerColor('team2')
 def __getTeam2Color():
-    # TODO: 开放用户自定义设置
-    color = QColor.fromRgb(255, 51, 153, 39)
+    color = cfg.get(cfg.team2Color)
     return __getStyleSheetColor(color)
 
 
