@@ -1808,17 +1808,6 @@ async def autoShow(data, selection: ChampionSelection):
                 return True
 
 
-async def rollAndSwapBack():
-    """
-    摇骰子并切换回之前的英雄
-    todo: 界面
-    """
-    championId = await connector.getCurrentChampion()
-
-    await connector.reroll()
-    await connector.benchSwap(championId)
-
-
 async def fixLCUWindowViaExe():
     zoom = await connector.getClientZoom()
 

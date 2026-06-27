@@ -1,14 +1,12 @@
 import sys
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget, QApplication, QVBoxLayout
-from ..common.qfluentwidgets import CheckBox
+from PyQt5.QtWidgets import QApplication, QVBoxLayout
+from ..common.qfluentwidgets import CheckBox, FlyoutViewBase
 from typing import List, Tuple
 
 
-# TODO GameInfoInterface添加筛选功能
-
-class ModeFilterWidget(QWidget):
+class ModeFilterWidget(FlyoutViewBase):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
 

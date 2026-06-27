@@ -9,7 +9,7 @@ from qasync import asyncSlot
 
 from ..common.qfluentwidgets import (TransparentTogglePushButton,
                                      ToolTipFilter, ToolTipPosition, setCustomStyleSheet,
-                                     PushButton, Flyout, FlyoutViewBase)
+                                     PushButton, Flyout)
 
 from app.common.style_sheet import StyleSheet
 from app.common.signals import signalBus
@@ -72,6 +72,13 @@ class GameInfoInterface(SeraphineInterface):
         self.rightVBoxLayout = QVBoxLayout()
         self.rightVBoxLayout.setContentsMargins(0, 0, 0, 0)
         self.rightVBoxLayout.setSpacing(8)
+
+        self.filterLayout = QHBoxLayout()
+        self.filterLayout.setContentsMargins(0, 0, 0, 0)
+        self.filterLayout.addStretch(1)
+        self.filterLayout.addWidget(self.filterButton, alignment=Qt.AlignRight)
+
+        self.rightVBoxLayout.addLayout(self.filterLayout)
         self.rightVBoxLayout.addWidget(self.summonersGamesView, stretch=1)
 
         self.hBoxLayout.addWidget(self.summonersView, stretch=2)
@@ -80,6 +87,17 @@ class GameInfoInterface(SeraphineInterface):
     def __connectSignalToSlot(self):
         self.summonersView.currentTeamChanged.connect(
             self.__onCurrentTeamChanged)
+        self.filterButton.clicked.connect(self.__onFilterButtonClicked)
+        self.modeFilterWidget.setCallback(self.__onFilterChanged)
+
+    def __onFilterButtonClicked(self):
+        Flyout.make(self.modeFilterWidget, self.filterButton, self)
+
+    def __onFilterChanged(self):
+        queueIds = self.modeFilterWidget.getFilterMode()
+        view = self.summonersGamesView.currentWidget()
+        if isinstance(view, SummonersGamesView):
+            view.applyFilter(queueIds)
 
     def updateAllySummonersOrder(self, team: list):
         if len(self.allyOrder) == 0:
