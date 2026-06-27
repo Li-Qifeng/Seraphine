@@ -22,10 +22,9 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install pytest ruff
-      - name: Lint with ruff (advisory)
+      - name: Lint with ruff
         run: |
           ruff check app/ tests/ --output-format=github
-        continue-on-error: true
       - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen

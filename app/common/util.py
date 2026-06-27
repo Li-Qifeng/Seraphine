@@ -102,13 +102,13 @@ def getLoLPathByRegistry() -> str:
     无法获取时返回空串
     """
     mainKey = winreg.HKEY_CURRENT_USER
-    subKey = "SOFTWARE\Tencent\LOL"
+    subKey = r"SOFTWARE\Tencent\LOL"
     valueName = "InstallPath"
 
     try:
         with winreg.OpenKey(mainKey, subKey) as k:
             installPath, _ = winreg.QueryValueEx(k, valueName)
-            path = str(Path(f"{installPath}\TCLS").absolute()
+            path = str(Path(rf"{installPath}\TCLS").absolute()
                        ).replace("\\", "/")
             return f"{path[:1].upper()}{path[1:]}"
     except FileNotFoundError:

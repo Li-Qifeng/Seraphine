@@ -90,7 +90,7 @@ class ChampionAlias:
 
     @classmethod
     def isAvailable(cls) -> bool:
-        return ChampionAlias.data != None
+        return ChampionAlias.data is not None
 
     @classmethod
     def getDataVersion(cls) -> str:

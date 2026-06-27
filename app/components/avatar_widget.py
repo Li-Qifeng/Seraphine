@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt, QRect, pyqtSignal
+from PyQt5.QtCore import Qt, QRect
 from PyQt5.QtGui import QPainter, QImage, QBrush, QColor
 
 from ..common.qfluentwidgets import NavigationWidget, isDarkTheme

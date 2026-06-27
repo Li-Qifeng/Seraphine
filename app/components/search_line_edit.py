@@ -1,8 +1,6 @@
 from PyQt5.QtCore import Qt, QEvent, QAbstractItemModel, pyqtSignal, QSize, QTimer
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QCompleter, QAction, QWidget, QHBoxLayout, QListWidgetItem, QPushButton
-from PyQt5.uic.properties import QtCore, QtGui
-from ..common.qfluentwidgets import SearchLineEdit as QSearchLineEdit, PushButton, Icon, FluentIcon, TransparentToolButton, Theme, CompleterMenu, LineEditButton
+from PyQt5.QtWidgets import QCompleter, QAction, QWidget, QHBoxLayout, QListWidgetItem
+from ..common.qfluentwidgets import SearchLineEdit as QSearchLineEdit, FluentIcon, CompleterMenu, LineEditButton
 
 from app.common.config import cfg
 

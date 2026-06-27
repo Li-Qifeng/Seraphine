@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+from typing import Optional
 
 import aiohttp
 from async_lru import alru_cache
@@ -38,7 +39,7 @@ class Opgg:
         self._mayhemSlugCache = {}
         os.makedirs(_OPGG_AUGMENT_CACHE_DIR, exist_ok=True)
 
-    async def start(self):
+    async def start(self) -> None:
         if self.apiSession is None or self.apiSession.closed:
             self.apiSession = aiohttp.ClientSession("https://lol-api-champion.op.gg")
         if self.webSession is None or self.webSession.closed:
@@ -48,21 +49,21 @@ class Opgg:
         except (aiohttp.ClientError, OSError, RuntimeError) as e:
             logger.debug(f"[{TAG}] static_data load skipped: {e}")
 
-    async def close(self):
+    async def close(self) -> None:
         if self.apiSession:
             await self.apiSession.close()
         if self.webSession:
             await self.webSession.close()
 
     @alru_cache(maxsize=512)
-    async def __fetchTierList(self, region, mode, tier):
+    async def __fetchTierList(self, region, mode, tier) -> dict:
         url = f"/api/{region}/champions/{_resolveMode(mode)}"
         params = {"tier": tier}
 
         return await self.__getApi(url, params)
 
     @alru_cache(maxsize=512)
-    async def __fetchChampionBuild(self, region, mode, championId, position, tier):
+    async def __fetchChampionBuild(self, region, mode, championId, position, tier) -> dict:
         resolved = _resolveMode(mode)
         if resolved != 'arena':
             url = f"/api/{region}/champions/{resolved}/{championId}/{position}"
@@ -74,7 +75,7 @@ class Opgg:
         return await self.__getApi(url, params)
 
     @alru_cache(maxsize=512)
-    async def __fetchRsc(self, path):
+    async def __fetchRsc(self, path) -> Optional[dict]:
         headers = dict(_RSC_HEADERS)
         headers['Next-Url'] = path
         timeout = aiohttp.ClientTimeout(total=20)
@@ -92,14 +93,14 @@ class Opgg:
             return None
 
     @alru_cache(maxsize=256)
-    async def __fetchMayhemTierList(self):
+    async def __fetchMayhemTierList(self) -> Optional[dict]:
         text = await self.__fetchRsc('/lol/modes/aram-mayhem')
         if not text:
             return None
         return _extractChampionTierFromRsc(text)
 
     @alru_cache(maxsize=512)
-    async def __fetchMayhemAugments(self, champion_slug):
+    async def __fetchMayhemAugments(self, champion_slug) -> Optional[dict]:
         en_path = f'/lol/modes/aram-mayhem/{champion_slug}/augments'
         zh_path = f'/zh-cn/lol/modes/aram-mayhem/{champion_slug}/augments'
         en_text = await self.__fetchRsc(en_path)
@@ -131,7 +132,7 @@ class Opgg:
                         a['desc'] = desc_map[aid]
         return en_augs
 
-    async def __getMayhemChampionSlug(self, championId):
+    async def __getMayhemChampionSlug(self, championId) -> Optional[str]:
         if championId in self._mayhemSlugCache:
             return self._mayhemSlugCache[championId]
 
@@ -148,7 +149,7 @@ class Opgg:
         return slug
 
     @alru_cache(maxsize=512)
-    async def getChampionBuild(self, region, mode, championId, position, tier):
+    async def getChampionBuild(self, region, mode, championId, position, tier) -> dict:
         positions = await self.getChampionPositions(region, championId, tier)
         resolved = _resolveMode(mode)
         if position not in positions and resolved == 'ranked':
@@ -181,7 +182,7 @@ class Opgg:
             'mode': mode,
         }
 
-    async def __fetchMayhemAugmentsForChampion(self, championId):
+    async def __fetchMayhemAugmentsForChampion(self, championId) -> Optional[dict]:
         slug = await self.__getMayhemChampionSlug(championId)
         if not slug:
             return None
@@ -215,7 +216,7 @@ class Opgg:
                 if local:
                     registerAugmentOpggIcon(aid, local)
         except (OSError, KeyError, TypeError) as e:
-            logger.debug(f"[{TAG}] augment icon register skipped: {e}")
+            logger.debug(f"[{TAG}] augment icon register skipped: {e}")  # noqa: F823
         for aug in raw_augs:
             if not isinstance(aug, dict):
                 continue
@@ -234,7 +235,7 @@ class Opgg:
                 logger.warning(f"Failed to get client augment icon for {aid}: {e}", TAG)
         return await OpggDataParser.parseAramMayhemAugments(raw_augs, icon_map)
 
-    async def fetchMayhemAugmentRarities(self, championId):
+    async def fetchMayhemAugmentRarities(self, championId) -> Optional[dict]:
         """公开方法: 拉取指定英雄的海克斯强化列表, 返回 [(augId, rarity_str), ...]
 
         用于战绩页面 AugmentRow 获取 rarity 并着色边框.
@@ -258,14 +259,14 @@ class Opgg:
             logger.warning(f"fetchMayhemAugmentRarities failed: {e}", TAG)
             return []
 
-    async def __fetchMayhemChampionSummary(self, championId):
+    async def __fetchMayhemChampionSummary(self, championId) -> Optional[dict]:
         tier_data = await self.__fetchMayhemTierList()
         if not tier_data:
             return None
         return tier_data.get(championId)
 
     @alru_cache(maxsize=512)
-    async def getTierList(self, region, mode, tier):
+    async def getTierList(self, region, mode, tier) -> Optional[dict]:
         if mode == 'aram_mayhem':
             raw = await self.__fetchMayhemTierList()
             if raw:
@@ -314,7 +315,7 @@ class Opgg:
         }
 
     @alru_cache(maxsize=512)
-    async def getChampionPositions(self, region, championId, tier):
+    async def getChampionPositions(self, region, championId, tier) -> Optional[list]:
         data = await self.__fetchTierList(region, "ranked", tier)
 
         for item in (data.get('data') or []):
@@ -324,7 +325,7 @@ class Opgg:
 
         return []
 
-    async def __getApi(self, url, params=None):
+    async def __getApi(self, url, params=None) -> Optional[dict]:
         timeout = aiohttp.ClientTimeout(total=15)
         async with self.apiSession.get(url, params=params, ssl=False, proxy=None, timeout=timeout) as res:
             if res.status != 200:
@@ -333,7 +334,7 @@ class Opgg:
                     f"OPGG API {url} returned {res.status}: {body[:200]}")
             return await res.json()
 
-    async def __downloadAugmentIcon(self, url):
+    async def __downloadAugmentIcon(self, url) -> Optional[str]:
         if not url:
             return None
         os.makedirs(_OPGG_AUGMENT_CACHE_DIR, exist_ok=True)
@@ -472,7 +473,7 @@ def _extractJsonArrayAt(text, pos):
 class OpggDataParser:
 
     @staticmethod
-    async def parseRankedTierList(data):
+    async def parseRankedTierList(data) -> dict:
         data = data.get('data') or []
         res = {p: []
                for p in ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT']}
@@ -518,7 +519,7 @@ class OpggDataParser:
         return res
 
     @staticmethod
-    async def parseOtherTierList(data):
+    async def parseOtherTierList(data) -> dict:
         data = data.get('data') or []
         res = []
 
@@ -552,7 +553,7 @@ class OpggDataParser:
         return sorted(res, key=lambda x: (x['rank'] is None, x['rank']))
 
     @staticmethod
-    async def parseMayhemTierList(raw):
+    async def parseMayhemTierList(raw) -> Optional[dict]:
         res = []
         for cid, info in raw.items():
             championId = cid
@@ -575,7 +576,7 @@ class OpggDataParser:
         return sorted(res, key=lambda x: (x['rank'] is None, x['rank']))
 
     @staticmethod
-    async def parseOtherChampionBuild(data, position):
+    async def parseOtherChampionBuild(data, position) -> Optional[dict]:
         data = data.get('data') or {}
 
         summary = data.get('summary') or {}
@@ -724,7 +725,7 @@ class OpggDataParser:
         }
 
     @staticmethod
-    async def parseAramMayhemAugments(raw_augs, icon_map=None):
+    async def parseAramMayhemAugments(raw_augs, icon_map=None) -> Optional[dict]:
         icon_map = icon_map or {}
         groups = [[], [], []]
         for aug in raw_augs:
@@ -781,7 +782,7 @@ class OpggDataParser:
         return groups
 
     @staticmethod
-    async def parseArenaChampionBuild(data):
+    async def parseArenaChampionBuild(data) -> Optional[dict]:
         data = data.get('data') or {}
 
         summary = data.get('summary') or {}

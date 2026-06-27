@@ -1,16 +1,12 @@
 import asyncio
-import subprocess
 import os
-import threading
 
-import pyperclip
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QWidget, QVBoxLayout,
                              QSpacerItem, QSizePolicy)
 from qasync import asyncSlot
 
-from app.common.qfluentwidgets import (InfoBar, InfoBarPosition, PushButton, SmoothScrollArea,
-                                       IndeterminateProgressBar, ComboBox)
+from app.common.qfluentwidgets import (InfoBar, InfoBarPosition, PushButton, IndeterminateProgressBar, ComboBox)
 from app.components.seraphine_interface import SeraphineInterface
 
 from app.lol.connector import connector

@@ -57,7 +57,7 @@ class AramBuff:
                 return True
 
             # 兼容老版本的 json
-            if AramBuff.data.get('version') == None:
+            if AramBuff.data.get('version') is None:
                 return True
 
             return AramBuff.getDataVersion() != lolVersion
@@ -109,7 +109,7 @@ class AramBuff:
 
     @classmethod
     def isAvailable(cls) -> bool:
-        return AramBuff.data != None
+        return AramBuff.data is not None
 
     @classmethod
     @lru_cache(maxsize=None)

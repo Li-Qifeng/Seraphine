@@ -1,10 +1,5 @@
-import subprocess
-import logging
-import json
 
-import asyncio
-from PyQt5.QtCore import QThread, pyqtSignal
-import aiohttp
+from PyQt5.QtCore import QThread
 
 from app.common.logger import logger
 from app.common.signals import signalBus

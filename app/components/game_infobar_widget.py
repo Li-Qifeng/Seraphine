@@ -1,7 +1,7 @@
 from PyQt5.QtCore import Qt, QRect, QTimer
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QSpacerItem, QSizePolicy)
-from PyQt5.QtGui import QPixmap, QPen, QPainter, QColor
+from PyQt5.QtGui import QPen, QPainter, QColor
 
 import asyncio
 
@@ -11,7 +11,7 @@ from app.common.config import cfg
 from app.common.logger import logger
 from app.components.champion_icon_widget import RoundIcon, RoundedLabel
 from app.components.color_label import ColorLabel, DeathsLabel
-from app.components.animation_frame import CardWidget, ColorAnimationFrame
+from app.components.animation_frame import ColorAnimationFrame
 
 
 class RoundLevel(QFrame):
@@ -216,7 +216,7 @@ class MapTime(QFrame):
         self.vBoxLayout = QVBoxLayout(self)
 
         self.mapLabel = QLabel(
-            f'{map} - {position}' if position != None else f'{map}')
+            f'{map} - {position}' if position is not None else f'{map}')
         self.timeLabel = QLabel(f"{duration} · {time}")
 
         self.__initLayout()

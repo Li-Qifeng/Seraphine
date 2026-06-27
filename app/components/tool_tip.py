@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (QWidget, QHBoxLayout,
                              QGraphicsDropShadowEffect)
 
 from app.common.qfluentwidgets import (isDarkTheme, TransparentToolButton,
-                                       FlyoutAnimationType, FluentIcon)
+                                       FlyoutAnimationType)
 from app.common.icons import Icon
 
 

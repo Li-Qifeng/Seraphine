@@ -1,8 +1,6 @@
 from enum import Enum
-from typing import Tuple
-import traceback
 
-from PyQt5.QtGui import QColor, QClipboard
+from PyQt5.QtGui import QColor
 from PyQt5.QtCore import QObject
 from app.common.qfluentwidgets import (StyleSheetBase, Theme, qconfig, isDarkTheme,
                                        themeColor)
