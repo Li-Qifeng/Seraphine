@@ -1,11 +1,8 @@
-from PyQt5.QtCore import QEvent, Qt, pyqtSignal, QRectF, QSize
-from PyQt5.QtGui import (QColor, QMouseEvent, QPainter, QPainterPath, QLinearGradient, QGradient,
-                         QPen, QPixmap, qGray, qAlpha, qRgba)
-from PyQt5.QtWidgets import QWidget, QFrame, QLabel, QGraphicsOpacityEffect
+from PyQt5.QtCore import QEvent, Qt, pyqtSignal, QRectF
+from PyQt5.QtGui import (QColor, QMouseEvent, QPainter, QPainterPath, QLinearGradient, QPen, QPixmap)
+from PyQt5.QtWidgets import QFrame, QLabel, QGraphicsOpacityEffect
 
-from app.common.qfluentwidgets import isDarkTheme
 
-import time
 
 
 class RoundIcon(QFrame):

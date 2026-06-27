@@ -1,7 +1,6 @@
 import re
-import threading
 import time
-from asyncio import CancelledError, LifoQueue
+from asyncio import LifoQueue
 from collections import OrderedDict
 
 import pyperclip
@@ -16,8 +15,7 @@ from ..common.logger import logger
 from ..common.qfluentwidgets import (SmoothScrollArea, PushButton, ToolButton, InfoBar,
                                      InfoBarPosition, ToolTipFilter, ToolTipPosition,
                                      isDarkTheme, FlyoutViewBase, Flyout, Theme,
-                                     IndeterminateProgressRing, ComboBox, StateToolTip,
-                                     setCustomStyleSheet, TransparentPushButton)
+                                     IndeterminateProgressRing, ComboBox, TransparentPushButton)
 
 from app.common.style_sheet import StyleSheet, ColorChangeable
 from app.common.icons import Icon
@@ -26,12 +24,12 @@ from app.common.signals import signalBus
 from app.components.champion_icon_widget import RoundIcon, RoundedLabel
 from app.components.search_line_edit import SearchLineEdit
 from app.components.summoner_name_button import SummonerName
-from app.components.animation_frame import ColorAnimationFrame, CardWidget
+from app.components.animation_frame import ColorAnimationFrame
 from app.components.color_label import ColorLabel, DeathsLabel
 from app.components.game_infobar_widget import AugmentRow
 from app.lol.connector import connector
-from app.lol.exceptions import SummonerGamesNotFound, SummonerNotFound
-from app.lol.tools import parseGameData, parseGameDetailData, parseGamesDataConcurrently
+from app.lol.exceptions import SummonerGamesNotFound
+from app.lol.tools import parseGameDetailData, parseGamesDataConcurrently
 from ..components.seraphine_interface import SeraphineInterface
 
 
@@ -128,12 +126,12 @@ class GamesTab(QFrame):
             self.games.append(game)
             queueId = game['queueId']
 
-            l: list = self.queueIdMap.get(queueId)
+            lst: list = self.queueIdMap.get(queueId)
 
-            if not l:
+            if not lst:
                 self.queueIdMap[queueId] = [index]
             else:
-                l.append(index)
+                lst.append(index)
 
             self.queueIdMap[-1].append(index)
 
@@ -172,7 +170,7 @@ class GamesTab(QFrame):
         self.resetButtonEnabled()
 
     def resetButtonEnabled(self):
-        prevEnable = not self.currentPageNum in [0, 1]
+        prevEnable = self.currentPageNum not in [0, 1]
         self.prevButton.setEnabled(prevEnable)
 
         nextEnable = len(
@@ -818,7 +816,7 @@ class SummonerInfoBar(QFrame):
             self.items.append(label)
 
         if summoner["rankInfo"]:
-            if summoner['rankIcon'] != None and summoner['rankIcon'] != '':
+            if summoner['rankIcon'] is not None and summoner['rankIcon'] != '':
                 self.rankIcon.setPicture(summoner["rankIcon"])
                 self.rankIcon.setFixedSize(30, 30)
 

@@ -148,7 +148,7 @@ class GameInfoInterface(SeraphineInterface):
             view = self.summonersView.ally.items.get(summonerId)
             orig = self.allyChampions.get(summonerId)
 
-            if not view or orig == None:
+            if not view or orig is None:
                 continue
 
             newChampionId = new['championId']
@@ -267,7 +267,7 @@ class SummonersView(QFrame):
             TransparentTogglePushButton:checked:hover {{
                 border: none;
             }}
-        
+
         '''
 
         light = qss.format(light)
@@ -389,7 +389,7 @@ class SummonerInfoView(ColorAnimationFrame):
         soloRank = info['rankInfo']['solo']
         self.rankSolo = QLabel(f"{soloRank['tier']} {soloRank['division']}")
 
-        self.kdaLabel = QLabel(f"KDA: ")
+        self.kdaLabel = QLabel("KDA: ")
         self.kdaLabel.setObjectName("kdaLabel")
 
         k, d, a = info['kda']

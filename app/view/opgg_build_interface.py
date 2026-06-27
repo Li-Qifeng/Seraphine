@@ -1,23 +1,20 @@
 from typing import List
 import re as _re
 
-from PyQt5.QtWidgets import (QHBoxLayout, QWidget, QFrame, QVBoxLayout, QSpacerItem,
-                             QSizePolicy, QLabel, QHBoxLayout, QWidget, QLabel, QFrame,
+from PyQt5.QtWidgets import (QHBoxLayout, QWidget, QLabel, QFrame,
                              QVBoxLayout, QSpacerItem, QSizePolicy, QLayout, QGridLayout)
-from PyQt5.QtCore import Qt, pyqtSignal, QEasingCurve
-from PyQt5.QtGui import QPixmap, QColor, QCursor
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QCursor
 from qasync import asyncSlot
 
 from app.lol.tools import ToolsTranslator
 from app.components.animation_frame import (ColorAnimationFrame,
-                                            NoBorderColorAnimationFrame, CardWidget)
+                                            NoBorderColorAnimationFrame)
 from app.components.transparent_button import PrimaryButton
 from app.components.champion_icon_widget import RoundIcon, RoundedLabel
 from app.common.style_sheet import StyleSheet
 from app.common.qfluentwidgets import (SmoothScrollArea, IconWidget, isDarkTheme,
-                                       ToolTipFilter, ToolTipPosition, PushButton,
-                                       PrimaryToolButton, FluentIcon, PillToolButton,
-                                       TransparentToolButton, ThemeColor)
+                                       ToolTipFilter, ToolTipPosition, ThemeColor)
 from app.common.icons import Icon
 from app.common.config import qconfig, cfg
 from app.common.signals import signalBus
@@ -611,7 +608,7 @@ class ChampionItemWidget(BuildWidgetBase):
 
         useSeparator = layout is self.coreItems
 
-        if not layout is self.lastItems:
+        if layout is not self.lastItems:
             for i, x in enumerate(data):
                 items = ItemsWidget(x, useSeparator)
                 layout.addWidget(items)
@@ -1204,7 +1201,7 @@ class ChampionAugmentsWidget(BuildWidgetBase):
                     widget.deleteLater()
 
     def updateWidget(self, data):
-        if data == None:
+        if data is None:
             self.setVisible(False)
             return
 

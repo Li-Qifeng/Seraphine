@@ -19,7 +19,6 @@ from .tools_pure import (
     timeStampToShortStr,
     secsToStr,
     separateTeams,
-    parseSummonerOrder,
     sortedSummonersByGameRole,
     parseGames,
 )

@@ -652,9 +652,11 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 
 ### 5.1 代码级 bug 标记清单（FIXME / FIX）
 
-| 位置 | 标记 | 现象 | 影响 | 建议 |
+| 位置 | 标记 | 现象 | 影响 | 状态 |
 |---|---|---|---|---|
-| `app/lol/connector.py:883` | FIXME | `getGameflowSession()` 在「刚打完一局→开自定义→玩家在红方且蓝方无人」时会**泄露上一局蓝方名单**（teamOne/teamTwo） | 自动查对手可能拿到错误阵容 | 客户端 API 上游 quirk；需在 `parseGameInfoByGameflowSession` 做去重/校验 |
+| `app/lol/connector.py:883` | 原 FIXME → 已改为 NOTE | `getGameflowSession()` 在「刚打完一局→开自定义→玩家在红方且蓝方无人」时会**泄露上一局蓝方名单**（teamOne/teamTwo） | 自动查对手可能拿到错误阵容 | ✅ 已修复：`tools.py:parseGameInfoByGameflowSession` (line 720-729) 增加 summonerId 去重 + `0`/`None` 过滤；契约见 `tests/test_parse_game_info.py::TestDedupeContract` |
+
+> 当前代码库已无 `FIXME` 标记；`# NOTE` 注释保留用于记录上游 quirk 与既有约束。
 
 ### 5.2 未完成 TODO 清单
 
@@ -670,9 +672,14 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 ### 5.3 代码质量问题（现状→风险→建议）
 
 #### ① 测试套件（已有初步覆盖）
-- **现状**：已有 `tests/test_tools_pure.py`（35 用例，覆盖 `translateTier`、`timeStampToStr`、`separateTeams`、`parseSummonerOrder`、`sortedSummonersByGameRole`、`parseGames`、`parseRankInfo`、`parseDetailRankInfo`）和 `tests/test_connector_contract.py`（31 用例，mock 私有 HTTP 方法注入预设 LCU 响应，验证 connector 公共方法的返回值结构、异常分支、响应转换契约，覆盖 `getSummonerByPuuid` / `getSummonerGamesByPuuid` / `getRankedStatsByPuuid` / `getCurrentSummoner` / `getGameStatus` / `getMapSide` / `getLobbyStatus` / `getMatchmakingStatus` / `isLobbyReadyToSearch` / `isInTencent` / `getLoginSummonerByPid` / `startMatchmaking`）。`requirements.txt` 已含 `pytest>=8.0`。
-- **运行方式**：`python -m pytest tests/`（共 66 passed）。CI 在非 Windows 环境通过 `tests/conftest.py` stub `winreg/win32api/win32gui` 使 connector 可导入。
-- **建议**：后续给 `tools.py` 的 `parseGameInfoByGameflowSession` / `parseAllyGameInfo` 等带状态依赖的函数补测试；CI 加 lint（`ruff`/`flake8`）+ 测试 job 以阻止回归。
+- **现状**：已有 4 个测试文件共 128 用例：
+  - `tests/test_tools_pure.py`（35 用例，覆盖 `translateTier`、`timeStampToStr`、`separateTeams`、`parseSummonerOrder`、`sortedSummonersByGameRole`、`parseGames`、`parseRankInfo`、`parseDetailRankInfo`）。
+  - `tests/test_connector_contract.py`（31 用例，mock 私有 HTTP 方法注入预设 LCU 响应，验证 connector 公共方法的返回值结构、异常分支、响应转换契约，覆盖 `getSummonerByPuuid` / `getSummonerGamesByPuuid` / `getRankedStatsByPuuid` / `getCurrentSummoner` / `getGameStatus` / `getMapSide` / `getLobbyStatus` / `getMatchmakingStatus` / `isLobbyReadyToSearch` / `isInTencent` / `getLoginSummonerByPid` / `startMatchmaking`）。
+  - `tests/test_json_manager.py`（41 用例，纯数据访问层单测，mock 掉 `static_data.registerAugmentRarity` 副作用后由 8 份构造 JSON 实例化 `JsonManager`，覆盖 `getItemIconPath` / `getSummonerSpellIconPath` / `getRuneIconPath` / `getRuneName` / `getRuneDesc`（含 HTML 白名单过滤与 `.strip("<br>")` 字符集剥离语义）/ `getChampionIconPath` / `getMapNameById` / `getNameMapByQueueId` / `getSkinListByChampionName` / `getSkinIdByChampionAndSkinName` / `getAugmentsIconPath` / `getPerkStyles` 等）。
+  - `tests/test_parse_game_info.py`（21 用例，`parseGameInfoByGameflowSession` 契约测试，mock `parseSummonerGameInfo` / `getSummonerGamesInfoViaSGP` / `connector.isInTencent`，覆盖不支持队列早返回、`side='ally'/'enemy'` 选队、`separateTeams` 找不到 summoner 返回 None、**FIXME 修复契约（重复 summonerId / `0` / `None` 去重过滤）**、去重后空 team 返回 None、`parseSummonerGameInfo` 返回 None 被过滤、返回结构 `{summoners, champions, order}`、ranked (420/440) 按 `selectedPosition` 排序、`useSGP` 路径与异常 fallback）。
+- **运行方式**：`python -m pytest tests/`（共 128 passed）。CI 在非 Windows 环境通过 `tests/conftest.py` stub `winreg/win32api/win32gui` 使 connector 可导入。
+- **CI lint**：`.github/workflows/build_seraphine.yaml` 的 `lint-and-test` job 已用 `ruff check app/ tests/ --output-format=github` **强制阻断**（曾为 `continue-on-error: true` advisory 模式，现已收紧）；161 个历史 ruff 错误（136 个 `--fix` 自动修复 + 18 个手动修复，含 E711/E402/E741/F823/W293）已清零。
+- **建议**：后续给 `tools.py` 的 `parseAllyGameInfo` 等带状态依赖的函数补测试；可选引入 `mypy`/`pyright` CI。
 
 #### ② 裸 `except` / 静默吞异常（已清理）
 - **现状**：原约 31 处裸 `except:` / `except Exception: pass` 已全部清理（跨 8 文件，含 `util.py`、`aram.py`、`champions.py`、`static_data.py`、`connector.py`、`main_window.py`、`opgg.py`、`opgg_hextech_assist_interface.py`、`hextech_window.py`、`animation_frame.py`）。现统一为具体异常类型 + `logger.debug`/`warning`。
@@ -680,9 +687,9 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 - **建议**：后续仅在外部边界保留兜底，内部代码逐步收敛到具体异常类型。
 
 #### ③ 类型注解缺失（部分覆盖）
-- **现状**：`app/lol/tools_pure.py` 已定义 `SummonerParsedData`/`GameSummary`/`GameDetail`/`TeamParticipant`/`TeamGameInfo` 等 `TypedDict`，`tools.py` 中 `parseSummonerData`/`parseGameData`/`parseGameDetailData`/`parseAllyGameInfo`/`parseGameInfoByGameflowSession`/`parseSummonerGameInfo`/`getSummonerGamesInfoViaSGP` 已标注返回类型。`connector.py` 公共 LCU 端点方法（约 50 个，含 getter/setter/action）与私有 HTTP 方法（`__get/__post/__put/__delete/__patch/__sgp__get`）及 `__json_retry_get` 均已标注返回类型（`dict`/`list`/`str`/`int`/`bool`/`bytes`/`None`/`Optional[dict]`/`Union[dict, list]`/`aiohttp.ClientResponse`）。
-- **残留**：`JsonManager` 的访问方法、`opgg.py`、`tools.py` 中部分辅助函数仍无类型注解。
-- **建议**：后续渐进式补全 `JsonManager` 与 `opgg.py`；可选 `mypy`/`pyright` CI。
+- **现状**：`app/lol/tools_pure.py` 已定义 `SummonerParsedData`/`GameSummary`/`GameDetail`/`TeamParticipant`/`TeamGameInfo` 等 `TypedDict`，`tools.py` 中 `parseSummonerData`/`parseGameData`/`parseGameDetailData`/`parseAllyGameInfo`/`parseGameInfoByGameflowSession`/`parseSummonerGameInfo`/`getSummonerGamesInfoViaSGP` 已标注返回类型。`connector.py` 公共 LCU 端点方法（约 50 个，含 getter/setter/action）与私有 HTTP 方法（`__get/__post/__put/__delete/__patch/__sgp__get`）及 `__json_retry_get` 均已标注返回类型（`dict`/`list`/`str`/`int`/`bool`/`bytes`/`None`/`Optional[dict]`/`Union[dict, list]`/`aiohttp.ClientResponse`）。`JsonManager` 约 20 个访问方法（`getItemIconPath` / `getSummonerSpellIconPath` / `getRuneIconPath` / `getRuneName` / `getRuneDesc` / `getChampionIconPath` / `getMapNameById` / `getNameMapByQueueId` / `getMapIconByMapId` / `getChampionList` / `getChampions` / `getSkinListByChampionName` / `getSkinIdByChampionAndSkinName` / `getChampionIdByName` / `getChampionNameById` / `getSkinAugments` / `getPerkStyles` / `getAugmentsIconPath` / `getAugmentsName` / `getSummonerSpellList` 等）已标注返回类型；`__init__` 参数（`itemData`/`spellData`/`runeData`/`queueData`/`champions`/`skins`/`perks`/`augments`）也已标注。`opgg.py` 共 22 个方法已标注（`Opgg` 类 16 个：`start`/`close`/`__fetchTierList`/`__fetchChampionBuild`/`getChampionBuild`/多个 `Optional[dict]`/`__getMayhemChampionSlug`/`__downloadAugmentIcon`/`getChampionPositions`；`OpggDataParser` 类 6 个 staticmethod：`parseRankedTierList`/`parseOtherTierList` 等）。
+- **残留**：`tools.py` 中部分辅助函数、`aram.py`/`champions.py` 等数据层仍无类型注解。
+- **建议**：后续渐进式补全残留模块；可选 `mypy`/`pyright` CI。
 
 #### ④ 自定义异常继承 `BaseException` 的脆弱性（已修复）
 - **现状**：`app/lol/exceptions.py` 中 5 个自定义异常均继承 `Exception`（非 `BaseException`）；`@retry` 装饰器用 `except CancelledError: raise` 显式放行取消，再用 `except Exception as e:` 兜底，已不会误捕 `KeyboardInterrupt`/`SystemExit`。
@@ -780,10 +787,10 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 - **历史版本数据**：ARAM 等数据支持查历史版本（`aram.py:43` TODO，需服务端配合）。
 - **更多样式自定义**：team1/team2 预组队高亮色已开放；后续可考虑开放更多 QSS 颜色项（如 GameInfo 卡片背景、辅助色等）给用户。
-- **测试基础设施**：connector 层契约测试已建立（`tests/test_connector_contract.py`，31 用例）；后续可补 `tools.py` 带 connector 依赖的解析函数测试、CI lint job。
-- **类型化数据模型**：connector 公共方法返回类型已标注；后续可补 `JsonManager`、`opgg.py`，并引入 `mypy`/`pyright` CI。
+- **测试基础设施**：✅ connector 契约测试（`tests/test_connector_contract.py`，31 用例）、`JsonManager` 单测（`tests/test_json_manager.py`，41 用例）、`parseGameInfoByGameflowSession` 契约测试（`tests/test_parse_game_info.py`，21 用例）已建立；CI lint job 已从 advisory 收紧为强制阻断（`ruff check`，161 个历史错误已清零）。后续可补 `parseAllyGameInfo` 等带状态依赖的解析函数测试。
+- **类型化数据模型**：✅ connector 公共方法、`JsonManager`（约 20 个方法）、`opgg.py`（22 个方法）返回类型已标注；后续可补 `tools.py` 辅助函数与 `aram.py`/`champions.py`，并引入 `mypy`/`pyright` CI。
 
-> 已完成方向：GameInfo 按队列模式筛选（`mode_filter_widget.py` 已接入 `GameInfoInterface`）；自定义模式 <5 人重载守卫（`main_window.py`）；rollAndSwapBack 删除（海克斯大乱斗无摇骰子）；team1/team2 预组队高亮色开放用户自定义（`TeamColorSettingCard`，cfg 项 `team1Color`/`team2Color`，经 `signalBus.customColorChanged` 触发刷新）；`getLoginSummonerByPid` 异步化改造。
+> 已完成方向：GameInfo 按队列模式筛选（`mode_filter_widget.py` 已接入 `GameInfoInterface`）；自定义模式 <5 人重载守卫（`main_window.py`）；rollAndSwapBack 删除（海克斯大乱斗无摇骰子）；team1/team2 预组队高亮色开放用户自定义（`TeamColorSettingCard`，cfg 项 `team1Color`/`team2Color`，经 `signalBus.customColorChanged` 触发刷新）；`getLoginSummonerByPid` 异步化改造；CI ruff lint 收紧为强制阻断 + 161 个历史错误清零；`JsonManager` + `opgg.py` 类型注解补全；`parseGameInfoByGameflowSession` 契约测试建立 + §5.1 FIXME（自定义模式名单泄露）修复。
 
 ---
 

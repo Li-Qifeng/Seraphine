@@ -5,12 +5,11 @@ from copy import deepcopy
 from app.common.qfluentwidgets import (FluentIconBase, ExpandGroupSettingCard,
                                        ConfigItem, qconfig, PushButton, SpinBox,
                                        ColorDialog, LineEdit, SwitchButton,
-                                       IndicatorPosition, setCustomStyleSheet, SwitchSettingCard, TransparentToolButton, FluentIcon, setThemeColor,
+                                       IndicatorPosition, SwitchSettingCard, setThemeColor,
                                        PillPushButton)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIcon, QColor
-from PyQt5.QtWidgets import (QWidget, QLabel, QHBoxLayout, QGridLayout, QFrame, QPushButton,
-                             QVBoxLayout)
+from PyQt5.QtWidgets import (QWidget, QLabel, QHBoxLayout, QGridLayout, QFrame)
 
 from app.common.icons import Icon
 from app.common.config import cfg
@@ -692,15 +691,15 @@ class QueueFilterCard(ExpandGroupSettingCard):
         self.aramButtonsGroup.setSelectedButtons(selected['450'])
 
         self.normalButtonsGroup.selectedChanged.connect(
-            lambda l: self.__onButtonsGroupSelectChanged(l, '430'))
+            lambda checked: self.__onButtonsGroupSelectChanged(checked, '430'))
         self.quickButtonsGroup.selectedChanged.connect(
-            lambda l: self.__onButtonsGroupSelectChanged(l, '480'))
+            lambda checked: self.__onButtonsGroupSelectChanged(checked, '480'))
         self.soloDuoButtonsGroup.selectedChanged.connect(
-            lambda l: self.__onButtonsGroupSelectChanged(l, '420'))
+            lambda checked: self.__onButtonsGroupSelectChanged(checked, '420'))
         self.flexButtonsGroup.selectedChanged.connect(
-            lambda l: self.__onButtonsGroupSelectChanged(l, '440'))
+            lambda checked: self.__onButtonsGroupSelectChanged(checked, '440'))
         self.aramButtonsGroup.selectedChanged.connect(
-            lambda l: self.__onButtonsGroupSelectChanged(l, '450'))
+            lambda checked: self.__onButtonsGroupSelectChanged(checked, '450'))
 
         self.resetButton.clicked.connect(self.__onResetButtonClicked)
 

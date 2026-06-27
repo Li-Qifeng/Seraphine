@@ -2,7 +2,7 @@ import sys
 import win32api
 import traceback
 
-from qasync import asyncSlot, asyncClose
+from qasync import asyncSlot
 from PyQt5.QtGui import QColor, QPainter, QIcon, QShowEvent
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QRect, QEvent
 from PyQt5.QtWidgets import (QHBoxLayout, QStackedWidget, QWidget, QLabel,
@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import (QHBoxLayout, QStackedWidget, QWidget, QLabel,
 
 
 from app.common.icons import Icon
-from app.lol.connector import connector
 from app.lol.opgg import opgg
 from app.lol.champions import ChampionAlias
 from app.common.logger import logger
@@ -21,11 +20,9 @@ from app.common.signals import signalBus
 from app.common.util import getLolClientWindowPos
 from app.common.qfluentwidgets import (FramelessWindow, isDarkTheme, BackgroundAnimationWidget,
                                        FluentTitleBar,  ComboBox, BodyLabel, ToolTipFilter,
-                                       ToolTipPosition, IndeterminateProgressRing, setTheme,
-                                       Theme, SearchLineEdit, ToolButton,
-                                       FlyoutViewBase, Flyout, FlyoutAnimationType)
+                                       ToolTipPosition, IndeterminateProgressRing, SearchLineEdit, ToolButton,
+                                       FlyoutViewBase, Flyout)
 from app.components.transparent_button import TransparentToggleButton
-from app.components.multi_champion_select import ChampionSelectFlyout
 from app.view.opgg_tier_interface import TierInterface
 from app.view.opgg_build_interface import BuildInterface
 from app.view.opgg_hextech_assist_interface import HextechAssistInterface
@@ -465,7 +462,7 @@ class OpggWindow(OpggWindowBase):
             # rank 模式下，如果是切换了位置选项，会命中 cache，不用重新请求了
             if tier == self.cachedTier and \
                     region == self.cachedRegion and \
-                    self.cachedRankedTierList != None:
+                    self.cachedRankedTierList is not None:
                 res = self.cachedRankedTierList['data'][position]
                 data = self.cachedRankedTierList
 

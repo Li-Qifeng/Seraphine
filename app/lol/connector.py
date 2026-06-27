@@ -1266,7 +1266,9 @@ class LolClientConnector(QObject):
 
 
 class JsonManager:
-    def __init__(self, itemData, spellData, runeData, queueData, champions, skins, perks, augments):
+    def __init__(self, itemData: list, spellData: list, runeData: list,
+                 queueData: list, champions: list, skins: dict,
+                 perks: dict, augments: list):
         self.items = {item["id"]: item["iconPath"] for item in itemData}
         self.spells = {item["id"]: item["iconPath"] for item in spellData[:-3]}
         self.runes = {item["id"]: {"icon": item["iconPath"],
@@ -1357,7 +1359,7 @@ class JsonManager:
         except Exception as e:
             logger.warning(f"Failed to pre-fill augment rarity: {e}", TAG)
 
-    def getItemIconPath(self, iconId):
+    def getItemIconPath(self, iconId) -> str:
         if iconId != 0:
             try:
                 return self.items[iconId]
@@ -1366,13 +1368,13 @@ class JsonManager:
 
         return "/lol-game-data/assets/ASSETS/Items/Icons2D/gp_ui_placeholder.png"
 
-    def getSummonerSpellIconPath(self, spellId):
+    def getSummonerSpellIconPath(self, spellId) -> str:
         if spellId != 0:
             return self.spells[spellId]
         else:
             return "/lol-game-data/assets/data/spells/icons2d/summoner_empty.png"
 
-    def getRuneIconPath(self, runeId):
+    def getRuneIconPath(self, runeId) -> Optional[str]:
         try:
             return self.runes[runeId]['icon']
         except KeyError:
@@ -1380,19 +1382,19 @@ class JsonManager:
                 if item['id'] == runeId:
                     return item['iconPath']
 
-    def getRuneName(self, runeId):
+    def getRuneName(self, runeId) -> str:
         return self.runes[runeId]['name']
 
-    def getRuneDesc(self, runeId):
+    def getRuneDesc(self, runeId) -> str:
         return self.runes[runeId]['desc']
 
-    def getSummonerProfileIconPath(self, iconId):
+    def getSummonerProfileIconPath(self, iconId) -> str:
         return f"/lol-game-data/assets/v1/profile-icons/{iconId}.jpg"
 
-    def getChampionIconPath(self, championId):
+    def getChampionIconPath(self, championId) -> str:
         return f"/lol-game-data/assets/v1/champion-icons/{championId}.png"
 
-    def getMapNameById(self, mapId):
+    def getMapNameById(self, mapId) -> str:
         maps = {
             -1: ("特殊地图", "Special map"),
             11: ("召唤师峡谷", "Summoner's Rift"),
@@ -1406,7 +1408,7 @@ class JsonManager:
 
         return maps[key][index]
 
-    def getNameMapByQueueId(self, queueId):
+    def getNameMapByQueueId(self, queueId) -> dict:
         if queueId == 0:
             return {
                 "name": "Custom" if cfg.language.value == Language.ENGLISH else "自定义"
@@ -1427,7 +1429,7 @@ class JsonManager:
 
         return {"map": map, "name": name}
 
-    def getMapIconByMapId(self, mapId, win):
+    def getMapIconByMapId(self, mapId, win) -> str:
         result = "victory" if win else "defeat"
         if mapId == 11:
             mapName = "sr"
@@ -1440,49 +1442,49 @@ class JsonManager:
 
         return f"app/resource/images/{mapName}-{result}.png"
 
-    def getChampionList(self):
+    def getChampionList(self) -> list:
         return [item for item in self.champions.keys()]
 
-    def getChampionIdList(self):
+    def getChampionIdList(self) -> list:
         return list(self.champs.keys())
 
-    def getChampions(self):
+    def getChampions(self) -> dict:
         return self.champs
 
-    def getSkinListByChampionName(self, championName):
+    def getSkinListByChampionName(self, championName) -> list:
         try:
             return [item for item in self.champions[championName]["skins"].items()]
         except (KeyError, TypeError):
             return []
 
-    def getSkinIdByChampionAndSkinName(self, championName, skinName):
+    def getSkinIdByChampionAndSkinName(self, championName, skinName) -> int:
         return self.champions[championName]["skins"][skinName]["skinId"]
 
-    def getChampionIdByName(self, championName):
+    def getChampionIdByName(self, championName) -> int:
         return self.champions[championName]["id"]
 
-    def getChampionNameById(self, championId):
+    def getChampionNameById(self, championId) -> Optional[str]:
         for cid in self.champs.keys():
             if cid == championId:
                 return self.champs[cid]
 
-    def getSkinAugments(self, skinId):
+    def getSkinAugments(self, skinId) -> Optional[str]:
         return self.skinAugments.get(skinId)
 
-    def getPerkStyles(self):
+    def getPerkStyles(self) -> Optional[dict]:
         return self.perkStyles
 
-    def getAugmentsIconPath(self, augmentId):
+    def getAugmentsIconPath(self, augmentId) -> str:
         try:
             return self.cherryAugments[augmentId]['augmentSmallIconPath']
 
         except (KeyError, TypeError):
             return "/lol-game-data/assets/ASSETS/Items/Icons2D/gp_ui_placeholder.png"
 
-    def getAugmentsName(self, augmentId):
+    def getAugmentsName(self, augmentId) -> str:
         return self.cherryAugments[augmentId]['nameTRA']
 
-    def getSummonerSpellList(self):
+    def getSummonerSpellList(self) -> list:
         # 没找到 LCU API 返回这个玩意的，硬编码妥了
         # 1  -> 净化
         # 3  -> 虚弱

@@ -38,7 +38,7 @@ Get-ChildItem -Path $src -File | ForEach-Object {
 Remove-Item -Path $src -Recurse -Force
 
 # 启动新版本的 Seraphine.exe
-Start-Process -FilePath ".\Seraphine.exe" -NoNewWindow
+Start-Process -FilePath ".\\Seraphine.exe" -NoNewWindow
 
 # 删除自身脚本文件
 Remove-Item -Path $MyInvocation.MyCommand.Definition -Force

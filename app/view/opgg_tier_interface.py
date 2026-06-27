@@ -1,9 +1,7 @@
 
-from PyQt5.QtWidgets import (QHBoxLayout, QWidget, QFrame, QVBoxLayout, QSpacerItem,
-                             QSizePolicy, QLabel, QHBoxLayout, QWidget, QLabel, QFrame,
+from PyQt5.QtWidgets import (QHBoxLayout, QWidget, QLabel, QFrame,
                              QVBoxLayout, QSpacerItem, QSizePolicy)
 from PyQt5.QtCore import Qt, pyqtSignal, QEasingCurve
-from PyQt5.QtGui import QPixmap
 from qasync import asyncSlot
 
 from app.components.animation_frame import ColorAnimationFrame
@@ -11,7 +9,7 @@ from app.components.transparent_button import TransparentButton
 from app.components.champion_icon_widget import RoundIcon, RoundedLabel
 from app.common.signals import signalBus
 from app.common.style_sheet import StyleSheet
-from app.common.qfluentwidgets import BodyLabel, SmoothScrollArea, FlowLayout, IconWidget
+from app.common.qfluentwidgets import BodyLabel, SmoothScrollArea, FlowLayout
 
 
 class TierInterface(QFrame):
@@ -102,7 +100,7 @@ class TierListWidget(QFrame):
 
     @asyncSlot(str)
     async def __onSortRequested(self, key: str):
-        if self.items[0].info.get(key) == None:
+        if self.items[0].info.get(key) is None:
             return
 
         if key == 'rank':

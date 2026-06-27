@@ -6,16 +6,12 @@ import sys
 import webbrowser
 import py7zr
 
-from PyQt5.QtCore import Qt, pyqtSignal, QUrl
-from PyQt5.QtWidgets import (QPushButton, QVBoxLayout, QWidget, QLabel, QFileDialog,
-                             QHBoxLayout)
-from PyQt5.QtGui import QFont, QPixmap
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import (QPushButton, QVBoxLayout, QWidget)
 
 from app.common.qfluentwidgets import (MessageBoxBase, SmoothScrollArea,
                                        BodyLabel, TextEdit, TitleLabel,
-                                       ProgressBar, PrimaryPushButton, ComboBox,
-                                       PipsScrollButtonDisplayMode, HorizontalPipsPager,
-                                       FlyoutViewBase, PushButton)
+                                       ProgressBar, PrimaryPushButton, ComboBox)
 
 from app.common.config import VERSION, cfg, LOCAL_PATH, BETA
 from app.common.util import getLolClientPidSlowly
@@ -24,7 +20,6 @@ from app.common.update import runUpdater
 from app.lol.connector import connector
 from app.components.multi_champion_select import MultiChampionSelectWidget
 from app.components.multi_lol_path_setting import PathDraggableWidget
-from app.components.champion_icon_widget import RoundedLabel
 
 
 class UpdateMessageBox(MessageBoxBase):

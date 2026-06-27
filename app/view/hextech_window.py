@@ -1,5 +1,5 @@
-from PyQt5.QtCore import Qt, QSize, QRect, pyqtSignal
-from PyQt5.QtGui import QIcon, QShowEvent, QPixmap, QPainter, QPainterPath, QColor, QPen
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QIcon, QShowEvent, QPainter, QColor
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QGridLayout, QFrame,
                              QLabel, QWidget, QScrollArea, QApplication)
 
@@ -12,7 +12,7 @@ from app.common.util import getLolClientWindowPos
 from app.common.qfluentwidgets import (ToolTipFilter, ToolTipPosition,
                                        FlyoutViewBase, StrongBodyLabel,
                                        CaptionLabel, isDarkTheme)
-from app.components.champion_icon_widget import RoundIconButton, RoundIcon
+from app.components.champion_icon_widget import RoundIconButton
 from app.lol.connector import connector
 from app.lol.aram import AramBuff
 from app.lol.tools import _getLocalChampionId, _getBenchChampionIds

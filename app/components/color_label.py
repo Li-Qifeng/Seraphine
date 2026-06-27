@@ -1,7 +1,6 @@
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtGui import QColor
 from app.common.style_sheet import ColorChangeable
-from app.common.qfluentwidgets import isDarkTheme
 
 
 class ColorLabel(QLabel, ColorChangeable):
