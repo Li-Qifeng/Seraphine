@@ -39,7 +39,7 @@ def _is_connector_available():
     try:
         from app.lol.connector import connector
         return connector.manager is not None and connector.lcuSess is not None
-    except Exception:
+    except (ImportError, AttributeError):
         return False
 
 
@@ -380,8 +380,8 @@ async def safeGetAugmentRarity(augId):
                 if rarity is not None:
                     registerAugmentRarity(augId, rarity)
                     return _augment_rarity_map.get(augId, '')
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError) as e:
+            logger.debug(f"[{TAG}] getAugmentRarity fallback: {e}")
     return ''
 
 
@@ -392,8 +392,8 @@ async def safeGetChampionName(championId):
             name = connector.manager.getChampionNameById(championId)
             if name:
                 return name
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError) as e:
+            logger.debug(f"[{TAG}] getChampionName fallback: {e}")
     await static_data.ensure_loaded()
     return static_data.getChampionNameById(championId) or ''
 
@@ -403,8 +403,8 @@ async def safeGetChampionIcon(championId):
         try:
             from app.lol.connector import connector
             return await connector.getChampionIcon(championId)
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError, aiohttp.ClientError) as e:
+            logger.debug(f"[{TAG}] getChampionIcon fallback: {e}")
     await static_data.ensure_loaded()
     return await static_data.getChampionIcon(championId)
 
@@ -414,8 +414,8 @@ async def safeGetItemIcon(iconId):
         try:
             from app.lol.connector import connector
             return await connector.getItemIcon(iconId)
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError, aiohttp.ClientError) as e:
+            logger.debug(f"[{TAG}] getItemIcon fallback: {e}")
     return await static_data.getItemIcon(iconId)
 
 
@@ -424,8 +424,8 @@ async def safeGetSummonerSpellIcon(spellId):
         try:
             from app.lol.connector import connector
             return await connector.getSummonerSpellIcon(spellId)
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError, aiohttp.ClientError) as e:
+            logger.debug(f"[{TAG}] getSummonerSpellIcon fallback: {e}")
     return await static_data.getSummonerSpellIcon(spellId)
 
 
@@ -434,8 +434,8 @@ async def safeGetRuneIcon(runeId):
         try:
             from app.lol.connector import connector
             return await connector.getRuneIcon(runeId)
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError, aiohttp.ClientError) as e:
+            logger.debug(f"[{TAG}] getRuneIcon fallback: {e}")
     return await static_data.getRuneIcon(runeId)
 
 
@@ -446,8 +446,8 @@ async def safeGetAugmentName(augId):
             name = connector.manager.getAugmentsName(augId)
             if name:
                 return name
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError) as e:
+            logger.debug(f"[{TAG}] getAugmentName fallback: {e}")
     return ''
 
 
@@ -468,6 +468,6 @@ async def safeGetAugmentIcon(augId):
         try:
             from app.lol.connector import connector
             return await connector.getAugmentIcon(augId)
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError, aiohttp.ClientError) as e:
+            logger.debug(f"[{TAG}] getAugmentIcon fallback: {e}")
     return None

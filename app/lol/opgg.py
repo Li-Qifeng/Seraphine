@@ -5,6 +5,7 @@ import hashlib
 import aiohttp
 from async_lru import alru_cache
 
+from app.common.logger import logger
 from app.lol.static_data import (
     static_data, safeGetChampionName, safeGetChampionIcon,
     safeGetItemIcon, safeGetSummonerSpellIcon, safeGetRuneIcon,
@@ -44,8 +45,8 @@ class Opgg:
             self.webSession = aiohttp.ClientSession("https://www.op.gg")
         try:
             await static_data.ensure_loaded()
-        except Exception:
-            pass
+        except (aiohttp.ClientError, OSError, RuntimeError) as e:
+            logger.debug(f"[{TAG}] static_data load skipped: {e}")
 
     async def close(self):
         if self.apiSession:
@@ -213,8 +214,8 @@ class Opgg:
                 local = icon_map.get(u)
                 if local:
                     registerAugmentOpggIcon(aid, local)
-        except Exception:
-            pass
+        except (OSError, KeyError, TypeError) as e:
+            logger.debug(f"[{TAG}] augment icon register skipped: {e}")
         for aug in raw_augs:
             if not isinstance(aug, dict):
                 continue
@@ -771,8 +772,8 @@ class OpggDataParser:
                 try:
                     from app.lol.static_data import registerAugmentRarity
                     registerAugmentRarity(aid, rarity)
-                except Exception:
-                    pass
+                except (ImportError, AttributeError, TypeError) as e:
+                    logger.debug(f"[{TAG}] augment rarity register skipped: {e}")
 
         for g in groups:
             g.sort(key=lambda x: -x.get('pickRate', 0))

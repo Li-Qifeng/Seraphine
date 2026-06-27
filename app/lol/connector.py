@@ -297,8 +297,8 @@ class LolClientConnector(QObject):
     async def close(self):
         try:
             await self.listener.close()
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError) as e:
+            logger.debug(f"listener close skipped: {e}", TAG)
 
         if self.lcuSess:
             await self.lcuSess.close()
@@ -799,7 +799,8 @@ class LolClientConnector(QObject):
         try:
             res = await self.__get("/lol-lobby/v2/lobby")
             return await res.json()
-        except Exception:
+        except (aiohttp.ClientError, json.JSONDecodeError, AttributeError) as e:
+            logger.debug(f"getLobbyStatus failed: {e}", TAG)
             return None
 
     async def getMatchmakingStatus(self):
@@ -813,13 +814,14 @@ class LolClientConnector(QObject):
             res = await self.__get("/lol-lobby-team-builder/v1/matchmaking")
             if res.status == 200:
                 return await res.json()
-        except Exception:
-            pass
+        except (aiohttp.ClientError, json.JSONDecodeError, AttributeError) as e:
+            logger.debug(f"matchmaking tb status failed: {e}", TAG)
         try:
             res = await self.__get("/lol-matchmaking/v1/search")
             if res.status == 200:
                 return await res.json()
-        except Exception:
+        except (aiohttp.ClientError, json.JSONDecodeError, AttributeError) as e:
+            logger.debug(f"matchmaking status failed: {e}", TAG)
             return None
         return None
 
@@ -855,8 +857,8 @@ class LolClientConnector(QObject):
                 return True
             if mm and mm.get('searchState') in ('Searching', 'Found', 'Accepted'):
                 return True
-        except Exception:
-            pass
+        except (aiohttp.ClientError, json.JSONDecodeError, AttributeError, KeyError) as e:
+            logger.debug(f"startMatchmaking verify status failed: {e}", TAG)
         return False
 
     async def isLobbyReadyToSearch(self):
@@ -1250,7 +1252,11 @@ class LolClientConnector(QObject):
     def getLoginSummonerByPid(self, pid):
         port, token, _ = getPortTokenServerByPid(pid)
         url = f'https://riot:{token}@127.0.0.1:{port}/lol-summoner/v1/current-summoner'
-        return requests.get(url, verify=False).json()
+        try:
+            return requests.get(url, verify=False, timeout=3).json()
+        except (requests.RequestException, ValueError) as e:
+            logger.warning(f"getLoginSummonerByPid {pid} failed: {e}", TAG)
+            return {}
 
 
 class JsonManager:

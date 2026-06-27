@@ -147,8 +147,8 @@ class HextechAssistInterface(QWidget):
             name = connector.manager.getChampionNameById(championId)
             if name:
                 self.championNameLabel.setText(name)
-        except Exception:
-            pass
+        except (AttributeError, TypeError, KeyError) as e:
+            logger.debug(f"hextech champion info load skipped: {e}")
 
         # 拉取 OPGG 海克斯强化数据
         try:
@@ -202,8 +202,8 @@ class HextechAssistInterface(QWidget):
                         label.setToolTip(name)
                         label.installEventFilter(
                             ToolTipFilter(label, 0, ToolTipPosition.TOP))
-                except Exception:
-                    pass
+                except (AttributeError, TypeError, KeyError) as e:
+                    logger.debug(f"augment tooltip load skipped: {e}")
 
         try:
             asyncio.ensure_future(_loadSelectedIcons())
@@ -353,8 +353,8 @@ class RecommendedAugmentBar(QFrame):
                     local = await safeGetAugmentIcon(aid)
                     if local:
                         self.iconLabel.setPicture(local)
-            except Exception:
-                pass
+            except (AttributeError, TypeError, KeyError, ValueError) as e:
+                logger.debug(f"augment icon load skipped: {e}")
 
         try:
             asyncio.ensure_future(_load())

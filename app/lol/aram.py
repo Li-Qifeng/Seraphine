@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 from functools import lru_cache
 
 import aiohttp
@@ -43,7 +44,7 @@ class AramBuff:
         """
         try:
             lolVersion = getLolClientVersion()
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             return True
 
         if not os.path.exists(self.ARAM_CFG_PATH):

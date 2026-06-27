@@ -9,6 +9,7 @@ from pathlib import Path
 import pyperclip
 
 import asyncio
+import aiohttp
 from aiohttp.client_exceptions import ClientConnectorError
 from qasync import asyncClose, asyncSlot
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QTimer
@@ -137,8 +138,8 @@ class MainWindow(FluentWindow):
     async def __initOfflineServices(self):
         try:
             await static_data.ensure_loaded()
-        except Exception:
-            pass
+        except (OSError, RuntimeError) as e:
+            logger.warning(f"static_data load failed: {e}", TAG)
         try:
             await opgg.start()
             # 切换到 tier 界面后再初始化, 否则当前界面仍是 homeInterface,
@@ -865,8 +866,8 @@ class MainWindow(FluentWindow):
 
         try:
             self.careerInterface.w.close()
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError) as e:
+            logger.debug(f"careerInterface close skipped: {e}", TAG)
 
         self.checkAndSwitchTo(self.careerInterface)
         await self.careerInterface.updateInterface(puuid=puuid)
@@ -1058,8 +1059,8 @@ class MainWindow(FluentWindow):
                     'benchEnabled': data.get('benchEnabled'),
                     'enableAutoAramBench': cfg.get(cfg.enableAutoAramBench),
                 }, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        except (OSError, TypeError) as e:
+            logger.debug(f"aram session save skipped: {e}", TAG)
 
         phase = {
             'PLANNING': [autoSetSummonerSpell, autoShow],
@@ -1254,7 +1255,8 @@ class MainWindow(FluentWindow):
         if status == 'ChampSelect':
             try:
                 session = await connector.getChampSelectSession()
-            except Exception:
+            except (aiohttp.ClientError, OSError) as e:
+                logger.debug(f"getChampSelectSession failed: {e}", TAG)
                 return
             if not session:
                 return
@@ -1326,7 +1328,8 @@ class MainWindow(FluentWindow):
                     if champion_name:
                         try:
                             return connector.manager.getChampionIdByName(champion_name)
-                        except Exception:
+                        except (AttributeError, KeyError, ValueError) as e:
+                            logger.debug(f"getChampionIdByName failed: {e}", TAG)
                             return 0
                     break
         except Exception as e:
