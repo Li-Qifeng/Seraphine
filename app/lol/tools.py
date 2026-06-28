@@ -472,6 +472,22 @@ async def parseGameDetailData(puuid, game) -> GameDetail:
                     'subteamPlacement': subteamPlacement,
                     'isPublic': isPublic,
                     'augmentIds': augmentIds,
+                    # 战犯/躺赢狗诊断字段 (v4 stats 全量, OPGG 战犯算法使用)
+                    'damageTaken': stats.get('totalDamageTaken', 0),
+                    'magicDamage': stats.get('magicDamageDealtToChampions', 0),
+                    'physicalDamage': stats.get('physicalDamageDealtToChampions', 0),
+                    'trueDamage': stats.get('trueDamageDealtToChampions', 0),
+                    'totalHeal': stats.get('totalHeal', 0),
+                    'shieldOnTeammates': stats.get('totalDamageShieldedOnTeammates', 0),
+                    'ccTime': stats.get('timeCCingOthers', 0),
+                    'damageToTurrets': stats.get('damageDealtToTurrets', 0),
+                    'damageToObjectives': stats.get('damageDealtToObjectives', 0),
+                    'visionScore': stats.get('visionScore', 0),
+                    'wardsPlaced': stats.get('wardsPlaced', 0),
+                    'wardsKilled': stats.get('wardsKilled', 0),
+                    'goldSpent': stats.get('goldSpent', 0),
+                    'longestTimeSpentLiving': stats.get('longestTimeSpentLiving', 0),
+                    'largestKillingSpree': stats.get('largestKillingSpree', 0),
                 }
                 teams[tid]['summoners'].append(item)
 

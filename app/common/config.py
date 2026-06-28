@@ -105,6 +105,23 @@ class Config(QConfig):
     autoStartMatchmakingDelay = RangeConfigItem(
         "Functions", "AutoStartMatchmakingDelay", 2, RangeValidator(0, 30))
 
+    # auto honor: EndOfGame 自动给队友点赞
+    enableAutoHonor = ConfigItem("Functions",
+                                 "EnableAutoHonor", False, BoolValidator())
+    autoHonorStrategy = OptionsConfigItem(
+        "Functions", "AutoHonorStrategy", "friends_first",
+        OptionsValidator(["friends_first", "friends_only",
+                          "best_score", "random"]))
+    autoHonorDelay = RangeConfigItem(
+        "Functions", "AutoHonorDelay", 1, RangeValidator(0, 5))
+
+    # 战犯/躺赢狗诊断
+    enableWarCriminal = ConfigItem("Functions",
+                                    "EnableWarCriminal", True, BoolValidator())
+    warCriminalSensitivity = OptionsConfigItem(
+        "Functions", "WarCriminalSensitivity", "normal",
+        OptionsValidator(["loose", "normal", "strict"]))
+
     enableAutoSelectTimeoutCompleted = ConfigItem("Functions",
                                                   "EnableAutoSelectTimeoutCompleted", False,
                                                   BoolValidator())

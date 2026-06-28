@@ -96,6 +96,13 @@ class AuxiliaryInterface(SeraphineInterface):
             self.tr("Auto reconnect"),
             self.tr("Automatically reconnect when disconnected"),
             cfg.enableAutoReconnect, self.gameGroup)
+        self.autoHonorCard = AutoHonorCard(
+            self.tr("Auto honor"),
+            self.tr(
+                "Honor a teammate automatically at end of game. "
+                "Friends first/only strategies require the teammate to be in your friend list."),
+            cfg.enableAutoHonor, cfg.autoHonorDelay, cfg.autoHonorStrategy,
+            self.gameGroup)
         self.spectateCard = SpectateCard(
             self.tr("Spectate"),
             self.tr("Spectate live game of summoner in the same environment"),
@@ -216,6 +223,7 @@ class AuxiliaryInterface(SeraphineInterface):
 
         # 游戏
         self.gameGroup.addSettingCard(self.autoReconnectCard)
+        self.gameGroup.addSettingCard(self.autoHonorCard)
         self.gameGroup.addSettingCard(self.createPracticeLobbyCard)
         self.gameGroup.addSettingCard(self.spectateCard)
         self.gameGroup.addSettingCard(self.lockConfigCard)
@@ -1044,6 +1052,125 @@ class AutoAcceptMatchingCard(ExpandGroupSettingCard):
         if isChecked:
             self.statusLabel.setText(self.tr("Enabled, delay: ") + str(delay) +
                                      self.tr(" seconds"))
+        else:
+            self.statusLabel.setText(self.tr("Disabled"))
+
+
+class AutoHonorCard(ExpandGroupSettingCard):
+    """EndOfGame 自动点赞设置卡片: 开关 + 延迟 + 策略选择."""
+
+    # 策略值到本地化文案的映射 (显示文案 -> config 值, 反向用 _strategyValueMap)
+    _STRATEGY_ITEMS = [
+        ("friends_first", "Friends first"),
+        ("friends_only", "Friends only"),
+        ("best_score", "Best score"),
+        ("random", "Random"),
+    ]
+
+    def __init__(self, title, content,
+                 enableConfigItem: ConfigItem = None,
+                 delayConfigItem: ConfigItem = None,
+                 strategyConfigItem: ConfigItem = None,
+                 parent=None):
+        super().__init__(FluentIcon.HEART, title, content, parent)
+
+        self.statusLabel = QLabel(self)
+
+        self.inputWidget = QWidget(self.view)
+        self.inputLayout = QHBoxLayout(self.inputWidget)
+
+        self.delayLabel = QLabel(self)
+        self.lineEdit = SpinBox()
+
+        self.strategyLabel = QLabel(self)
+        self.strategyComboBox = ComboBox()
+
+        self.switchButtonWidget = QWidget(self.view)
+        self.switchButtonLayout = QHBoxLayout(self.switchButtonWidget)
+        self.switchButton = SwitchButton(indicatorPos=IndicatorPosition.RIGHT)
+
+        self.enableConfigItem = enableConfigItem
+        self.delayConfigItem = delayConfigItem
+        self.strategyConfigItem = strategyConfigItem
+
+        # 反向映射: 本地化文案 -> config 值
+        self._strategyValueMap = {}
+        for value, text in self._STRATEGY_ITEMS:
+            self._strategyValueMap[self.tr(text)] = value
+
+        self.__initLayout()
+        self.__initWidget()
+
+    def __initLayout(self):
+        self.addWidget(self.statusLabel)
+
+        self.inputLayout.setSpacing(19)
+        self.inputLayout.setAlignment(Qt.AlignTop)
+        self.inputLayout.setContentsMargins(48, 18, 44, 18)
+
+        self.inputLayout.addWidget(self.delayLabel, alignment=Qt.AlignLeft)
+        self.inputLayout.addWidget(self.lineEdit, alignment=Qt.AlignLeft)
+        self.inputLayout.addSpacing(20)
+        self.inputLayout.addWidget(self.strategyLabel, alignment=Qt.AlignLeft)
+        self.inputLayout.addWidget(self.strategyComboBox, alignment=Qt.AlignRight)
+        self.inputLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
+
+        self.switchButtonLayout.setContentsMargins(48, 18, 44, 18)
+        self.switchButtonLayout.addWidget(self.switchButton, 0, Qt.AlignRight)
+        self.switchButtonLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
+
+        self.viewLayout.setSpacing(0)
+        self.viewLayout.setContentsMargins(0, 0, 0, 0)
+        self.addGroupWidget(self.inputWidget)
+        self.addGroupWidget(self.switchButtonWidget)
+
+    def __initWidget(self):
+        self.delayLabel.setText(self.tr("Delay seconds after game end:"))
+        self.lineEdit.setRange(0, 5)
+        self.lineEdit.setValue(cfg.get(self.delayConfigItem))
+        self.lineEdit.setSingleStep(1)
+        self.lineEdit.setMinimumWidth(120)
+
+        self.strategyLabel.setText(self.tr("Honor strategy:"))
+        for value, text in self._STRATEGY_ITEMS:
+            self.strategyComboBox.addItem(self.tr(text), userData=value)
+        # 选中当前 config 值
+        currentStrategy = cfg.get(self.strategyConfigItem)
+        for i in range(self.strategyComboBox.count()):
+            if self.strategyComboBox.itemData(i) == currentStrategy:
+                self.strategyComboBox.setCurrentIndex(i)
+                break
+        self.strategyComboBox.setMinimumWidth(160)
+
+        self.switchButton.setChecked(cfg.get(self.enableConfigItem))
+
+        self.lineEdit.valueChanged.connect(self.__onLineEditValueChanged)
+        self.switchButton.checkedChanged.connect(
+            self.__onSwitchButtonCheckedChanged)
+        self.strategyComboBox.currentIndexChanged.connect(
+            self.__onStrategyChanged)
+
+        self.__setStatusLabelText()
+
+    def __onLineEditValueChanged(self, value):
+        qconfig.set(self.delayConfigItem, value)
+        self.__setStatusLabelText()
+
+    def __onSwitchButtonCheckedChanged(self, isChecked: bool):
+        qconfig.set(self.enableConfigItem, isChecked)
+        self.__setStatusLabelText()
+
+    def __onStrategyChanged(self, index: int):
+        value = self.strategyComboBox.itemData(index)
+        if value:
+            qconfig.set(self.strategyConfigItem, value)
+
+    def __setStatusLabelText(self):
+        if self.switchButton.isChecked():
+            self.statusLabel.setText(
+                self.tr("Enabled, delay: ") + str(self.lineEdit.value()) +
+                self.tr(" seconds, strategy: ") +
+                self.strategyComboBox.currentText())
         else:
             self.statusLabel.setText(self.tr("Disabled"))
 

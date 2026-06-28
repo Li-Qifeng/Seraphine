@@ -3,7 +3,7 @@
 > 本文档面向**二次开发者**，聚焦于：架构与实现原理深析、二次开发规范、已知问题与技术债。
 > 安装、卸载、FAQ、免责声明、致谢等内容请参见 [`readme.md`](./readme.md)。
 >
-> **当前适用版本**：`v1.1.4`（`app/common/config.py:210`）
+> **当前适用版本**：`v1.1.5`（`app/common/config.py:239`）
 > **作者 / 年份**：Zzaphkiel / 2023
 > **许可证**：GPLv3（禁止商用）
 > **目标平台**：Windows（桌面端，仅 64 位）
@@ -113,7 +113,7 @@ push 到 main 分支
 ### 1.4 运行环境约束
 
 - **仅 Windows**：深度依赖 `win32api`/`winreg`/`tasklist`/`wmic`/`ctypes.windll`，无跨平台抽象层。
-- **数据目录**：`%APPDATA%\Seraphine\`（`config.json`、`AramBuff.json`、`ChampionAlias.json`、`temp/`）。代码常量：`cfg.LOCAL_PATH`（`config.py:214`）。
+- **数据目录**：`%APPDATA%\Seraphine\`（`config.json`、`AramBuff.json`、`ChampionAlias.json`、`temp/`）。代码常量：`cfg.LOCAL_PATH`（`config.py:243`）。
 - **日志目录**：`./log/`（脚本启动目录下，rotating 2MB × 20 文件）。
 - **开发环境**：`conda create -n seraphine python=3.8` → `pip install -r requirements.txt` → `python main.py`。
 - **Windows 11 检测**：`isWin11()` = `sys.getwindowsversion().build >= 22000`，用于决定是否启用 Mica 效果。
@@ -158,13 +158,13 @@ push 到 main 分支
 **关键观察**：
 1. **没有 MVC 框架**，但有清晰的职责分离：`connector`（I/O）↔ `tools`（纯转换）↔ `views`（渲染），由 `MainWindow` 作为 orchestrator 编排。
 2. **单例服务层**在模块导入时即实例化（见 §2.3），无 DI 容器。
-3. `MainWindow.__conncetSignalToSlot`（`main_window.py:220`）是**显式接线表**，是理解整个应用事件流的入口。
+3. `MainWindow.__conncetSignalToSlot`（`main_window.py:275`）是**显式接线表**，是理解整个应用事件流的入口。
 
 ### 2.2 启动流程剖析
 
 **入口 `main.py`**（顺序）：
 1. `os.chdir` 到脚本目录，保证 `app/resource/...` 相对路径可用。
-2. 读取 `cfg`（**模块导入即触发** `%APPDATA%\Seraphine\config.json` 的加载，见 `config.py:217`）。
+2. 读取 `cfg`（**模块导入即触发** `%APPDATA%\Seraphine\config.json` 的加载，见 `config.py:245`）。
 3. 处理 `--version`/`-v` 命令行（快速退出）。
 4. 根据 `cfg.dpiScale` 配置 Hi-DPI 缩放（`Auto` 用 Qt rounding policy，否则强制 `QT_SCALE_FACTOR`）。
 5. 设置全局抗锯齿字体，创建 `QApplication`。
@@ -173,7 +173,7 @@ push 到 main 分支
 8. 构造 `MainWindow()` 并 `show()`。
 9. `eventLoop.run_until_complete(appCloseEvent.wait())` 阻塞直到退出。
 
-**`MainWindow.__init__`**（`main_window.py:65`）：
+**`MainWindow.__init__`**（`main_window.py:69`）：
 ```
 __init__
  ├─ __initConfig           # 首次运行时从注册表自动探测 LoL 安装路径
@@ -192,7 +192,7 @@ __init__
  └─ __silentStart          # 若配置则静默启动到托盘
 ```
 
-**导航注册（`__initNavigation`，`main_window.py:149`）**：
+**导航注册（`__initNavigation`，`main_window.py:194`）**：
 - 顶部滚动区：Start / Career / Search 👀 / Game Information / Auxiliary Functions（5 个主界面）
 - 底部固定区：OP.GG（弹出独立窗口）/ Back to Lobby（修复客户端）/ Notice（公告）/ 头像 widget / Settings
 
@@ -215,12 +215,12 @@ __init__
 
 | 单例 | 位置 | 说明 |
 |---|---|---|
-| `connector` | `connector.py:1410` | LCU 客户端，进程内唯一，持有 port/token/server/manager 等可变状态 |
-| `signalBus` | `signals.py:40` | 全局信号总线 |
-| `cfg` | `config.py:216` | QConfig 单例，import 即加载 config.json |
-| `logger` | `logger.py:110` | 日志器，rotating |
-| `opgg` | `opgg.py:443` | OPGG 异步客户端（带 `@alru_cache`） |
-| `github` | `util.py:90` | 更新/公告拉取（可选代理） |
+| `connector` | `connector.py:1504` | LCU 客户端，进程内唯一，持有 port/token/server/manager 等可变状态 |
+| `signalBus` | `signals.py:46` | 全局信号总线 |
+| `cfg` | `config.py:245` | QConfig 单例，import 即加载 config.json |
+| `logger` | `logger.py:109` | 日志器，rotating |
+| `opgg` | `opgg.py:923` | OPGG 异步客户端（带 `@alru_cache`） |
+| `github` | `util.py:93` | 更新/公告拉取（可选代理） |
 
 无 DI 容器，到处 `from ... import connector` 直接使用。**多客户端场景**通过 `connector.start()/close()` 复用同一实例，存在已知竞态窗口（见 `__onLolClientChanged`）。
 
@@ -255,7 +255,7 @@ getPortTokenServerByPid(pid)
 - 5 个动词 `__get/__post/__put/__delete/__patch` 均被 `@needLcu` 守卫：若 `connector.lcuSess is None`（LCU 未就绪）则 `raise ReferenceError`。
 - **Tencent SGP**：当 `connector.isInTencent()`（server 属于 `tj100/hn1/cq100/gz100/nj100/hn10/tj101/bgp2`）时，走 `https://{server}-sgp.lol.qq.com:21019/...`，Bearer token 来自 entitlements 端点。用于国服战绩/排位/观战的补充数据。
 
-#### `@retry` 装饰器机制（`connector.py:56`）
+#### `@retry` 装饰器机制（`connector.py:54`）
 
 每个对外 LCU 方法都套 `@retry(count=5)`，关键逻辑：
 
@@ -310,12 +310,12 @@ matchUri(data): URI + eventType 匹配 → asyncio.create_task(callable(data))
 - **并行取数**：大量使用 `asyncio.gather`，典型场景——同时取 N 个队友的图标 + 段位 + 历史战绩。
 - **并发上限**：`asyncio.Semaphore(cfg.apiConcurrencyNumber)`（默认 1，可在 1–100 配置，改后需重启）。**默认为 1 是因为客户端对并发 HTTP 较脆弱**（见 README「客户端为什么有时候会闪退」）。
 - **后台线程**：`StoppableThread`（继承 QThread）跑阻塞 I/O——`checkUpdate`、`checkNotice`；`LolProcessExistenceListener` 每 1.5s 轮询 tasklist。
-- **`asyncSlot` 陷阱**：作者在 `main_window.py:504-528` 留有详细注释——`asyncSlot` 返回的是 task，若需等待结果须 `await`，否则后续逻辑可能跑在 task 完成前。
+- **`asyncSlot` 陷阱**：作者在 `main_window.py:561-585` 留有详细注释——`asyncSlot` 返回的是 task，若需等待结果须 `await`，否则后续逻辑可能跑在 task 完成前。
 - **`CancelledError` 陷阱**：见 §5.3。
 
 ### 2.6 游戏状态机
 
-`gameflow-phase` WebSocket 事件驱动 `MainWindow.__onGameStatusChanged`（`main_window.py:773`）：
+`gameflow-phase` WebSocket 事件驱动 `MainWindow.__onGameStatusChanged`（`main_window.py:876`）：
 
 ```
 状态字符串          → 行为
@@ -564,7 +564,7 @@ data = parseMyData(raw)
 - ✅ 长耗时后台 I/O 用 `StoppableThread`，不阻塞 UI 循环。
 - ❌ **禁止**在主循环上做同步阻塞 I/O（如 `requests.get`）——目前 `util.sendNotificationMsg` 有此问题（见 §5.3），属待修。`getLoginSummonerByPid` 已改造为 aiohttp 异步（见 §5.3 ⑦）。
 - ⚠️ **`CancelledError` 必须能穿透** `@retry`——装饰器已 `except CancelledError: raise`，新增类似装饰器时要照搬。
-- ⚠️ `asyncSlot` 返回的是 task，需等待结果要 `await`（见 `main_window.py:504-528` 注释）。
+- ⚠️ `asyncSlot` 返回的是 task，需等待结果要 `await`（见 `main_window.py:561-585` 注释）。
 
 ### 4.6 资源与缓存规范
 
@@ -654,7 +654,7 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 
 | 位置 | 标记 | 现象 | 影响 | 状态 |
 |---|---|---|---|---|
-| `app/lol/connector.py:883` | 原 FIXME → 已改为 NOTE | `getGameflowSession()` 在「刚打完一局→开自定义→玩家在红方且蓝方无人」时会**泄露上一局蓝方名单**（teamOne/teamTwo） | 自动查对手可能拿到错误阵容 | ✅ 已修复：`tools.py:parseGameInfoByGameflowSession` (line 720-729) 增加 summonerId 去重 + `0`/`None` 过滤；契约见 `tests/test_parse_game_info.py::TestDedupeContract` |
+| `app/lol/connector.py:884` | 原 FIXME → 已改为 NOTE | `getGameflowSession()` 在「刚打完一局→开自定义→玩家在红方且蓝方无人」时会**泄露上一局蓝方名单**（teamOne/teamTwo） | 自动查对手可能拿到错误阵容 | ✅ 已修复：`tools.py:parseGameInfoByGameflowSession` (line 720-729) 增加 summonerId 去重 + `0`/`None` 过滤；契约见 `tests/test_parse_game_info.py::TestDedupeContract` |
 
 > 当前代码库已无 `FIXME` 标记；`# NOTE` 注释保留用于记录上游 quirk 与既有约束。
 
@@ -663,7 +663,7 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 | 位置 | TODO 内容 | 性质 |
 |---|---|---|
 | `app/lol/aram.py:43` | 暂未提供历史版本数据查询接口（需服务端配合） | 功能增强 |
-| `app/view/search_interface.py:1388` | 某处可以弹个窗（作者留，需求不明） | 小优化 |
+| `app/view/search_interface.py:1386` | 某处可以弹个窗（作者留，需求不明） | 小优化 |
 
 > 另有大量 `# NOTE -- By Hpero4/Zzaphkiel` 注释，记录异步任务生命周期、puuid 刷新语义等，非待办但**改这些区域前务必读注释**。
 
@@ -801,7 +801,7 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 | 用途 | 路径 |
 |---|---|
 | 入口 | `D:\Code\Seraphine\main.py` |
-| 版本常量 | `app\common\config.py:210`（`VERSION`） |
+| 版本常量 | `app\common\config.py:239`（`VERSION`） |
 | 配置单例 | `app\common\config.py`（`cfg`） |
 | 信号总线 | `app\common\signals.py`（`signalBus`） |
 | 日志器 | `app\common\logger.py`（`logger`） |
@@ -871,4 +871,4 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 ---
 
-*本文档基于 v1.1.4 源码梳理。代码变更时请同步更新对应章节，并在版本升级时更新顶部「适用版本」。*
+*本文档基于 v1.1.5 源码梳理。代码变更时请同步更新对应章节，并在版本升级时更新顶部「适用版本」。*
