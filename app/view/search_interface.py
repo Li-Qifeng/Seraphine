@@ -936,6 +936,10 @@ class SummonerInfoBar(QFrame):
         self.hBoxLayout.addWidget(self.levelLabel)
         self.hBoxLayout.addWidget(self.championIconLabel)
         self.hBoxLayout.addWidget(self.summonerName, alignment=Qt.AlignVCenter)
+        # 战犯/躺赢狗徽章: 紧跟召唤师名右侧 (仅当本召唤师是嫌疑者时显示)
+        if self.verdictBadge:
+            self.hBoxLayout.addSpacing(6)
+            self.hBoxLayout.addWidget(self.verdictBadge)
         self.hBoxLayout.addSpacing(4)
         self.hBoxLayout.addSpacerItem(QSpacerItem(
             1, 1, QSizePolicy.Minimum, QSizePolicy.Minimum))
@@ -961,10 +965,6 @@ class SummonerInfoBar(QFrame):
         if self.augmentRow:
             self.hBoxLayout.addSpacing(8)
             self.hBoxLayout.addWidget(self.augmentRow)
-        # 战犯/躺赢狗徽章 (仅当本召唤师是嫌疑者时显示)
-        if self.verdictBadge:
-            self.hBoxLayout.addSpacing(8)
-            self.hBoxLayout.addWidget(self.verdictBadge)
 
 
 class GameTitleBar(QFrame, ColorChangeable):
