@@ -344,7 +344,8 @@ class TestPickHonorTarget:
     """honor 策略测试 (auto honor 部分)."""
 
     def _makeEog(self, candidates):
-        return {'honorables': candidates}
+        # /lol-honor-v2/v1/ballot 实测字段为 eligibleAllies (非 honorables)
+        return {'eligibleAllies': candidates}
 
     def test_friends_first_uses_friend(self):
         from app.lol.tools_pure import pickHonorTarget, HONOR_STRATEGY_FRIENDS_FIRST
