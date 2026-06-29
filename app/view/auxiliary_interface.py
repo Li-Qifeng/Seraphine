@@ -122,6 +122,12 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.enableAutoStartMatchmaking, cfg.autoStartMatchmakingDelay,
             self.bpGroup, delayRange=(0, 30),
             delayLabelText=self.tr("Delay seconds after entering lobby:"))
+        self.autoPlayAgainCard = SwitchSettingCard(
+            Icon.ARROWREPEAT,
+            self.tr("Auto play again"),
+            self.tr(
+                "Automatically click \"Play Again\" at end of game"),
+            cfg.enableAutoPlayAgain, self.bpGroup)
         self.autoAcceptSwapingCard = AutoAcceptSwapingCard(
             self.tr("Auto accept swaping"),
             self.tr(
@@ -213,6 +219,7 @@ class AuxiliaryInterface(SeraphineInterface):
         # BP
         self.bpGroup.addSettingCard(self.autoAcceptMatchingCard)
         self.bpGroup.addSettingCard(self.autoStartMatchmakingCard)
+        self.bpGroup.addSettingCard(self.autoPlayAgainCard)
         self.bpGroup.addSettingCard(self.autoAcceptSwapingCard)
         self.bpGroup.addSettingCard(self.autoSelectChampionCard)
         self.bpGroup.addSettingCard(self.autoBanChampionsCard)

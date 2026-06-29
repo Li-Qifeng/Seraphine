@@ -608,7 +608,7 @@ class CareerInterface(SeraphineInterface):
             self.games.get("games", []), targetId)
 
         for game in hitGames:
-            bar = GameInfoBar(game)
+            bar = self.__makeGameInfoBar(game)
             bar.setMaximumHeight(86)
             self.gameInfoLayout.addWidget(bar)
             self.gameInfoLayout.addSpacing(5)

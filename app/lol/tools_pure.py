@@ -110,29 +110,19 @@ def parseGames(games, targetId=0):
 
 
 def _extractHonorCandidates(eogStats: Optional[dict]) -> list:
-    """从 EOG stats 提取 honor 候选列表.
+    """从 ballot 提取 honor 候选列表.
 
-    TODO(真机验证): EOG stats 实际字段结构待抓包确认. 这里做兼容:
-    优先取 eogStats['honorables'], 其次 eogStats['teams'][*]['summoners'],
-    兜底返回空列表. 每个候选项至少尝试取 puuid/summonerId/score.
+    /lol-honor-v2/v1/ballot GET 返回:
+    {gameId, eligibleAllies: [...], eligibleOpponents: [...], ...}.
+    eligibleAllies[] 元素含 puuid/summonerId/summonerName/championId 等.
+    默认只返回 allies (点赞通常只给队友).
     """
     if not isinstance(eogStats, dict):
         return []
 
-    candidates = eogStats.get('honorables')
-    if isinstance(candidates, list) and candidates:
-        return candidates
-
-    teams = eogStats.get('teams') or eogStats.get('teams', [])
-    if isinstance(teams, list):
-        flat = []
-        for t in teams:
-            if isinstance(t, dict):
-                summoners = t.get('summoners') or t.get('players') or []
-                if isinstance(summoners, list):
-                    flat.extend(summoners)
-        if flat:
-            return flat
+    allies = eogStats.get('eligibleAllies')
+    if isinstance(allies, list):
+        return allies
     return []
 
 

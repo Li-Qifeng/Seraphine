@@ -1152,33 +1152,78 @@ class LolClientConnector(QObject):
             return []
 
     async def getEogStats(self) -> Optional[dict]:
-        """获取本局 EndOfGame 队友点赞候选与评分.
+        """获取本局 EndOfGame 点赞候选 (ballot).
 
-        TODO(真机验证): 端点 /lol-end-of-game/v1/eog-stats 可能随客户端版本变动,
-        实际字段 (honorables/score/summonerId) 也需真机抓包确认. 失败返回 None.
+        正确端点为 /lol-honor-v2/v1/ballot (GET), 返回:
+        {gameId, eligibleAllies: [...], eligibleOpponents: [...],
+         honoredPlayers: [...], votePool: {...}}.
+        eligibleAllies[] 元素含 puuid/summonerId/summonerName/championId 等.
+        失败 (非 200 / 网络异常 / 解析错误) 返回 None.
         """
         try:
-            res = await self.__get("/lol-end-of-game/v1/eog-stats")
+            res = await self.__get("/lol-honor-v2/v1/ballot")
             if res.status != 200:
+                logger.error(
+                    f"getEogStats HTTP {res.status}", TAG)
                 return None
-            return await res.json()
+            data = await res.json()
+            if isinstance(data, dict):
+                logger.error(
+                    f"getEogStats ballot keys: {list(data.keys())}", TAG)
+                allies = data.get('eligibleAllies')
+                if isinstance(allies, list) and allies:
+                    first = allies[0]
+                    if isinstance(first, dict):
+                        logger.error(
+                            f"getEogStats eligibleAllies[0] keys: "
+                            f"{list(first.keys())}", TAG)
+            return data
         except (aiohttp.ClientError, json.JSONDecodeError, AttributeError) as e:
-            logger.debug(f"getEogStats failed: {e}", TAG)
+            logger.error(f"getEogStats failed: {e}", TAG)
             return None
 
-    async def submitHonor(self, summonerId, honorCategory: str = "HEART") -> bool:
+    async def submitHonor(self, recipientPuuid: str,
+                          honorType: str = "HEART") -> bool:
         """提交本局队友点赞.
 
-        TODO(真机验证): 端点与 body schema (summonerId/honorCategory) 需真机抓包确认.
-        honorCategory 通常为 HEART/LEADER/GREAT_SHOT 等. 成功返回 True.
+        正确端点: POST /lol-honor/v1/honor (V3 风格, 属 lol-honor-v2 插件).
+        请求体 (LolHonorV2ApiHonorPlayerServerRequestV3):
+            {honorType: str, recipientPuuid: str}
+        不再需要 gameId/summonerId, 游戏上下文由 ballot 隐式确定.
+        成功返回 True (HTTP 204 No Content).
         """
         try:
-            data = {"summonerId": summonerId, "honorCategory": honorCategory}
-            res = await self.__post(
-                "/lol-honor-store/v1/ballot", data=data)
-            return res.status in (200, 204)
+            data = {
+                "honorType": honorType,
+                "recipientPuuid": str(recipientPuuid),
+            }
+            res = await self.__post("/lol-honor/v1/honor", data=data)
+            if res.status in (200, 204):
+                return True
+            logger.error(
+                f"submitHonor HTTP {res.status}", TAG)
+            return False
+        except (aiohttp.ClientError, AttributeError, ValueError,
+                TypeError) as e:
+            logger.error(f"submitHonor failed: {e}", TAG)
+            return False
+
+    async def sealHonorBallot(self) -> bool:
+        """封存 honor ballot, 使提交的点赞生效.
+
+        POST /lol-honor/v1/ballot (无 body), 属 lol-honor-v2 插件.
+        必须在 submitHonor 之后调用, 否则客户端不会真正记录 honor.
+        成功返回 True.
+        """
+        try:
+            res = await self.__post("/lol-honor/v1/ballot")
+            if res.status in (200, 204):
+                return True
+            logger.error(
+                f"sealHonorBallot HTTP {res.status}", TAG)
+            return False
         except (aiohttp.ClientError, AttributeError) as e:
-            logger.warning(f"submitHonor failed: {e}", TAG)
+            logger.error(f"sealHonorBallot failed: {e}", TAG)
             return False
 
     @retry()

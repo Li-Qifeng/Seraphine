@@ -55,27 +55,29 @@ async def _loadChampionAugments(championId: int) -> list:
 def _augmentScore(aug: dict) -> float:
     """单个强化得分 = 胜率(0..1) * 0.6 + 选用率(0..1) * 0.4.
 
+    OPGG parseAramMayhemAugments 输出字段: pickRate / winRate (0-100 百分数).
     高胜率高选用 = 强力主流强化; 胜率高选用低 = 偏门但强.
-    失败返回 0 (保守: 无数据按中性处理也可, 但 OPGG 缺数据通常意味着冷门, 按中性 0.5).
+    失败返回 0.5 (中性).
     """
     if not isinstance(aug, dict):
         return 0.5
 
-    play = aug.get('play') or 0
-    win = aug.get('win') or 0
-    winRate = (win / play) if play > 0 else 0.5
     pickRate = aug.get('pickRate')
+    winRate = aug.get('winRate')
     try:
-        if pickRate is None:
-            pickRate = (play / 10000.0) if play > 0 else 0.0
-        pickRate = float(pickRate)
+        pickRate = float(pickRate) if pickRate is not None else 0.0
+        winRate = float(winRate) if winRate is not None else 0.0
+        # OPGG 返回的是 0-100 百分数, 归一化到 [0,1]
         if pickRate > 1.0:
             pickRate = pickRate / 100.0
+        if winRate > 1.0:
+            winRate = winRate / 100.0
     except (TypeError, ValueError):
         pickRate = 0.0
+        winRate = 0.0
 
-    winRate = max(0.0, min(1.0, winRate))
     pickRate = max(0.0, min(1.0, pickRate))
+    winRate = max(0.0, min(1.0, winRate))
     return winRate * 0.6 + pickRate * 0.4
 
 

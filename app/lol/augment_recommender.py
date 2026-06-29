@@ -58,11 +58,18 @@ _KEYWORD_TAGS = {
 }
 
 # 标签协同关系: {标签: (协同标签列表, 冲突标签列表)}
+# 协同是对称的: A 协同 B 则 B 也协同 A (在 _computeSynergy 中双向检查)
 _SYNERGY_RULES = {
-    'ap_damage': (['magic_pen', 'ability_haste'], ['ad_damage']),
-    'ad_damage': (['armor_pen', 'attack_speed'], ['ap_damage']),
+    'ap_damage': (['magic_pen', 'ability_haste', 'damage_amp'], ['ad_damage']),
+    'ad_damage': (['armor_pen', 'attack_speed', 'damage_amp'], ['ap_damage']),
+    'magic_pen': (['ap_damage'], []),
+    'armor_pen': (['ad_damage'], []),
+    'attack_speed': (['ad_damage', 'armor_pen'], []),
+    'ability_haste': (['ap_damage', 'ad_damage', 'heal_shield'], []),
     'heal_shield': (['max_hp', 'ability_haste'], []),
+    'max_hp': (['heal_shield'], []),
     'execute': (['damage_amp', 'ap_damage', 'ad_damage'], []),
+    'damage_amp': (['ap_damage', 'ad_damage', 'execute'], []),
     'mobility': ([], []),
 }
 
@@ -116,16 +123,24 @@ class AugmentRecommender:
             # 过滤已选
             candidates = [c for c in candidates if c['aug']['id'] not in selected_set]
 
+            # 归一化 pickRate/winRate: OPGG 返回 0-100 百分数, 转为 0-1
+            def _norm(v):
+                try:
+                    v = float(v or 0)
+                    return v / 100.0 if v > 1.0 else v
+                except (TypeError, ValueError):
+                    return 0.0
+
             # 计算归一化用的最大值
-            max_pick = max((c['aug'].get('pickRate', 0) for c in candidates), default=1) or 1
-            max_win = max((c['aug'].get('winRate', 0) for c in candidates), default=1) or 1
+            max_pick = max((_norm(c['aug'].get('pickRate')) for c in candidates), default=1) or 1
+            max_win = max((_norm(c['aug'].get('winRate')) for c in candidates), default=1) or 1
 
             results = []
             for c in candidates:
                 aug = c['aug']
                 tier = c['tier']
-                pick = aug.get('pickRate', 0)
-                win = aug.get('winRate', 0)
+                pick = _norm(aug.get('pickRate'))
+                win = _norm(aug.get('winRate'))
                 opgg_score = (pick / max_pick) * 0.5 + (win / max_win) * 0.5
 
                 # 协同分
@@ -188,6 +203,9 @@ class AugmentRecommender:
     def _computeSynergy(self, augTags: set, selectedTags: set) -> tuple:
         """计算候选强化与已选强化的协同分和理由.
 
+        协同是双向的: 候选 ap_damage 与已选 magic_pen 协同,
+        候选 magic_pen 与已选 ap_damage 也协同.
+
         Returns:
             (synergy_score in [0, 1], reason_tag_labels list)
         """
@@ -200,10 +218,22 @@ class AugmentRecommender:
             if not rule:
                 continue
             synergies, conflicts = rule
+            # 正向: 候选 tag 的协同列表中有已选 tag
             for syn in synergies:
                 if syn in selectedTags:
                     score += 0.3
                     if tag in _TAG_LABELS:
+                        reasons.append(_TAG_LABELS[tag])
+                    break
+            # 反向: 已选 tag 的协同列表中有候选 tag (双向协同)
+            for selTag in selectedTags:
+                selRule = _SYNERGY_RULES.get(selTag)
+                if not selRule:
+                    continue
+                selSynergies, _ = selRule
+                if tag in selSynergies:
+                    score += 0.3
+                    if tag in _TAG_LABELS and tag not in reasons:
                         reasons.append(_TAG_LABELS[tag])
                     break
             for con in conflicts:

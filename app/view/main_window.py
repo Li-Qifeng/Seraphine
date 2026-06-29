@@ -53,7 +53,7 @@ from app.lol.champions import ChampionAlias
 from app.lol.opgg import opgg
 from app.lol.static_data import static_data
 from app.lol.live_client import liveClient
-from app.lol.tools_pure import pickHonorTarget
+from app.lol.tools_pure import pickHonorTarget  # noqa: F401  # 保留供测试/外部调用
 
 import threading
 
@@ -529,7 +529,7 @@ class MainWindow(FluentWindow):
 
     @asyncSlot(int)
     async def __onLolClientStarted(self, pid):
-        logger.info(f"League of Legends client started: {pid}", TAG)
+        logger.error(f"LoL client started: {pid}, refresh career", TAG)
         res = await self.__startConnector(pid)
         if not res:
             return
@@ -911,9 +911,15 @@ class MainWindow(FluentWindow):
         elif status == 'EndOfGame':
             title = self.tr("End of game")
             asyncio.create_task(self.__autoHonor())
+            # 自动再来一局: EndOfGame 阶段调用 playAgain()
+            if cfg.get(cfg.enableAutoPlayAgain):
+                asyncio.create_task(self.__autoPlayAgain())
         elif status == 'Lobby':
             title = self.tr("Lobby")
+            # 战犯诊断必须在生涯刷新前完成, 否则 verdict 缓存还没写入,
+            # 战绩卡片渲染时 getVerdict 命中不到, 徽章不会显示
             await self.__onGameEnd()
+            logger.error("Career: refresh triggered (lobby)", TAG)
             await self.careerInterface.refresh()
 
             if self.stackedWidget.currentWidget() is self.gameInfoInterface:
@@ -975,8 +981,10 @@ class MainWindow(FluentWindow):
     async def __autoHonor(self):
         """EndOfGame 阶段自动给队友点赞.
 
-        策略可配置: friends_first (默认) / friends_only / best_score / random.
-        所有 honor 端点结构需真机验证, 任何异常都仅记日志不中断流程.
+        使用 /lol-honor-v2/v1/ballot (GET) 获取可点赞队友候选,
+        按策略选一个后 POST /lol-honor/v1/honor 提交.
+        ballot eligibleAllies[] 含 puuid, 直接用于好友判断和提交.
+        策略: friends_first (默认) / friends_only / best_score / random.
         """
         if not cfg.get(cfg.enableAutoHonor):
             return
@@ -985,35 +993,89 @@ class MainWindow(FluentWindow):
             await asyncio.sleep(cfg.get(cfg.autoHonorDelay))
 
             strategy = cfg.get(cfg.autoHonorStrategy)
-            eog = await connector.getEogStats()
-            if not eog:
-                logger.debug("Auto honor: no EOG stats, skip", TAG)
+            ballot = await connector.getEogStats()
+            if not ballot:
+                logger.error("Auto honor: no ballot, skip", TAG)
                 return
 
+            candidates = ballot.get('eligibleAllies') or []
+            if not candidates:
+                logger.error("Auto honor: no eligibleAllies in ballot", TAG)
+                return
+
+            # 拉好友列表
             friends = await connector.getFriends()
             friendsPuuid = {f.get("puuid") for f in friends
                             if isinstance(f, dict) and f.get("puuid")}
-            currentPuuid = self.currentSummoner.get("puuid") \
-                if isinstance(self.currentSummoner, dict) else None
 
-            target = pickHonorTarget(eog, friendsPuuid, strategy, currentPuuid)
+            # 按策略选目标
+            target = self.__pickHonorFromEligible(
+                candidates, friendsPuuid, strategy)
             if not target:
-                logger.debug("Auto honor: no valid target, skip", TAG)
+                logger.error(
+                    f"Auto honor: no valid target (strategy={strategy}, "
+                    f"candidates={len(candidates)}, friends={len(friendsPuuid)})",
+                    TAG)
                 return
 
-            summonerId = target.get("summonerId")
-            if summonerId is None:
-                logger.debug(f"Auto honor: target has no summonerId: {target}", TAG)
+            puuid = target.get("puuid")
+            if not puuid:
+                logger.error(f"Auto honor: target has no puuid: {target}", TAG)
                 return
 
-            ok = await connector.submitHonor(summonerId, "HEART")
-            name = target.get("summonerName") or summonerId
+            logger.error(
+                f"Auto honor: picked target={target} strategy={strategy}",
+                TAG)
+            ok = await connector.submitHonor(puuid, "HEART")
+            name = target.get("summonerName") or puuid
             if ok:
-                logger.info(f"Auto honored: {name} (strategy={strategy})", TAG)
+                # 封存 ballot, 否则客户端不会真正记录 honor
+                sealed = await connector.sealHonorBallot()
+                logger.error(
+                    f"Auto honored: {name} (strategy={strategy}, sealed={sealed})",
+                    TAG)
             else:
-                logger.warning(f"Auto honor submit failed: {name}", TAG)
+                logger.error(f"Auto honor submit failed: {name}", TAG)
         except Exception as e:
-            logger.warning(f"Auto honor failed: {e}", TAG)
+            logger.error(f"Auto honor failed: {e}", TAG)
+
+    async def __autoPlayAgain(self):
+        """EndOfGame 阶段自动点击"再来一局".
+
+        调用 POST /lol-lobby/v2/play-again, 让客户端自动回到排队.
+        延迟 2 秒执行, 避免与 honor 提交竞争.
+        """
+        try:
+            await asyncio.sleep(2)
+            logger.error("Auto play again: calling playAgain()", TAG)
+            await connector.playAgain()
+            logger.error("Auto play again: done", TAG)
+        except Exception as e:
+            logger.error(f"Auto play again failed: {e}", TAG)
+
+    def __pickHonorFromEligible(self, candidates: list, friendsPuuid: set,
+                                 strategy: str):
+        """从 ballot eligibleAllies 选 honor 目标.
+
+        candidates 字段: puuid/summonerId/summonerName/championId/championName 等.
+        用 puuid 判断好友.
+        """
+        import random as _random
+        if not candidates:
+            return None
+
+        friends = [c for c in candidates
+                   if isinstance(c, dict) and c.get('puuid')
+                   and c.get('puuid') in friendsPuuid]
+
+        if strategy == 'friends_only':
+            return friends[0] if friends else None
+        if strategy == 'friends_first':
+            return friends[0] if friends else candidates[0]
+        if strategy == 'random':
+            return _random.choice(candidates)
+        # best_score 或未知: 暂无评分数据, 退化为第一个候选
+        return candidates[0]
 
     def __scheduleAutoStartMatchmaking(self):
         if not cfg.get(cfg.enableAutoStartMatchmaking):
@@ -1200,15 +1262,22 @@ class MainWindow(FluentWindow):
 
         # ARAM Mayhem: 启动海克斯辅助轮询
         if queueId == 2400 and cfg.get(cfg.enableHextechAssist):
+            logger.error(
+                f"HextechAssist: starting timer for queueId={queueId}", TAG)
             self.hextechAssistTimer.start()
             # 自动切到 OPGG 海克斯辅助页 (若开启自动显示)
             if cfg.get(cfg.hextechAssistAutoShow):
                 try:
                     championId = await self.__getChampionIdFromLiveClient()
                     if championId and championId > 0:
+                        logger.error(
+                            f"HextechAssist: auto show for championId={championId}", TAG)
                         self.opggWindow.showHextechAssist(championId)
+                    else:
+                        logger.error(
+                            "HextechAssist: no championId from live client", TAG)
                 except Exception as e:
-                    logger.warning(f"Hextech assist auto show failed: {e}", TAG)
+                    logger.error(f"Hextech assist auto show failed: {e}", TAG)
 
     async def __onGameEnd(self):
         # 停止海克斯辅助轮询
@@ -1218,9 +1287,11 @@ class MainWindow(FluentWindow):
         if not cfg.get(cfg.enableReserveGameinfo):
             self.gameInfoInterface.clear()
 
-        # 战犯/躺赢狗诊断: EndOfGame→Lobby 阶段异步评分并写缓存
+        # 战犯/躺赢狗诊断: EndOfGame→Lobby 阶段评分并写缓存.
+        # 必须 await 完成, 否则紧接着的生涯刷新拿不到 verdict 缓存, 徽章不显示
         if cfg.get(cfg.enableWarCriminal):
-            asyncio.create_task(self.__diagnoseLastGame())
+            logger.error("WarCriminal: diagnose triggered (game end)", TAG)
+            await self.__diagnoseLastGame()
 
     async def __diagnoseLastGame(self):
         """诊断上一局, 把 verdict 写入 war_criminal_cache.
@@ -1239,42 +1310,68 @@ class MainWindow(FluentWindow):
             if isinstance(self.currentSummoner, dict):
                 currentPuuid = self.currentSummoner.get('puuid')
             if not currentPuuid:
-                logger.debug("WarCriminal: no current puuid", TAG)
+                logger.error("WarCriminal: no current puuid", TAG)
                 return
 
-            # 取上一局 summary (返回 list[dict])
-            games = await connector.getSummonerGamesByPuuid(
+            # 取上一局 summary
+            # connector.getSummonerGamesByPuuid 返回 dict (含 gameCount/games 等键),
+            # 内部 games 字段才是对局列表
+            gamesResp = await connector.getSummonerGamesByPuuid(
                 currentPuuid, 0, 1)
+            logger.error(
+                f"WarCriminal: gamesResp type={type(gamesResp).__name__} "
+                f"len={len(gamesResp) if hasattr(gamesResp, '__len__') else 'N/A'}",
+                TAG)
+            if isinstance(gamesResp, dict):
+                games = gamesResp.get("games") or []
+            elif isinstance(gamesResp, list):
+                games = gamesResp
+            else:
+                games = []
             if not games:
-                logger.debug("WarCriminal: no recent game", TAG)
+                logger.error("WarCriminal: no recent game", TAG)
                 return
-            lastGame = games[0] if isinstance(games, list) else None
+            lastGame = games[0] if isinstance(games, list) and games else None
             if not isinstance(lastGame, dict):
+                logger.error(f"WarCriminal: invalid lastGame type={type(lastGame)}", TAG)
                 return
             gameId = lastGame.get('gameId')
             if not gameId:
+                logger.error("WarCriminal: no gameId in lastGame", TAG)
                 return
 
             # 拿本局详情
             detail = await connector.getGameDetailByGameId(gameId)
             if not detail:
-                logger.debug(f"WarCriminal: no detail for {gameId}", TAG)
+                logger.error(f"WarCriminal: no detail for {gameId}", TAG)
                 return
 
             # 解析双方队伍 (注意签名: parseGameDetailData(puuid, game))
             parsed = await parseGameDetailData(currentPuuid, detail)
             if not parsed:
+                logger.error(f"WarCriminal: parseGameDetailData returned None for {gameId}", TAG)
                 return
 
             queueId = parsed.get('queueId') or detail.get('queueId')
             sensitivity = cfg.get(cfg.warCriminalSensitivity)
+            logger.error(
+                f"WarCriminal: parsed queueId={queueId} teams={list((parsed.get('teams') or {}).keys())}",
+                TAG)
 
             # 评两队 (我方/敌方), 各按胜负判定
             teams = parsed.get('teams') or {}
+            # 多队模式 (ARAM Mayhem 有 8 队键) 下, 只写当前用户所在队伍的 verdict,
+            # 否则后处理的队伍会覆盖前面的, 导致 UI 拿到的可能不是用户自己队的 verdict
+            currentTeamWritten = False
             for tidStr, teamInfo in teams.items():
                 summoners = (teamInfo or {}).get('summoners') or []
                 if len(summoners) < 2:
                     continue
+                # 跳过当前召唤师不在的队 (避免多队模式覆盖缓存)
+                teamPuuids = {s.get('puuid') for s in summoners
+                              if isinstance(s, dict)}
+                isCurrentTeam = currentPuuid in teamPuuids
+
                 # 该队是否获胜: 优先用 teamInfo.win, 兜底用 summoner[0].win
                 teamWin = bool(teamInfo.get('win'))
                 if teamInfo.get('win') is None:
@@ -1303,6 +1400,9 @@ class MainWindow(FluentWindow):
                 result = await diagnoseTeam(teamStats, queueId, teamWin,
                                               sensitivity)
                 if not result:
+                    logger.error(
+                        f"WarCriminal: team={tidStr} diagnoseTeam returned None "
+                        f"(size={len(teamStats)})", TAG)
                     continue
 
                 verdict = result.get('verdict')
@@ -1312,21 +1412,26 @@ class MainWindow(FluentWindow):
                     suspect.get('puuid') is not None and
                     suspect.get('puuid') == currentPuuid)
 
-                # 写缓存 (UI 会过滤 no_clear_suspect 不显示)
-                setVerdict(
-                    gameId=gameId,
-                    verdict=verdict,
-                    label=label,
-                    isCurrentSuspect=isCurrentSuspect,
-                    score=result.get('score', 0.0),
-                    evidence=result.get('evidence') or [],
-                )
-                logger.info(
+                # 只写当前用户所在队伍的 verdict, 避免多队覆盖
+                if isCurrentTeam:
+                    setVerdict(
+                        gameId=gameId,
+                        verdict=verdict,
+                        label=label,
+                        isCurrentSuspect=isCurrentSuspect,
+                        score=result.get('score', 0.0),
+                        evidence=result.get('evidence') or [],
+                    )
+                    currentTeamWritten = True
+                logger.error(
                     f"WarCriminal verdict: game={gameId} team={tidStr} "
-                    f"verdict={verdict} suspect_is_current={isCurrentSuspect}",
+                    f"verdict={verdict} score={result.get('score')} "
+                    f"second={result.get('secondScore')} "
+                    f"suspect_is_current={isCurrentSuspect} "
+                    f"is_current_team={isCurrentTeam}",
                     TAG)
         except Exception as e:
-            logger.warning(f"WarCriminal diagnose failed: {e}", TAG)
+            logger.error(f"WarCriminal diagnose failed: {e}", TAG)
 
     async def __onHextechAssistTick(self):
         """海克斯辅助定时轮询: 采集已选强化并刷新推荐列表"""
@@ -1337,7 +1442,7 @@ class MainWindow(FluentWindow):
                 signalBus.liveGameDataUpdated.emit(liveData)
                 self.opggWindow.hextechAssistInterface.updateLiveState(liveData)
         except Exception as e:
-            logger.warning(f"Hextech assist tick failed: {e}", TAG)
+            logger.error(f"Hextech assist tick failed: {e}", TAG)
 
     def __checkWindowSize(self):
         if (dpi := self.devicePixelRatioF()) == 1.0:

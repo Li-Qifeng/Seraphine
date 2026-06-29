@@ -83,7 +83,7 @@ class ColorAnimationFrame(CardWidget, ColorChangeable):
         try:
             # 由于同样原因，这里不 try 就报错咯 ^^_
             self._updateBackgroundColor()
-        except RuntimeError:
+        except (RuntimeError, AttributeError):
             return
 
     def _normalBackgroundColor(self):
@@ -110,7 +110,7 @@ class NoBorderColorAnimationFrame(CardWidget, ColorChangeable):
         try:
             # 由于同样原因，这里不 try 就报错咯 ^^_
             self._updateBackgroundColor()
-        except RuntimeError:
+        except (RuntimeError, AttributeError):
             return
 
     def _normalBackgroundColor(self):

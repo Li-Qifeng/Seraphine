@@ -21,6 +21,7 @@ from .tools_pure import (
     separateTeams,
     sortedSummonersByGameRole,
     parseGames,
+    parseSummonerOrder,
 )
 from .tools_pure import (
     SummonerParsedData,
@@ -125,7 +126,7 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
     try:
         gamesInfo = await gameTask
     except Exception as e:
-        logger.warning(f"parseSummonerData: failed to fetch games: {e}", "tools")
+        logger.error(f"parseSummonerData: failed to fetch games: {e}", "tools")
         champions = []
         games = {}
     else:
@@ -153,10 +154,14 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
             games["games"].append(info)
 
         champions = getRecentChampions(games['games'])
+        logger.error(
+            f"parseSummonerData: games fetched count={games['gameCount']} "
+            f"parsed={len(games['games'])}", "tools")
 
     try:
         rankInfo = await rankTask
-    except Exception:
+    except Exception as e:
+        logger.error(f"parseSummonerData: failed to fetch rank: {e}", "tools")
         rankInfo = {}
 
     return {

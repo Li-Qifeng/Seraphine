@@ -100,6 +100,11 @@ class Config(QConfig):
                                             "EnableAutoStartMatchmaking", False,
                                             BoolValidator())
 
+    # 自动再来一局: EndOfGame 阶段自动点击"再来一局"
+    enableAutoPlayAgain = ConfigItem("Functions",
+                                     "EnableAutoPlayAgain", False,
+                                     BoolValidator())
+
     autoAcceptMatchingDelay = RangeConfigItem(
         "Functions", "AutoAcceptMatchingDelay", 0, RangeValidator(0, 11))
     autoStartMatchmakingDelay = RangeConfigItem(
