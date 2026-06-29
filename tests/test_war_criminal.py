@@ -161,8 +161,8 @@ class TestDiagnoseTeam:
             assert result['verdict'] == 'carried_dog'
             assert result['suspect']['puuid'] == 'p4'
 
-    def test_no_clear_suspect_balanced_team(self):
-        """均衡队伍: 无明显异常."""
+    def test_balanced_team_still_names_suspect(self):
+        """均衡队伍: 仍会命名 worst, 但分数接近 0, 不强烈指向."""
         with patch('app.lol.augment_baseline.getHextechAugmentScore',
                    new=AsyncMock(return_value=None)), \
              patch('app.lol.champion_baseline.getChampionBaselineWinrate',
@@ -176,11 +176,13 @@ class TestDiagnoseTeam:
             ]
             result = _run_async(diagnoseTeam(team, 420, True, 'normal'))
             assert result is not None
-            # 均衡队伍应判 no_clear 或 team_underperformed
-            assert result['verdict'] in ('no_clear_suspect', 'team_underperformed')
+            # 新设计: 始终命名 worst 为躺赢狗 (胜局) / 战犯 (败局)
+            assert result['verdict'] == 'carried_dog'
+            # 均衡队伍 worst 分数不应极端负
+            assert result['score'] > -1.5
 
     def test_hextech_vision_not_counted(self):
-        """海克斯大乱斗视野分不计入: 即使某玩家视野极低, 也不应被判定战犯."""
+        """海克斯大乱斗视野分不计入: 视野全 0 不影响评分, 均衡队伍 worst 不极端."""
         with patch('app.lol.augment_baseline.getHextechAugmentScore',
                    new=AsyncMock(return_value=None)), \
              patch('app.lol.champion_baseline.getChampionBaselineWinrate',
@@ -195,9 +197,10 @@ class TestDiagnoseTeam:
             # 海克斯模式 2400
             result = _run_async(diagnoseTeam(team, 2400, False, 'normal'))
             assert result is not None
-            # 视野全 0 不应导致误判战犯
-            # 在均衡视野下, 应判 no_clear
-            assert result['verdict'] in ('no_clear_suspect', 'team_underperformed')
+            # 新设计: 败局始终命名 worst 为战犯
+            assert result['verdict'] == 'war_criminal'
+            # 视野全 0 不应导致极端误判, worst 分数不应极端负
+            assert result['score'] > -1.5
 
     def test_baseline_amplifies_strong_champion(self):
         """OPGG 胜率高的英雄, 同样表现差更易被判战犯.
@@ -269,9 +272,15 @@ class TestDiagnoseTeam:
             # 强组合英雄实际贡献低, 更易被判战犯
             assert result['suspect']['puuid'] == 'p4'
 
-    def test_sensitivity_strict_reduces_false_positives(self):
-        """strict 灵敏度 (阈值高) 不易判战犯, loose 易判."""
-        # 中等差距: strict 不判, loose 判
+    def test_sensitivity_strict_more_likely_team_underperformed(self):
+        """strict 灵敏度 (阈值高) 更易标记 teamUnderperformed, loose 不易.
+
+        新设计: verdict 始终为 war_criminal/carried_dog,
+        灵敏度通过 teamUnderperformed 子状态体现:
+        - strict (阈值 1.1): gap < 1.1 更易满足 -> teamUnderperformed=True
+        - loose  (阈值 0.6): gap < 0.6 更难满足 -> teamUnderperformed=False
+        """
+        # 中等差距: worst 与第二名 gap 约 0.9-1.0
         team = [
             _makeParticipant('p1', 1, 28000, deaths=5),
             _makeParticipant('p2', 2, 27000, deaths=6),
@@ -285,10 +294,13 @@ class TestDiagnoseTeam:
                    new=AsyncMock(return_value=None)):
             r_strict = _run_async(diagnoseTeam(team, 420, False, 'strict'))
             r_loose = _run_async(diagnoseTeam(team, 420, False, 'loose'))
-        # strict 阈值 1.1, 中等差距 0.6 不应触发 war_criminal
-        # loose 阈值 0.6, 中等差距可能触发 (取决于具体 z)
-        # 这里仅断言 strict 不判战犯
-        assert r_strict['verdict'] != 'war_criminal'
+        # 两者都命名 worst 为战犯 (新设计始终命名)
+        assert r_strict['verdict'] == 'war_criminal'
+        assert r_loose['verdict'] == 'war_criminal'
+        # strict 阈值高 -> gap < threshold 更易满足 -> teamUnderperformed=True
+        # loose 阈值低 -> gap < threshold 更难满足 -> teamUnderperformed=False
+        assert r_strict['teamUnderperformed'] is True
+        assert r_loose['teamUnderperformed'] is False
 
 
 class TestVerdictLabel:
@@ -298,11 +310,10 @@ class TestVerdictLabel:
     def test_carried_dog_label(self):
         assert verdictLabel('carried_dog', True) == '躺赢狗'
 
-    def test_team_underperformed_label(self):
-        assert verdictLabel('team_underperformed', False) == '团队低迷'
-
-    def test_no_clear_label(self):
-        assert verdictLabel('no_clear_suspect', True) == '无明显异常'
+    def test_obsolete_verdicts_return_empty(self):
+        """team_underperformed / no_clear_suspect 不再作为独立 verdict."""
+        assert verdictLabel('team_underperformed', False) == ''
+        assert verdictLabel('no_clear_suspect', True) == ''
 
     def test_unknown_label(self):
         assert verdictLabel('xyz', True) == ''

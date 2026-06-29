@@ -1,0 +1,34 @@
+HextechAssistInterface {
+    border: none;
+    background-color: transparent;
+}
+
+#scrollArea {
+    border: none;
+    background-color: transparent;
+}
+
+#scrollWidget {
+    background-color: transparent;
+}
+
+#sectionLabel {
+    font: bold 13px 'Microsoft YaHei', 'Segoe UI';
+    color: black;
+}
+
+#statusLabel {
+    font: 12px 'Segoe UI', 'Microsoft YaHei';
+    color: rgb(149, 149, 149);
+}
+
+RecommendedAugmentBar {
+    border: 1px solid rgba(0, 0, 0, 0.095);
+    border-radius: 5px;
+    background-color: rgba(0, 0, 0, 0.022);
+}
+
+RecommendedAugmentBar:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+}

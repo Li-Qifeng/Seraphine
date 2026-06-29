@@ -97,10 +97,10 @@ class AuxiliaryInterface(SeraphineInterface):
             self.tr("Automatically reconnect when disconnected"),
             cfg.enableAutoReconnect, self.gameGroup)
         self.autoHonorCard = AutoHonorCard(
-            self.tr("Auto honor"),
+            self.tr("自动点赞"),
             self.tr(
-                "Honor a teammate automatically at end of game. "
-                "Friends first/only strategies require the teammate to be in your friend list."),
+                "游戏结束自动点赞一位队友。"
+                "好友优先/仅好友策略需要队友在好友列表中。"),
             cfg.enableAutoHonor, cfg.autoHonorDelay, cfg.autoHonorStrategy,
             self.gameGroup)
         self.spectateCard = SpectateCard(
@@ -124,9 +124,9 @@ class AuxiliaryInterface(SeraphineInterface):
             delayLabelText=self.tr("Delay seconds after entering lobby:"))
         self.autoPlayAgainCard = SwitchSettingCard(
             Icon.ARROWREPEAT,
-            self.tr("Auto play again"),
+            self.tr("自动再来一局"),
             self.tr(
-                "Automatically click \"Play Again\" at end of game"),
+                "游戏结束时自动点击\"再来一局\""),
             cfg.enableAutoPlayAgain, self.bpGroup)
         self.autoAcceptSwapingCard = AutoAcceptSwapingCard(
             self.tr("Auto accept swaping"),
@@ -204,6 +204,30 @@ class AuxiliaryInterface(SeraphineInterface):
         self.setWidgetResizable(True)
 
         StyleSheet.AUXILIARY_INTERFACE.apply(self)
+
+    def setEnabled(self, enabled: bool) -> None:
+        """重写 setEnabled: 仅禁用真正需要 LCU 的执行类卡片.
+
+        配置开关类卡片 (auto-*/hextech*) 只是写 cfg, 应随时可改;
+        LockConfigCard 只做文件系统操作, 不依赖 LCU.
+        需要禁用的是实际调用 connector 的执行类卡片 (profile/spectate/practice/fixDpi/restart).
+        """
+        # 需要禁用的执行类卡片 (依赖 LCU connector)
+        lcu_cards = [
+            self.onlineStatusCard, self.profileBackgroundCard,
+            self.profileTierCard, self.onlineAvailabilityCard,
+            self.removeTokensCard, self.removePrestigeCrestCard,
+            self.spectateCard, self.createPracticeLobbyCard,
+            self.fixDpiCard, self.restartClientCard,
+        ]
+        for card in lcu_cards:
+            try:
+                card.setEnabled(enabled)
+            except (AttributeError, RuntimeError):
+                pass
+        # 配置开关类 (auto-*/hextech*) 和 lockConfigCard 不随 LCU 状态禁用
+        # 让父类 QScrollArea 的滚动行为保持可用, 但不调用 super().setEnabled
+        # (super 会把所有子控件都禁用, 连累配置开关)
 
     def __initLayout(self):
         self.titleLabel.move(36, 30)
@@ -1068,10 +1092,10 @@ class AutoHonorCard(ExpandGroupSettingCard):
 
     # 策略值到本地化文案的映射 (显示文案 -> config 值, 反向用 _strategyValueMap)
     _STRATEGY_ITEMS = [
-        ("friends_first", "Friends first"),
-        ("friends_only", "Friends only"),
-        ("best_score", "Best score"),
-        ("random", "Random"),
+        ("friends_first", "好友优先"),
+        ("friends_only", "仅好友"),
+        ("best_score", "最高评分"),
+        ("random", "随机"),
     ]
 
     def __init__(self, title, content,
@@ -1132,13 +1156,13 @@ class AutoHonorCard(ExpandGroupSettingCard):
         self.addGroupWidget(self.switchButtonWidget)
 
     def __initWidget(self):
-        self.delayLabel.setText(self.tr("Delay seconds after game end:"))
+        self.delayLabel.setText(self.tr("游戏结束后延迟秒数："))
         self.lineEdit.setRange(0, 5)
         self.lineEdit.setValue(cfg.get(self.delayConfigItem))
         self.lineEdit.setSingleStep(1)
         self.lineEdit.setMinimumWidth(120)
 
-        self.strategyLabel.setText(self.tr("Honor strategy:"))
+        self.strategyLabel.setText(self.tr("点赞策略："))
         for value, text in self._STRATEGY_ITEMS:
             self.strategyComboBox.addItem(self.tr(text), userData=value)
         # 选中当前 config 值
@@ -1175,11 +1199,11 @@ class AutoHonorCard(ExpandGroupSettingCard):
     def __setStatusLabelText(self):
         if self.switchButton.isChecked():
             self.statusLabel.setText(
-                self.tr("Enabled, delay: ") + str(self.lineEdit.value()) +
-                self.tr(" seconds, strategy: ") +
+                self.tr("已启用，延迟：") + str(self.lineEdit.value()) +
+                self.tr(" 秒，策略：") +
                 self.strategyComboBox.currentText())
         else:
-            self.statusLabel.setText(self.tr("Disabled"))
+            self.statusLabel.setText(self.tr("已禁用"))
 
 
 class AutoAcceptSwapingCard(ExpandGroupSettingCard):

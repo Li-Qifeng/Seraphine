@@ -7,16 +7,20 @@
 4. 历史对照使用 OPGG 该英雄胜率: 胜率高的英雄在胜局"躺赢狗"概率与负局"战犯"概率都应更大
 5. 标准化: 所有指标按队伍内同位置平均算 z-score, 避免全输出阵容里坦克被误判
 
-输出 verdict:
-- "war_criminal" (负局, 显著低于队友, 是战犯)
-- "carried_dog" (胜局, 显著低于队友, 是躺赢狗)
-- "no_clear_suspect" (无明显异常, 不挂标签)
-- "team_underperformed" (整队都低, 不单独点名)
+输出 verdict (只有两种):
+- "war_criminal" (负局 worst, 是战犯)
+- "carried_dog" (胜局 worst, 是躺赢狗)
+
+子状态 (通过 teamUnderperformed 标记传递, 不作为独立 verdict):
+- teamUnderperformed=True: 整队表现都偏低, worst 与第二名差距不大
+  此时战犯用橙色显示, tooltip 标注"整队表现都偏低, 不全是你的锅"
 """
 import asyncio
+import logging
 from typing import Optional, TypedDict
 
 TAG = "WarCriminal"
+logger = logging.getLogger(__name__)
 
 # 海克斯大乱斗 queueId (国际/国服)
 HEXTECH_QUEUE_IDS = (2400,)
@@ -346,50 +350,181 @@ async def diagnoseTeam(team: list,
     worst = scored[0]
     second = scored[1] if len(scored) > 1 else None
     secondScore = second['score'] if second else 0.0
+    gap = secondScore - worst['score']  # worst 与第二名的差距 (正数=worst 更差)
 
-    # 整队都低 (worst score 不算特别低, 但都接近): 不点名
-    # 判定: worst 与 second 的差 < 0.3 且 worst 绝对分 > -0.5
-    if abs(worst['score'] - secondScore) < 0.3 and worst['score'] > -0.5:
-        return {
-            'verdict': 'team_underperformed',
-            'suspect': worst['participant'],
-            'score': round(worst['score'], 3),
-            'secondScore': round(secondScore, 3),
-            'threshold': threshold,
-            'evidence': worst['evidence'],
-        }
+    # 判定整队是否低迷: worst 显著为负且与第二名差距不大
+    # 这种情况下仍命名 worst 为战犯/躺赢狗, 但标记为"团队低迷"
+    teamUnderperformed = (worst['score'] < -0.5 and gap < threshold)
 
-    # 显著低于第二名 (z 差 >= threshold) -> 命名
-    if (secondScore - worst['score']) >= threshold:
-        verdict = 'carried_dog' if isWin else 'war_criminal'
-        return {
-            'verdict': verdict,
-            'suspect': worst['participant'],
-            'score': round(worst['score'], 3),
-            'secondScore': round(secondScore, 3),
-            'threshold': threshold,
-            'evidence': worst['evidence'],
-        }
-
-    # 没有显著异常
+    # 始终命名 worst 为战犯 (败方) 或躺赢狗 (胜方)
+    # 团队低迷作为子状态通过 teamUnderperformed 标记传递, 在徽章说明里标注
+    verdict = 'carried_dog' if isWin else 'war_criminal'
     return {
-        'verdict': 'no_clear_suspect',
+        'verdict': verdict,
         'suspect': worst['participant'],
         'score': round(worst['score'], 3),
         'secondScore': round(secondScore, 3),
+        'gap': round(gap, 3),
         'threshold': threshold,
         'evidence': worst['evidence'],
+        'teamUnderperformed': teamUnderperformed,
     }
 
 
 def verdictLabel(verdict: str, isWin: bool) -> str:
-    """verdict -> 用户可见标签."""
+    """verdict -> 用户可见标签.
+
+    只有两种标签: 战犯 (败方 worst) / 躺赢狗 (胜方 worst).
+    团队低迷作为子状态通过 teamUnderperformed 标记传递, 不再作为独立 verdict.
+    """
     if verdict == 'war_criminal':
         return '战犯'
     if verdict == 'carried_dog':
         return '躺赢狗'
-    if verdict == 'team_underperformed':
-        return '团队低迷'
-    if verdict == 'no_clear_suspect':
-        return '无明显异常'
     return ''
+
+
+async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
+                                  sensitivity: str = 'normal',
+                                  gameId: int = None) -> bool:
+    """从已解析的对局数据诊断战犯, 写入缓存.
+
+    可用于:
+    - 游戏结束时诊断最近一局 (main_window.__diagnoseLastGame)
+    - 查看历史对局详情时实时诊断 (search_interface)
+
+    诊断策略 (用户需求):
+    - 胜方队: 诊断 carried_dog (躺赢狗) — 胜方中表现显著低于队友的人
+    - 败方队: 诊断 war_criminal (战犯) — 败方中表现显著低于队友的人
+    - 同时写入当前召唤师所在队的 verdict (向后兼容, 生涯卡片用)
+
+    Args:
+        parsed: parseGameDetailData 的返回值
+        currentPuuid: 当前召唤师 puuid
+        sensitivity: 灵敏度 'loose'|'normal'|'strict'
+        gameId: 对局 ID (优先用 parsed 中的)
+
+    Returns:
+        True 如果诊断成功并写入缓存
+    """
+    try:
+        from app.lol.war_criminal_cache import setVerdict
+
+        gid = gameId or parsed.get('gameId')
+        if not gid:
+            return False
+
+        queueId = parsed.get('queueId')
+        teams = parsed.get('teams') or {}
+
+        winnerDiag = None   # 胜方诊断 (找躺赢狗)
+        loserDiag = None    # 败方诊断 (找战犯), 优先当前召唤师所在败方队
+        currentDiag = None  # 当前召唤师所在队的诊断
+
+        for tidStr, teamInfo in teams.items():
+            summoners = (teamInfo or {}).get('summoners') or []
+            if len(summoners) < 2:
+                continue
+
+            teamPuuids = {s.get('puuid') for s in summoners
+                          if isinstance(s, dict)}
+            isCurrentTeam = currentPuuid in teamPuuids
+
+            # teamInfo['win'] 可能是 'Win'/'Loss' 字符串或布尔值
+            # bool('Loss') == True (非空字符串), 不能直接 bool()
+            winField = teamInfo.get('win')
+            if isinstance(winField, str):
+                teamWin = winField.lower() in ('win', 'true')
+            elif winField is None:
+                teamWin = bool(summoners[0].get('win', False)) if summoners else False
+            else:
+                teamWin = bool(winField)
+
+            teamStats = []
+            for s in summoners:
+                teamStats.append(ParticipantStats(
+                    puuid=s.get('puuid'),
+                    championId=s.get('championId', 0) or 0,
+                    kills=s.get('kills', 0) or 0,
+                    deaths=s.get('deaths', 0) or 0,
+                    assists=s.get('assists', 0) or 0,
+                    damage=s.get('demage', 0) or 0,
+                    damageTaken=s.get('damageTaken', 0) or 0,
+                    totalHeal=s.get('totalHeal', 0) or 0,
+                    shieldOnTeammates=s.get('shieldOnTeammates', 0) or 0,
+                    ccTime=s.get('ccTime', 0) or 0,
+                    gold=s.get('gold', 0) or 0,
+                    cs=s.get('cs', 0) or 0,
+                    visionScore=s.get('visionScore', 0) or 0,
+                    win=teamWin,
+                    augmentIds=s.get('augmentIds') or [],
+                ))
+
+            result = await diagnoseTeam(teamStats, queueId, teamWin,
+                                         sensitivity)
+            if not result:
+                continue
+
+            verdict = result.get('verdict')
+            label = verdictLabel(verdict, teamWin)
+            suspect = result.get('suspect') or {}
+            isCurrentSuspect = (
+                suspect.get('puuid') is not None and
+                suspect.get('puuid') == currentPuuid)
+            teamUnderperformed = bool(result.get('teamUnderperformed', False))
+
+            diag = {
+                'verdict': verdict,
+                'label': label,
+                'suspectPuuid': suspect.get('puuid') or '',
+                'score': result.get('score', 0.0),
+                'evidence': result.get('evidence') or [],
+                'teamId': tidStr,
+                'isWin': teamWin,
+                'teamUnderperformed': teamUnderperformed,
+            }
+
+            # 胜方: 只记录第一个 (通常只有 1 个胜方)
+            if teamWin and winnerDiag is None:
+                winnerDiag = diag
+
+            # 败方: 优先当前召唤师所在的败方队; 否则取第一个败方
+            if not teamWin:
+                if isCurrentTeam:
+                    loserDiag = diag  # 当前召唤师所在败方队优先
+                elif loserDiag is None:
+                    loserDiag = diag
+
+            # 当前召唤师所在队
+            if isCurrentTeam:
+                currentDiag = {
+                    **diag,
+                    'isCurrentSuspect': isCurrentSuspect,
+                }
+
+            logger.error(
+                f"WarCriminal verdict: game={gid} team={tidStr} "
+                f"win={teamWin} verdict={verdict} score={result.get('score')} "
+                f"teamUnderperformed={teamUnderperformed} "
+                f"suspect_is_current={isCurrentSuspect}",
+                extra={'tag': TAG})
+
+        # verdict 只会是 war_criminal / carried_dog, 都有意义, 全部保留
+        setVerdict(
+            gameId=gid,
+            verdict=currentDiag['verdict'] if currentDiag else None,
+            label=currentDiag['label'] if currentDiag else None,
+            isCurrentSuspect=currentDiag.get(
+                'isCurrentSuspect', False) if currentDiag else False,
+            score=currentDiag['score'] if currentDiag else 0.0,
+            evidence=currentDiag['evidence'] if currentDiag else [],
+            suspectPuuid=currentDiag['suspectPuuid'] if currentDiag else None,
+            winner=winnerDiag,
+            loser=loserDiag,
+        )
+        return True
+
+    except Exception as e:
+        logger.error(f"diagnoseGameFromParsed failed: {e}",
+                     extra={'tag': TAG})
+        return False

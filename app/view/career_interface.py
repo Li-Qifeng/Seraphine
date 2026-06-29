@@ -564,6 +564,7 @@ class CareerInterface(SeraphineInterface):
         """创建战绩卡片, 若战犯缓存命中则附加 verdict 徽章."""
         verdictLabel = None
         verdictIsSuspect = False
+        verdictEvidence = []
         try:
             from app.lol.war_criminal_cache import getVerdict
             cached = getVerdict(game.get('gameId'))
@@ -571,11 +572,13 @@ class CareerInterface(SeraphineInterface):
                     None, 'no_clear_suspect'):
                 verdictLabel = cached.get('label')
                 verdictIsSuspect = bool(cached.get('isCurrentSuspect'))
+                verdictEvidence = cached.get('evidence') or []
         except Exception:
             pass
 
         return GameInfoBar(game, verdictLabel=verdictLabel,
-                           verdictIsSuspect=verdictIsSuspect)
+                           verdictIsSuspect=verdictIsSuspect,
+                           verdictEvidence=verdictEvidence)
 
     def __onfilterComboBoxChanged(self, index):
         self.gameInfoArea.delegate.vScrollBar.resetValue(0)

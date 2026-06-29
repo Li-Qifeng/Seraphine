@@ -115,10 +115,13 @@ class AugmentRecommender:
             if offerAugIds:
                 # 有 offer: 只在 offer 中推荐
                 candidates = self._collectFromOffer(offerAugIds, allAugments)
-            else:
-                # 无 offer: Fallback 推荐当前轮次档位
-                current_tier = self._inferCurrentTier(len(selectedAugIds or []))
+            elif selectedAugIds:
+                # 有已选但无 offer: 推荐当前轮次档位
+                current_tier = self._inferCurrentTier(len(selectedAugIds))
                 candidates = self._collectByTier(current_tier, allAugments)
+            else:
+                # 无已选也无 offer: 展示全档位
+                candidates = self._collectAll(allAugments)
 
             # 过滤已选
             candidates = [c for c in candidates if c['aug']['id'] not in selected_set]
@@ -267,6 +270,16 @@ class AugmentRecommender:
             return []
         return [{'aug': aug, 'tier': tier}
                 for aug in allAugments[idx] if isinstance(aug, dict)]
+
+    def _collectAll(self, allAugments: list) -> list:
+        """收集全档位所有强化 (无已选无 offer 时用)."""
+        result = []
+        for idx, group in enumerate(allAugments):
+            tier = TIER_NAMES[idx] if idx < len(TIER_NAMES) else 'silver'
+            for aug in group:
+                if isinstance(aug, dict):
+                    result.append({'aug': aug, 'tier': tier})
+        return result
 
 
 # 全局单例

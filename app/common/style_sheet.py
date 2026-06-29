@@ -23,6 +23,7 @@ class StyleSheet(StyleSheetBase, Enum):
     OPGG_WAITING_INTERFACE = 'opgg_waiting_interface'
     OPGG_ERROR_INTERFACE = "opgg_error_interface"
     OPGG_HOME_INTERFACE = "opgg_home_interface"
+    OPGG_HEXTECH_ASSIST_INTERFACE = "opgg_hextech_assist_interface"
 
     HEXTECH_WINDOW = 'hextech_window'
 

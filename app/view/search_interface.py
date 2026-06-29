@@ -26,7 +26,7 @@ from app.components.search_line_edit import SearchLineEdit
 from app.components.summoner_name_button import SummonerName
 from app.components.animation_frame import ColorAnimationFrame
 from app.components.color_label import ColorLabel, DeathsLabel
-from app.components.game_infobar_widget import AugmentRow
+from app.components.game_infobar_widget import AugmentRow, VerdictBadge
 from app.lol.connector import connector
 from app.lol.exceptions import SummonerGamesNotFound
 from app.lol.tools import parseGameDetailData, parseGamesDataConcurrently
@@ -377,11 +377,18 @@ class GameDetailView(QFrame):
         team1 = game["teams"][100]
         team2 = game["teams"][200]
 
+        # 战犯/躺赢狗: 按队伍胜负传递对应 verdictInfo
+        # 胜方队 -> winner (躺赢狗嫌疑者); 败方队 -> loser (战犯嫌疑者)
+        verdictInfo1 = self.__getTeamVerdictInfo(
+            game.get('gameId'), team1.get('win'))
+        verdictInfo2 = self.__getTeamVerdictInfo(
+            game.get('gameId'), team2.get('win'))
+
         self.teamView1.updateTeam(team1, isCherry, self.tr("1st"), isMayhem)
-        self.teamView1.updateSummoners(team1["summoners"])
+        self.teamView1.updateSummoners(team1["summoners"], verdictInfo1)
 
         self.teamView2.updateTeam(team2, isCherry, self.tr("2nd"), isMayhem)
-        self.teamView2.updateSummoners(team2["summoners"])
+        self.teamView2.updateSummoners(team2["summoners"], verdictInfo2)
 
         self.extraTeamView1.setVisible(isCherry)
         self.extraTeamView2.setVisible(isCherry)
@@ -398,23 +405,63 @@ class GameDetailView(QFrame):
             team7 = game["teams"][700]
             team8 = game["teams"][800]
 
+            vi3 = self.__getTeamVerdictInfo(game.get('gameId'), team3.get('win'))
+            vi4 = self.__getTeamVerdictInfo(game.get('gameId'), team4.get('win'))
+            vi5 = self.__getTeamVerdictInfo(game.get('gameId'), team5.get('win'))
+            vi6 = self.__getTeamVerdictInfo(game.get('gameId'), team6.get('win'))
+            vi7 = self.__getTeamVerdictInfo(game.get('gameId'), team7.get('win'))
+            vi8 = self.__getTeamVerdictInfo(game.get('gameId'), team8.get('win'))
+
             self.extraTeamView1.updateTeam(team3, isCherry, self.tr("3rd"))
-            self.extraTeamView1.updateSummoners(team3["summoners"])
+            self.extraTeamView1.updateSummoners(team3["summoners"], vi3)
 
             self.extraTeamView2.updateTeam(team4, isCherry, self.tr("4th"))
-            self.extraTeamView2.updateSummoners(team4["summoners"])
+            self.extraTeamView2.updateSummoners(team4["summoners"], vi4)
 
             self.extraTeamView3.updateTeam(team5, isCherry, self.tr("5th"))
-            self.extraTeamView3.updateSummoners(team5["summoners"])
+            self.extraTeamView3.updateSummoners(team5["summoners"], vi5)
 
             self.extraTeamView4.updateTeam(team6, isCherry, self.tr("6th"))
-            self.extraTeamView4.updateSummoners(team6["summoners"])
+            self.extraTeamView4.updateSummoners(team6["summoners"], vi6)
 
             self.extraTeamView5.updateTeam(team7, isCherry, self.tr("7th"))
-            self.extraTeamView5.updateSummoners(team7["summoners"])
+            self.extraTeamView5.updateSummoners(team7["summoners"], vi7)
 
             self.extraTeamView6.updateTeam(team8, isCherry, self.tr("8th"))
-            self.extraTeamView6.updateSummoners(team8["summoners"])
+            self.extraTeamView6.updateSummoners(team8["summoners"], vi8)
+
+    def __getTeamVerdictInfo(self, gameId, winField):
+        """查询战犯缓存, 返回对应队伍 (胜方/败方) 的嫌疑者 verdictInfo.
+
+        胜方队 (win=True) -> 缓存的 winner 字段 (躺赢狗)
+        败方队 (win=False) -> 缓存的 loser 字段 (战犯)
+        """
+        if not gameId:
+            return None
+        # winField 可能是 'Win'/'Loss' 字符串或布尔值
+        if isinstance(winField, str):
+            isWin = winField.lower() in ('win', 'true')
+        elif winField is None:
+            return None
+        else:
+            isWin = bool(winField)
+        try:
+            from app.lol.war_criminal_cache import getVerdict
+            cached = getVerdict(gameId)
+            if not cached:
+                return None
+            teamVerdict = cached.get('winner') if isWin else cached.get('loser')
+            if not teamVerdict or not teamVerdict.get('verdict'):
+                return None
+            return {
+                'puuid': teamVerdict.get('suspectPuuid', ''),
+                'label': teamVerdict.get('label', ''),
+                'evidence': teamVerdict.get('evidence') or [],
+                'teamUnderperformed': bool(
+                    teamVerdict.get('teamUnderperformed', False)),
+            }
+        except Exception:
+            return None
 
 
 class TeamView(QFrame, ColorChangeable):
@@ -686,7 +733,7 @@ class TeamView(QFrame, ColorChangeable):
         self.slash1.setText("/")
         self.slash2.setText("/")
 
-    def updateSummoners(self, summoners):
+    def updateSummoners(self, summoners, verdictInfo=None):
         for i in reversed(range(self.summonersLayout.count())):
             item = self.summonersLayout.itemAt(i)
             self.summonersLayout.removeItem(item)
@@ -694,7 +741,7 @@ class TeamView(QFrame, ColorChangeable):
                 widget.deleteLater()
 
         for summoner in summoners:
-            infoBar = SummonerInfoBar(summoner)
+            infoBar = SummonerInfoBar(summoner, verdictInfo=verdictInfo)
 
             self.summonersLayout.addWidget(infoBar, stretch=1)
 
@@ -736,7 +783,7 @@ class BansFlyoutView(FlyoutViewBase):
 
 
 class SummonerInfoBar(QFrame):
-    def __init__(self, summoner, parent=None):
+    def __init__(self, summoner, parent=None, verdictInfo=None):
         super().__init__(parent)
         # self._pressedBackgroundColor = self._hoverBackgroundColor
 
@@ -775,6 +822,17 @@ class SummonerInfoBar(QFrame):
         championId = summoner.get("championId")
         self.augmentRow = AugmentRow(
             augmentIds, championId=championId) if augmentIds else None
+
+        # 战犯/躺赢狗徽章: 仅当本召唤师是嫌疑者时显示
+        self.verdictBadge = None
+        if verdictInfo and verdictInfo.get('puuid') and \
+                verdictInfo.get('puuid') == summoner.get('puuid'):
+            self.verdictBadge = VerdictBadge(
+                verdictInfo.get('label', ''),
+                isSuspect=True,
+                evidence=verdictInfo.get('evidence'),
+                teamUnderperformed=verdictInfo.get(
+                    'teamUnderperformed', False))
 
         self.__initWidget(summoner)
         self.__initLayout()
@@ -903,6 +961,10 @@ class SummonerInfoBar(QFrame):
         if self.augmentRow:
             self.hBoxLayout.addSpacing(8)
             self.hBoxLayout.addWidget(self.augmentRow)
+        # 战犯/躺赢狗徽章 (仅当本召唤师是嫌疑者时显示)
+        if self.verdictBadge:
+            self.hBoxLayout.addSpacing(8)
+            self.hBoxLayout.addWidget(self.verdictBadge)
 
 
 class GameTitleBar(QFrame, ColorChangeable):
@@ -946,6 +1008,7 @@ class GameTitleBar(QFrame, ColorChangeable):
         self.titleBarLayout.addWidget(self.mapIcon)
         self.titleBarLayout.addSpacing(5)
         self.titleBarLayout.addLayout(self.infoLayout)
+        self.titleBarLayout.addSpacing(8)
         self.titleBarLayout.addSpacerItem(QSpacerItem(
             1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
         self.titleBarLayout.addWidget(self.copyGameIdButton)
@@ -1236,15 +1299,33 @@ class SearchInterface(SeraphineInterface):
 
     # Fix: 超快速的在候选栏选中两次同样puuid会起两个task加载战绩, 100%干掉客户端 -- By Hpero4
     @asyncLockDecorator('loadFirstPageLock')
-    async def searchAndShowFirstPage(self, puuid=None):
-        name = self.searchLineEdit.text()
-        if name == "":
-            return False
+    async def searchAndShowFirstPage(self, puuid=None, force=False):
+        # force 模式: 用已有 puuid 查 summoner, 不依赖搜索框内容
+        # 用于生涯页刷新后同步刷新搜索页
+        name = None
+        try:
+            if force and self.puuid and self.puuid != 0:
+                summoner = await connector.getSummonerByPuuid(self.puuid)
+            else:
+                name = self.searchLineEdit.text()
+                if name == "":
+                    return False
 
-        if re.match(r"\S+-\S+-\S+-\S+-\S+", name):
-            summoner = await connector.getSummonerByPuuid(name)
-        else:
-            summoner = await connector.getSummonerByName(name)
+                if re.match(r"\S+-\S+-\S+-\S+-\S+", name):
+                    summoner = await connector.getSummonerByPuuid(name)
+                else:
+                    summoner = await connector.getSummonerByName(name)
+        except ReferenceError:
+            # LCU 客户端已断开
+            InfoBar.warning(
+                self.tr("Client not connected"),
+                self.tr("League of Legends client is not running. "
+                        "Please start the client first."),
+                orient=Qt.Vertical,
+                duration=4000,
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                parent=self)
+            return False
 
         if 'errorCode' in summoner:
             self.__showSummonerNotFoundMsg()
@@ -1259,7 +1340,8 @@ class SearchInterface(SeraphineInterface):
 
         try:
             # NOTE 如果是生涯和搜索反复横跳, 就不重新启 loadgames 任务了
-            if puuid != self.puuid:
+            # force=True 时强制重新加载 (生涯页刷新后同步)
+            if force or puuid != self.puuid:
                 if self.gameLoadingTask:
                     self.gameLoadingTask.cancel()
 
@@ -1275,6 +1357,10 @@ class SearchInterface(SeraphineInterface):
                     games = await connector.getSummonerGamesByPuuid(self.puuid, 0, 19)
                 except SummonerGamesNotFound:
                     games = []
+                except ReferenceError:
+                    # LCU 客户端在加载过程中断开
+                    self.gamesView.setLoadingPageEnable(False)
+                    return False
                 else:
                     games = await parseGamesDataConcurrently(games['games'])
 
@@ -1307,7 +1393,8 @@ class SearchInterface(SeraphineInterface):
         finally:
             self.gamesView.setLoadingPageEnable(False)
 
-        self.__addSearchHistroy(name)
+        if name:
+            self.__addSearchHistroy(name)
 
         return True
 
@@ -1455,6 +1542,21 @@ class SearchInterface(SeraphineInterface):
             self.detailViewLoadTask = asyncio.create_task(
                 parseGameDetailData(puuid, game))
             game = await self.detailViewLoadTask
+
+            # 战犯/躺赢狗: 点进战绩详情时自动诊断 (不依赖插件运行)
+            # 缓存未命中, 或缺少 winner/loser 字段 (旧版本写入) 时重新诊断
+            if cfg.get(cfg.enableWarCriminal):
+                from app.lol.war_criminal_cache import getVerdict
+                cached = getVerdict(gameId)
+                needDiag = (not cached
+                            or 'winner' not in cached
+                            or 'loser' not in cached)
+                if needDiag:
+                    from app.lol.war_criminal import diagnoseGameFromParsed
+                    sensitivity = cfg.get(cfg.warCriminalSensitivity)
+                    await diagnoseGameFromParsed(
+                        game, puuid, sensitivity, gameId)
+
             self.gamesView.gameDetailView.updateGame(game)
 
         # if cfg.get(cfg.showTierInGameInfo):

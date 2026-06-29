@@ -3,19 +3,24 @@ OPGG 窗口海克斯辅助页。
 
 在 ARAM Mayhem 游戏进行中, 根据当前英雄 + 已选强化 + (若可得) 当前 offer,
 结合 OPGG 登场率/评级分与搭配协同规则, 显示强化选择优先级推荐。
+
+由于 Live Client API 不暴露 ARAM Mayhem 强化数据, 已选强化需手动点击推荐项标记。
 """
 
 import asyncio
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QFrame)
 from qasync import asyncSlot
 
 from app.common.logger import logger
+from app.common.icons import Icon
 from app.common.qfluentwidgets import (SmoothScrollArea, isDarkTheme,
                                        ToolTipFilter, ToolTipPosition,
-                                       PushButton)
+                                       PushButton, TransparentToolButton)
+from app.common.style_sheet import StyleSheet
 from app.components.champion_icon_widget import RoundedLabel
 from app.lol.connector import connector
 from app.lol.opgg import opgg
@@ -37,7 +42,7 @@ _TIER_LABELS = {
 }
 
 
-class HextechAssistInterface(QWidget):
+class HextechAssistInterface(QFrame):
     """海克斯辅助页: 已选强化 + 推荐列表"""
 
     def __init__(self, parent=None):
@@ -58,29 +63,42 @@ class HextechAssistInterface(QWidget):
         self.championBarLayout = QHBoxLayout(self.championBar)
         self.championIcon = RoundedLabel(borderWidth=0, radius=3.0)
         self.championIcon.setFixedSize(32, 32)
-        self.championNameLabel = QLabel(self.tr("No champion"))
+        self.championNameLabel = QLabel(self.tr("未选择英雄"))
 
         # 已选强化区
-        self.selectedSectionLabel = QLabel(self.tr("Selected augments"))
+        self.selectedHeader = QHBoxLayout()
+        self.selectedSectionLabel = QLabel(self.tr("已选强化"))
+        self.selectedSectionLabel.setObjectName("sectionLabel")
+        self.clearSelectedButton = TransparentToolButton(Icon.DELETE)
+        self.clearSelectedButton.setFixedSize(22, 22)
+        self.clearSelectedButton.setToolTip(self.tr("清空已选"))
+        self.clearSelectedButton.setVisible(False)
+        self.selectedHeader.addWidget(self.selectedSectionLabel)
+        self.selectedHeader.addWidget(self.clearSelectedButton)
+        self.selectedHeader.addStretch()
+
         self.selectedRow = QWidget()
         self.selectedRowLayout = QHBoxLayout(self.selectedRow)
         self.selectedIconLabels = []
 
         # 推荐区标题
-        self.recommendSectionLabel = QLabel(self.tr("Recommended augments"))
+        self.recommendSectionLabel = QLabel(self.tr("推荐强化 (点击添加为已选)"))
+        self.recommendSectionLabel.setObjectName("sectionLabel")
         self.recommendListWidget = QWidget()
         self.recommendListLayout = QVBoxLayout(self.recommendListWidget)
 
         # 状态/提示
         self.statusLabel = QLabel("")
+        self.statusLabel.setObjectName("statusLabel")
         self.statusLabel.setAlignment(Qt.AlignCenter)
 
         # 刷新按钮
-        self.refreshButton = PushButton(self.tr("Refresh"))
+        self.refreshButton = PushButton(self.tr("刷新"))
         self.refreshButton.setFixedHeight(30)
 
         self.__initLayout()
         self.__connectSignals()
+        StyleSheet.OPGG_HEXTECH_ASSIST_INTERFACE.apply(self)
 
     def __initLayout(self):
         self.scrollArea.setObjectName("scrollArea")
@@ -89,6 +107,11 @@ class HextechAssistInterface(QWidget):
         self.scrollWidget.setLayout(self.scrollLayout)
         self.scrollArea.setWidget(self.scrollWidget)
         self.scrollArea.setWidgetResizable(True)
+        self.scrollArea.setViewportMargins(0, 0, 15, 0)
+        self.scrollWidget.setContentsMargins(0, 0, 0, 0)
+        self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
+        self.scrollLayout.setContentsMargins(0, 0, 0, 0)
+        self.scrollLayout.setSpacing(4)
 
         # 英雄栏
         self.championBarLayout.setContentsMargins(0, 0, 0, 0)
@@ -111,7 +134,7 @@ class HextechAssistInterface(QWidget):
         # 组装
         self.scrollLayout.addWidget(self.championBar)
         self.scrollLayout.addSpacing(8)
-        self.scrollLayout.addWidget(self.selectedSectionLabel)
+        self.scrollLayout.addLayout(self.selectedHeader)
         self.scrollLayout.addWidget(self.selectedRow)
         self.scrollLayout.addSpacing(12)
         self.scrollLayout.addWidget(self.recommendSectionLabel)
@@ -119,7 +142,11 @@ class HextechAssistInterface(QWidget):
         self.scrollLayout.addWidget(self.statusLabel)
         self.scrollLayout.addStretch()
 
+        self.recommendListLayout.setContentsMargins(0, 0, 0, 0)
+        self.recommendListLayout.setSpacing(4)
+
         bottomBar = QHBoxLayout()
+        bottomBar.setContentsMargins(0, 4, 0, 4)
         bottomBar.addStretch()
         bottomBar.addWidget(self.refreshButton)
         self.vBoxLayout.addWidget(self.scrollArea)
@@ -127,17 +154,24 @@ class HextechAssistInterface(QWidget):
 
     def __connectSignals(self):
         self.refreshButton.clicked.connect(self.__onRefreshClicked)
+        self.clearSelectedButton.clicked.connect(self.__onClearSelected)
 
     @asyncSlot()
     async def __onRefreshClicked(self):
         await self.updateForChampion(self.championId)
+
+    def __onClearSelected(self):
+        self.selectedIds = []
+        self.__updateSelectedRow()
+        if self.allAugments:
+            self.__refreshRecommendations()
 
     async def updateForChampion(self, championId):
         """根据英雄拉取 OPGG 强化数据, 初始展示全量推荐."""
         if not championId or championId <= 0:
             return
         self.championId = championId
-        self.statusLabel.setText(self.tr("Loading..."))
+        self.statusLabel.setText(self.tr("加载中..."))
 
         # 更新英雄栏
         try:
@@ -159,13 +193,13 @@ class HextechAssistInterface(QWidget):
                 championId=championId, position='none', tier='all')
             self.allAugments = build['data'].get('augments') or []
             if not self.allAugments:
-                self.statusLabel.setText(self.tr("No augment data"))
+                self.statusLabel.setText(self.tr("无强化数据"))
                 return
             self.statusLabel.setText("")
             self.__refreshRecommendations()
         except Exception as e:
             logger.warning(f"updateForChampion failed: {e}", TAG)
-            self.statusLabel.setText(self.tr("Failed to load"))
+            self.statusLabel.setText(self.tr("加载失败"))
 
     def updateLiveState(self, liveData):
         """接收实时数据 (已选+offer), 刷新已选区和推荐列表.
@@ -183,7 +217,6 @@ class HextechAssistInterface(QWidget):
 
     def __updateSelectedRow(self):
         """刷新已选强化图标行."""
-        # 隐藏所有槽位
         for label in self.selectedIconLabels:
             label.setVisible(False)
 
@@ -210,10 +243,10 @@ class HextechAssistInterface(QWidget):
         except RuntimeError:
             pass
 
-        # 更新已选区标题
         count = len(self.selectedIds)
         self.selectedSectionLabel.setText(
-            self.tr("Selected augments") + f" ({count}/6)")
+            self.tr("已选强化") + f" ({count}/6)")
+        self.clearSelectedButton.setVisible(count > 0)
 
     def __refreshRecommendations(self):
         """重算推荐列表并刷新 UI."""
@@ -229,7 +262,6 @@ class HextechAssistInterface(QWidget):
 
     def __renderRecommendList(self):
         """渲染推荐列表 UI."""
-        # 清空旧列表
         for i in reversed(range(self.recommendListLayout.count())):
             item = self.recommendListLayout.itemAt(i)
             self.recommendListLayout.removeItem(item)
@@ -237,14 +269,27 @@ class HextechAssistInterface(QWidget):
                 item.widget().deleteLater()
 
         if not self.recommendations:
-            self.statusLabel.setText(self.tr("No recommendations"))
+            self.statusLabel.setText(self.tr("暂无推荐"))
             return
         self.statusLabel.setText("")
 
-        # 限制显示前 15 项
+        selected_set = set(self.selectedIds)
         for idx, rec in enumerate(self.recommendations[:15]):
-            bar = RecommendedAugmentBar(idx + 1, rec)
+            is_selected = rec['aug']['id'] in selected_set
+            bar = RecommendedAugmentBar(idx + 1, rec, is_selected)
+            bar.clicked.connect(self.__onRecommendClicked)
             self.recommendListLayout.addWidget(bar)
+
+    def __onRecommendClicked(self, augId):
+        """点击推荐项: 切换已选状态."""
+        if augId in self.selectedIds:
+            self.selectedIds.remove(augId)
+        else:
+            if len(self.selectedIds) >= 6:
+                return
+            self.selectedIds.append(augId)
+        self.__updateSelectedRow()
+        self.__refreshRecommendations()
 
     def clearState(self):
         """清空状态 (游戏结束时调用)."""
@@ -258,22 +303,30 @@ class HextechAssistInterface(QWidget):
             self.recommendListLayout.removeItem(item)
             if item.widget():
                 item.widget().deleteLater()
-        self.selectedSectionLabel.setText(self.tr("Selected augments"))
+        self.selectedSectionLabel.setText(self.tr("已选强化"))
+        self.clearSelectedButton.setVisible(False)
         self.statusLabel.setText("")
 
 
 class RecommendedAugmentBar(QFrame):
-    """推荐强化项: 排名 + 图标 + 名称 + 稀有度 + 评分 + 推荐理由"""
+    """推荐强化项: 排名 + 图标 + 名称 + 稀有度 + 评分 + 推荐理由
 
-    def __init__(self, rank: int, rec: dict, parent=None):
+    可点击切换已选状态。
+    """
+    clicked = pyqtSignal(int)
+
+    def __init__(self, rank: int, rec: dict, isSelected: bool = False,
+                 parent=None):
         super().__init__(parent)
-        self.rank = rank
-        self.rec = rec
+        self.augId = rec['aug'].get('id')
+        self.isSelected = isSelected
         aug = rec['aug']
         tier = rec.get('tier', 'silver')
 
+        self.setFixedHeight(42)
+        self.setCursor(Qt.PointingHandCursor)
         self.hBoxLayout = QHBoxLayout(self)
-        self.hBoxLayout.setContentsMargins(4, 4, 4, 4)
+        self.hBoxLayout.setContentsMargins(6, 4, 6, 4)
         self.hBoxLayout.setSpacing(8)
 
         # 排名
@@ -287,8 +340,6 @@ class RecommendedAugmentBar(QFrame):
         border_color = tier_colors[0] if not isDarkTheme() else tier_colors[1]
         self.iconLabel = RoundedLabel(borderWidth=2, radius=3.0)
         self.iconLabel.setFixedSize(32, 32)
-        # 边框颜色通过 borderColor 属性设置 (RoundedLabel.paintEvent 读取此属性)
-        from PyQt5.QtGui import QColor
         self.iconLabel.borderColor = QColor(border_color)
 
         # 名称+理由
@@ -331,6 +382,7 @@ class RecommendedAugmentBar(QFrame):
 
         self.__initLayout()
         self.__loadIcon(aug)
+        self.__updateSelectedStyle()
 
     def __initLayout(self):
         self.hBoxLayout.addWidget(self.rankLabel)
@@ -346,7 +398,6 @@ class RecommendedAugmentBar(QFrame):
 
         async def _load():
             try:
-                # 优先用 OPGG 提供的图标路径
                 if icon:
                     self.iconLabel.setPicture(icon)
                 else:
@@ -360,3 +411,16 @@ class RecommendedAugmentBar(QFrame):
             asyncio.ensure_future(_load())
         except RuntimeError:
             pass
+
+    def __updateSelectedStyle(self):
+        if self.isSelected:
+            self.setStyleSheet(
+                "RecommendedAugmentBar { border: 2px solid #4CAF50; "
+                "border-radius: 4px; background-color: rgba(76, 175, 80, 0.12); }")
+        else:
+            self.setStyleSheet("")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.augId)
+        super().mousePressEvent(event)

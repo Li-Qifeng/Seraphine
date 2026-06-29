@@ -637,17 +637,63 @@ class LolClientConnector(QObject):
 
         Raises:
             SummonerGamesNotFound: If the summoner games are not found.
+
+        Notes:
+            LCU `/lol-match-history/v1/products/lol/{puuid}/matches` 端点在游戏
+            刚结束时可能返回过期的缓存数据 (例如只有 2 条), 需要等待后端刷新.
+            这里在返回条数明显少于请求数 (gameCount < expected 且 games 为空或少)
+            时重试最多 3 次, 每次间隔 2 秒.
         """
-        params = {"begIndex": begIndex, "endIndex": endIndex}
-        res = await self.__get(
-            f"/lol-match-history/v1/products/lol/{puuid}/matches", params
-        )
-        res = await res.json()
+        expected = endIndex - begIndex + 1
+        last_exc = None
+        for attempt in range(4):  # 0,1,2,3 共 4 次
+            try:
+                params = {"begIndex": begIndex, "endIndex": endIndex}
+                res = await self.__get(
+                    f"/lol-match-history/v1/products/lol/{puuid}/matches",
+                    params
+                )
+                res = await res.json()
 
-        if "games" not in res:
-            raise SummonerGamesNotFound()
+                if "games" not in res:
+                    raise SummonerGamesNotFound()
 
-        return res["games"]
+                games = res["games"]
+                gameCount = res.get("gameCount", len(games))
+
+                # 若返回条数充足, 直接返回
+                if len(games) >= expected:
+                    return games
+
+                # 若是第一次请求且 games 非空但 gameCount 远大于实际返回 (LCU 缓存过期),
+                # 等待后重试. 典型场景: 游戏刚结束, LCU 还没刷新 match-history,
+                # 返回旧的 2 条数据.
+                if attempt < 3 and len(games) < expected and gameCount > len(games) + 2:
+                    logger.error(
+                        f"getSummonerGamesByPuuid: stale cache detected "
+                        f"(attempt={attempt}, got={len(games)}, "
+                        f"gameCount={gameCount}, expected={expected}), "
+                        f"retrying in 2s", TAG)
+                    await asyncio.sleep(2)
+                    continue
+
+                return games
+            except SummonerGamesNotFound as e:
+                last_exc = e
+                if attempt < 3:
+                    await asyncio.sleep(2)
+                    continue
+                raise
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                last_exc = e
+                if attempt < 3:
+                    await asyncio.sleep(2)
+                    continue
+                raise
+
+        if last_exc:
+            raise last_exc
+        return []
 
     @retry()
     async def getGameDetailByGameId(self, gameId) -> dict:
@@ -1168,40 +1214,131 @@ class LolClientConnector(QObject):
                 return None
             data = await res.json()
             if isinstance(data, dict):
-                logger.error(
-                    f"getEogStats ballot keys: {list(data.keys())}", TAG)
                 allies = data.get('eligibleAllies')
+                opponents = data.get('eligibleOpponents')
+                honored = data.get('honoredPlayers')
+                gameId = data.get('gameId')
+                logger.error(
+                    f"getEogStats ballot: gameId={gameId} "
+                    f"eligibleAllies={len(allies) if isinstance(allies, list) else 'N/A'} "
+                    f"eligibleOpponents={len(opponents) if isinstance(opponents, list) else 'N/A'} "
+                    f"honoredPlayers={len(honored) if isinstance(honored, list) else 'N/A'}",
+                    TAG)
                 if isinstance(allies, list) and allies:
                     first = allies[0]
                     if isinstance(first, dict):
                         logger.error(
                             f"getEogStats eligibleAllies[0] keys: "
                             f"{list(first.keys())}", TAG)
+                if isinstance(allies, list) and not allies:
+                    # eligibleAllies 为空, 打印完整 ballot 用于诊断
+                    # (可能是 ARAM Mayhem 等模式 ballot 时序问题)
+                    logger.error(
+                        f"getEogStats: eligibleAllies empty, "
+                        f"full ballot={str(data)[:500]}", TAG)
             return data
         except (aiohttp.ClientError, json.JSONDecodeError, AttributeError) as e:
             logger.error(f"getEogStats failed: {e}", TAG)
             return None
 
     async def submitHonor(self, recipientPuuid: str,
-                          honorType: str = "HEART") -> bool:
+                          honorType: str = "HEART",
+                          summonerId: int = None) -> bool:
         """提交本局队友点赞.
 
-        正确端点: POST /lol-honor/v1/honor (V3 风格, 属 lol-honor-v2 插件).
-        请求体 (LolHonorV2ApiHonorPlayerServerRequestV3):
-            {honorType: str, recipientPuuid: str}
-        不再需要 gameId/summonerId, 游戏上下文由 ballot 隐式确定.
-        成功返回 True (HTTP 204 No Content).
+        优先使用实测可用的 /lol-honor-store/v1/ballot 端点 (带 summonerId),
+        失败时回退到 honor-v2 系列端点.
+
+        实测日志:
+        - /lol-honor-store/v1/ballot POST {summonerId, honorCategory}: 成功
+        - /lol-honor/v1/honor POST {honorType, recipientPuuid}: 404 (端点不存在)
+        - /lol-honor-v2/v1/ballot PUT: 400 (方法不支持)
+        - /lol-honor-v2/v1/ballot PATCH: Server disconnected
+
+        Args:
+            recipientPuuid: 目标召唤师 puuid (用于 honor-v2 回退和日志)
+            honorType: 点赞类型, 通常为 HEART
+            summonerId: 目标召唤师 summonerId (来自 ballot.eligibleAllies[].summonerId),
+                        用于 honor-store 端点. None 时跳过该端点.
+
+        Returns:
+            True 仅当提交成功.
         """
         try:
-            data = {
-                "honorType": honorType,
-                "recipientPuuid": str(recipientPuuid),
-            }
-            res = await self.__post("/lol-honor/v1/honor", data=data)
-            if res.status in (200, 204):
-                return True
+            puuid = str(recipientPuuid)
+
+            # 端点 1 (实测可用): /lol-honor-store/v1/ballot 带 summonerId
+            if summonerId is not None:
+                try:
+                    data = {
+                        "summonerId": int(summonerId),
+                        "honorCategory": honorType,
+                    }
+                    res = await self.__post(
+                        "/lol-honor-store/v1/ballot", data=data)
+                    body_text = ""
+                    try:
+                        body_text = await res.text()
+                    except Exception:
+                        pass
+                    logger.error(
+                        f"submitHonor honor-store/ballot: "
+                        f"HTTP {res.status} body={body_text[:200]}",
+                        TAG)
+                    if res.status in (200, 204):
+                        return True
+                except Exception as e:
+                    logger.error(
+                        f"submitHonor honor-store/ballot failed: {e}", TAG)
+
+            # 端点 2 (回退): POST /lol-honor-v2/v1/ballot 带 honoredPlayers
+            try:
+                data = {
+                    "honoredPlayers": [
+                        {"puuid": puuid, "honorType": honorType}],
+                }
+                res = await self.__post(
+                    "/lol-honor-v2/v1/ballot", data=data)
+                body_text = ""
+                try:
+                    body_text = await res.text()
+                except Exception:
+                    pass
+                logger.error(
+                    f"submitHonor honor-v2/ballot POST: "
+                    f"HTTP {res.status} body={body_text[:200]}",
+                    TAG)
+                if res.status in (200, 204):
+                    return True
+            except Exception as e:
+                logger.error(
+                    f"submitHonor honor-v2/ballot POST failed: {e}", TAG)
+
+            # 端点 3 (回退): POST /lol-honor-v2/v1/honor
+            try:
+                data = {
+                    "honorType": honorType,
+                    "recipientPuuid": puuid,
+                }
+                res = await self.__post(
+                    "/lol-honor-v2/v1/honor", data=data)
+                body_text = ""
+                try:
+                    body_text = await res.text()
+                except Exception:
+                    pass
+                logger.error(
+                    f"submitHonor honor-v2/honor POST: "
+                    f"HTTP {res.status} body={body_text[:200]}",
+                    TAG)
+                if res.status in (200, 204):
+                    return True
+            except Exception as e:
+                logger.error(
+                    f"submitHonor honor-v2/honor POST failed: {e}", TAG)
+
             logger.error(
-                f"submitHonor HTTP {res.status}", TAG)
+                f"submitHonor: all endpoints failed for {puuid}", TAG)
             return False
         except (aiohttp.ClientError, AttributeError, ValueError,
                 TypeError) as e:
@@ -1211,16 +1348,25 @@ class LolClientConnector(QObject):
     async def sealHonorBallot(self) -> bool:
         """封存 honor ballot, 使提交的点赞生效.
 
-        POST /lol-honor/v1/ballot (无 body), 属 lol-honor-v2 插件.
+        POST /lol-honor-v2/v1/ballot (无 body, 与 GET ballot 同 plugin).
         必须在 submitHonor 之后调用, 否则客户端不会真正记录 honor.
         成功返回 True.
         """
         try:
-            res = await self.__post("/lol-honor/v1/ballot")
+            res = await self.__post("/lol-honor-v2/v1/ballot")
+            body_text = ""
+            try:
+                body_text = await res.text()
+            except Exception:
+                pass
             if res.status in (200, 204):
+                logger.error(
+                    f"sealHonorBallot: HTTP {res.status} body={body_text[:200]}",
+                    TAG)
                 return True
             logger.error(
-                f"sealHonorBallot HTTP {res.status}", TAG)
+                f"sealHonorBallot HTTP {res.status} body={body_text[:200]}",
+                TAG)
             return False
         except (aiohttp.ClientError, AttributeError) as e:
             logger.error(f"sealHonorBallot failed: {e}", TAG)

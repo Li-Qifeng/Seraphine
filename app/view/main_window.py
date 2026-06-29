@@ -639,7 +639,10 @@ class MainWindow(FluentWindow):
 
         await self.__updateAvatarIconName()
 
-        self.opggWindow.setHomeInterfaceEnabled(True)
+        # OPGG 数据不依赖 LCU (走 lol-api-champion.op.gg),
+        # 客户端断开后保持 tierInterface 可用, 不切回 homeInterface,
+        # 避免触发 setComboBoxesEnabled(False) 把所有过滤控件锁死.
+        # 与 __initOfflineServices 启动路径保持一致.
 
         self.setWindowTitle("Seraphine")
 
@@ -884,15 +887,18 @@ class MainWindow(FluentWindow):
         elif status == 'ChampSelect':
             title = self.tr("Selecting Champions")
 
-            # 在标题添加所处队伍
-            side = await connector.getMapSide()
-            if side:
-                if side == 'blue':
-                    mapSide = self.tr("Blue Team")
-                else:
-                    mapSide = self.tr("Red Team")
+            # 在标题添加所处队伍 (getMapSide 偶发失败不应阻断选英雄流程)
+            try:
+                side = await connector.getMapSide()
+                if side:
+                    if side == 'blue':
+                        mapSide = self.tr("Blue Team")
+                    else:
+                        mapSide = self.tr("Red Team")
 
-                title = title + " - " + mapSide
+                    title = title + " - " + mapSide
+            except Exception as e:
+                logger.warning(f"getMapSide failed, skipping: {e}", TAG)
 
             await self.__onChampionSelectBegin()
         elif status == 'GameStart':
@@ -919,8 +925,19 @@ class MainWindow(FluentWindow):
             # 战犯诊断必须在生涯刷新前完成, 否则 verdict 缓存还没写入,
             # 战绩卡片渲染时 getVerdict 命中不到, 徽章不会显示
             await self.__onGameEnd()
+            # LCU match-history 缓存过期由 connector.getSummonerGamesByPuuid
+            # 内部的重试机制处理 (检测到 stale cache 自动等待重试),
+            # 这里无需再 sleep
             logger.error("Career: refresh triggered (lobby)", TAG)
             await self.careerInterface.refresh()
+
+            # 同步刷新战绩查询页: 生涯页刷新后, 若搜索页已加载同一召唤师,
+            # 强制重新拉取数据, 避免左侧对局列表显示旧数据
+            if (self.searchInterface.puuid
+                    and self.searchInterface.puuid != 0
+                    and self.searchInterface.puuid == self.careerInterface.puuid):
+                asyncio.create_task(
+                    self.searchInterface.searchAndShowFirstPage(force=True))
 
             if self.stackedWidget.currentWidget() is self.gameInfoInterface:
                 self.switchTo(self.careerInterface)
@@ -982,9 +999,13 @@ class MainWindow(FluentWindow):
         """EndOfGame 阶段自动给队友点赞.
 
         使用 /lol-honor-v2/v1/ballot (GET) 获取可点赞队友候选,
-        按策略选一个后 POST /lol-honor/v1/honor 提交.
-        ballot eligibleAllies[] 含 puuid, 直接用于好友判断和提交.
+        按策略选一个后 POST /lol-honor-v2/v1/honor 提交, 然后 seal ballot.
+        connector.submitHonor 内部会 GET ballot 二次验证 honoredPlayers
+        是否真的包含目标 puuid, 避免 LCU 对错误路径返回 204 的"伪成功".
         策略: friends_first (默认) / friends_only / best_score / random.
+
+        ballot.eligibleAllies 可能因 LCU 时序问题为空 (尤其 ARAM Mayhem),
+        最多重试 3 次, 每次间隔 2 秒.
         """
         if not cfg.get(cfg.enableAutoHonor):
             return
@@ -993,14 +1014,30 @@ class MainWindow(FluentWindow):
             await asyncio.sleep(cfg.get(cfg.autoHonorDelay))
 
             strategy = cfg.get(cfg.autoHonorStrategy)
-            ballot = await connector.getEogStats()
-            if not ballot:
-                logger.error("Auto honor: no ballot, skip", TAG)
-                return
 
-            candidates = ballot.get('eligibleAllies') or []
+            # ballot.eligibleAllies 可能为空 (LCU 时序), 最多重试 3 次
+            ballot = None
+            candidates = []
+            for attempt in range(3):
+                ballot = await connector.getEogStats()
+                if not ballot:
+                    logger.error(
+                        f"Auto honor: no ballot (attempt={attempt})", TAG)
+                    await asyncio.sleep(2)
+                    continue
+                candidates = ballot.get('eligibleAllies') or []
+                if candidates:
+                    break
+                logger.error(
+                    f"Auto honor: eligibleAllies empty, "
+                    f"retry in 2s (attempt={attempt})",
+                    TAG)
+                await asyncio.sleep(2)
+
             if not candidates:
-                logger.error("Auto honor: no eligibleAllies in ballot", TAG)
+                logger.error(
+                    "Auto honor: no eligibleAllies in ballot after retries",
+                    TAG)
                 return
 
             # 拉好友列表
@@ -1023,10 +1060,15 @@ class MainWindow(FluentWindow):
                 logger.error(f"Auto honor: target has no puuid: {target}", TAG)
                 return
 
+            # ballot.eligibleAllies 同时含 summonerId 和 puuid;
+            # honor-store 端点需要 summonerId, 传给 connector 作为首选.
+            summonerId = target.get("summonerId")
+
             logger.error(
                 f"Auto honor: picked target={target} strategy={strategy}",
                 TAG)
-            ok = await connector.submitHonor(puuid, "HEART")
+            ok = await connector.submitHonor(
+                puuid, "HEART", summonerId=summonerId)
             name = target.get("summonerName") or puuid
             if ok:
                 # 封存 ballot, 否则客户端不会真正记录 honor
@@ -1300,9 +1342,8 @@ class MainWindow(FluentWindow):
         ARAM/排位均参与诊断.
         """
         try:
-            from app.lol.war_criminal import (
-                diagnoseTeam, verdictLabel, ParticipantStats)
-            from app.lol.war_criminal_cache import setVerdict
+            from app.lol.war_criminal import diagnoseGameFromParsed
+            from app.lol.war_criminal_cache import getVerdict
             from app.lol.tools import parseGameDetailData
 
             # 拿当前召唤师 puuid, 用于判断嫌疑者
@@ -1316,8 +1357,21 @@ class MainWindow(FluentWindow):
             # 取上一局 summary
             # connector.getSummonerGamesByPuuid 返回 dict (含 gameCount/games 等键),
             # 内部 games 字段才是对局列表
-            gamesResp = await connector.getSummonerGamesByPuuid(
-                currentPuuid, 0, 1)
+            # 游戏刚结束时 LCU API 可能还没更新战绩, 需要重试
+            gamesResp = None
+            for attempt in range(3):
+                gamesResp = await connector.getSummonerGamesByPuuid(
+                    currentPuuid, 0, 1)
+                games_check = []
+                if isinstance(gamesResp, dict):
+                    games_check = gamesResp.get("games") or []
+                elif isinstance(gamesResp, list):
+                    games_check = gamesResp
+                if games_check:
+                    break
+                logger.error(
+                    f"WarCriminal: no games yet, retry {attempt + 1}/3", TAG)
+                await asyncio.sleep(2)
             logger.error(
                 f"WarCriminal: gamesResp type={type(gamesResp).__name__} "
                 f"len={len(gamesResp) if hasattr(gamesResp, '__len__') else 'N/A'}",
@@ -1340,6 +1394,11 @@ class MainWindow(FluentWindow):
                 logger.error("WarCriminal: no gameId in lastGame", TAG)
                 return
 
+            # 如果缓存已有该局, 跳过
+            if getVerdict(gameId):
+                logger.error(f"WarCriminal: game {gameId} already diagnosed", TAG)
+                return
+
             # 拿本局详情
             detail = await connector.getGameDetailByGameId(gameId)
             if not detail:
@@ -1352,84 +1411,9 @@ class MainWindow(FluentWindow):
                 logger.error(f"WarCriminal: parseGameDetailData returned None for {gameId}", TAG)
                 return
 
-            queueId = parsed.get('queueId') or detail.get('queueId')
             sensitivity = cfg.get(cfg.warCriminalSensitivity)
-            logger.error(
-                f"WarCriminal: parsed queueId={queueId} teams={list((parsed.get('teams') or {}).keys())}",
-                TAG)
-
-            # 评两队 (我方/敌方), 各按胜负判定
-            teams = parsed.get('teams') or {}
-            # 多队模式 (ARAM Mayhem 有 8 队键) 下, 只写当前用户所在队伍的 verdict,
-            # 否则后处理的队伍会覆盖前面的, 导致 UI 拿到的可能不是用户自己队的 verdict
-            currentTeamWritten = False
-            for tidStr, teamInfo in teams.items():
-                summoners = (teamInfo or {}).get('summoners') or []
-                if len(summoners) < 2:
-                    continue
-                # 跳过当前召唤师不在的队 (避免多队模式覆盖缓存)
-                teamPuuids = {s.get('puuid') for s in summoners
-                              if isinstance(s, dict)}
-                isCurrentTeam = currentPuuid in teamPuuids
-
-                # 该队是否获胜: 优先用 teamInfo.win, 兜底用 summoner[0].win
-                teamWin = bool(teamInfo.get('win'))
-                if teamInfo.get('win') is None:
-                    teamWin = bool(summoners[0].get('win', False))
-
-                teamStats = []
-                for s in summoners:
-                    teamStats.append(ParticipantStats(
-                        puuid=s.get('puuid'),
-                        championId=s.get('championId', 0) or 0,
-                        kills=s.get('kills', 0) or 0,
-                        deaths=s.get('deaths', 0) or 0,
-                        assists=s.get('assists', 0) or 0,
-                        damage=s.get('demage', 0) or 0,
-                        damageTaken=s.get('damageTaken', 0) or 0,
-                        totalHeal=s.get('totalHeal', 0) or 0,
-                        shieldOnTeammates=s.get('shieldOnTeammates', 0) or 0,
-                        ccTime=s.get('ccTime', 0) or 0,
-                        gold=s.get('gold', 0) or 0,
-                        cs=s.get('cs', 0) or 0,
-                        visionScore=s.get('visionScore', 0) or 0,
-                        win=teamWin,
-                        augmentIds=s.get('augmentIds') or [],
-                    ))
-
-                result = await diagnoseTeam(teamStats, queueId, teamWin,
-                                              sensitivity)
-                if not result:
-                    logger.error(
-                        f"WarCriminal: team={tidStr} diagnoseTeam returned None "
-                        f"(size={len(teamStats)})", TAG)
-                    continue
-
-                verdict = result.get('verdict')
-                label = verdictLabel(verdict, teamWin)
-                suspect = result.get('suspect') or {}
-                isCurrentSuspect = (
-                    suspect.get('puuid') is not None and
-                    suspect.get('puuid') == currentPuuid)
-
-                # 只写当前用户所在队伍的 verdict, 避免多队覆盖
-                if isCurrentTeam:
-                    setVerdict(
-                        gameId=gameId,
-                        verdict=verdict,
-                        label=label,
-                        isCurrentSuspect=isCurrentSuspect,
-                        score=result.get('score', 0.0),
-                        evidence=result.get('evidence') or [],
-                    )
-                    currentTeamWritten = True
-                logger.error(
-                    f"WarCriminal verdict: game={gameId} team={tidStr} "
-                    f"verdict={verdict} score={result.get('score')} "
-                    f"second={result.get('secondScore')} "
-                    f"suspect_is_current={isCurrentSuspect} "
-                    f"is_current_team={isCurrentTeam}",
-                    TAG)
+            await diagnoseGameFromParsed(parsed, currentPuuid, sensitivity,
+                                          gameId)
         except Exception as e:
             logger.error(f"WarCriminal diagnose failed: {e}", TAG)
 
