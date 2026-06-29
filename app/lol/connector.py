@@ -782,26 +782,6 @@ class LolClientConnector(QObject):
         return await res.read()
 
     @retry()
-    async def setProfileIcon(self, iconId) -> dict:
-        data = {"profileIconId": iconId}
-        url = "/lol-summoner/v1/current-summoner/icon"
-
-        res = await self.__put(url, data)
-        return await res.json()
-
-    @retry()
-    async def getChatMe(self) -> dict:
-        res = await self.__get("/lol-chat/v1/me")
-        return await res.json()
-
-    @retry()
-    async def getCurrentSummonerProfile(self) -> dict:
-        url = "/lol-summoner/v1/current-summoner/summoner-profile"
-
-        res = await self.__get(url)
-        return await res.json()
-
-    @retry()
     async def removePrestigeCrest(self) -> dict:
         ref = await self.__get('/lol-regalia/v2/current-summoner/regalia')
         ref = await ref.json()
@@ -937,11 +917,6 @@ class LolClientConnector(QObject):
         res = await self.__get("/lol-champ-select/v1/session")
         return await res.json()
 
-    @retry()
-    async def getGameQueues(self) -> list:
-        res = await self.__get("/lol-game-queues/v1/queues")
-        return await res.json()
-
     # 同意交换英雄
     @retry()
     async def acceptTrade(self, id) -> None:
@@ -958,12 +933,6 @@ class LolClientConnector(QObject):
     @retry()
     async def benchSwap(self, championId) -> dict:
         res = await self.__post(f"/lol-champ-select/v1/session/bench/swap/{championId}")
-        return await res.json()
-
-    # 获取当前选择英雄
-    @retry()
-    async def getCurrentChampion(self) -> int:
-        res = await self.__get("/lol-champ-select/v1/current-champion")
         return await res.json()
 
     # 选择英雄
@@ -997,32 +966,6 @@ class LolClientConnector(QObject):
             f"/lol-champ-select/v1/session/actions/{actionsId}", data=data)
 
         return await res.read()
-
-    # 获取皮肤轮盘
-    @retry()
-    async def getSkinCarousel(self) -> dict:
-        # res = await self.__get("/lol-champ-select/v1/pickable-skin-ids") //这个是所有可用的皮肤，不是自己可用的皮肤--!
-        res = await self.__get("/lol-champ-select/v1/skin-carousel-skins")
-        return await res.json()
-
-    # 选皮肤、召唤师技能
-    @retry()
-    async def selectConfig(self, skinId, spell1Id=None, spell2Id=None, wardSkinId=None) -> dict:
-        data = {
-            "selectedSkinId": skinId
-        }
-
-        # 4-点燃 12-闪现 14-传送 **推测未验证**
-        if spell1Id:
-            data["spell1Id"] = spell1Id
-        if spell2Id:
-            data["spell2Id"] = spell2Id
-        if wardSkinId:
-            # 不知道是什么，默认-1
-            data["wardSkinId"] = wardSkinId
-
-        res = await self.__patch("/lol-champ-select/v1/session/my-selection", data)
-        return await res.json()
 
     @retry()
     async def getSummonerById(self, summonerId) -> dict:
@@ -1142,38 +1085,6 @@ class LolClientConnector(QObject):
         os.chdir(f"{cfg.get(cfg.lolFolder)[0]}/../Game")
         subprocess.Popen(['League of Legends.exe', f'{params}'])
         os.chdir(pwd)
-
-    async def dodge(self) -> dict:
-        data = {
-            "destination": 'lcdsServiceProxy',
-            "method": 'call',
-            "args": '["", "teambuilder-draft", "quitV2", ""]'
-        }
-
-        res = await self.__post("/lol-login/v1/session/invoke", data=data)
-
-        return await res.json()
-
-    async def getConversations(self) -> list:
-        res = await self.__get("/lol-chat/v1/conversations")
-
-        return await res.json()
-
-    async def getHelp(self) -> dict:
-        res = await self.__get("/help")
-
-        return await res.json()
-
-    @retry()
-    async def sendFriendRequest(self, name) -> None:
-        summoner = self.getSummonerByName(name)
-        summonerId = summoner['summonerId']
-
-        data = {
-            "name": name,
-        }
-
-        res = await self.__post('/lol-chat/v1/friend-requests', data=data)
 
     @retry()
     async def playAgain(self) -> bytes:
@@ -1375,22 +1286,6 @@ class LolClientConnector(QObject):
     @retry()
     async def getClientZoom(self) -> int:
         res = await self.__get("/riotclient/zoom-scale")
-
-        return await res.json()
-
-    async def getGameReplay(self, gameId) -> aiohttp.ClientResponse:
-        data = {"componentType": "replay-button_match-history", "gameId": gameId}
-        res = await self.__post(f"/lol-replays/v1/rofls/{gameId}/download", data=data)
-
-        return res
-
-    async def getReplayMetadata(self, gameId) -> dict:
-        res = await self.__get(f"/lol-replays/v1/metadata/{gameId}")
-
-        return await res.json()
-
-    async def getReplayPath(self) -> dict:
-        res = await self.__get("/lol-replays/v1/rofls/path")
 
         return await res.json()
 

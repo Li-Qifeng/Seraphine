@@ -1127,14 +1127,6 @@ If champions set by lane are not available, default settings will be used.</sour
     </message>
 </context>
 <context>
-    <name>DodgeCard</name>
-    <message>
-        <location filename="../../view/auxiliary_interface.py" line="1093"/>
-        <source>Dodge</source>
-        <translation>秒退</translation>
-    </message>
-</context>
-<context>
     <name>ErrorInterface</name>
     <message>
         <location filename="../../view/opgg_window.py" line="592"/>
@@ -1176,39 +1168,6 @@ If champions set by lane are not available, default settings will be used.</sour
         <location filename="../../view/auxiliary_interface.py" line="638"/>
         <source>Failed to set window position</source>
         <translation type="obsolete">设置窗口大小失败</translation>
-    </message>
-</context>
-<context>
-    <name>FriendRequestCard</name>
-    <message>
-        <location filename="../../view/auxiliary_interface.py" line="1181"/>
-        <source>Send</source>
-        <translation>发送</translation>
-    </message>
-    <message>
-        <location filename="../../view/auxiliary_interface.py" line="1206"/>
-        <source>Please input summoner&apos;s name</source>
-        <translation>请输入召唤师名及编号</translation>
-    </message>
-    <message>
-        <location filename="../../view/auxiliary_interface.py" line="1233"/>
-        <source>Summoner not found</source>
-        <translation>召唤师未找到</translation>
-    </message>
-    <message>
-        <location filename="../../view/auxiliary_interface.py" line="1233"/>
-        <source>Please check the summoner&apos;s name and retry</source>
-        <translation>请检查召唤师名后重试</translation>
-    </message>
-    <message>
-        <location filename="../../view/auxiliary_interface.py" line="1236"/>
-        <source>Send friend request successfully</source>
-        <translation>发送好友请求成功</translation>
-    </message>
-    <message>
-        <location filename="../../view/auxiliary_interface.py" line="1175"/>
-        <source>Summoners&apos;s name you want to send friend request to:</source>
-        <translation>你想加好友的召唤师名：</translation>
     </message>
 </context>
 <context>
@@ -3129,6 +3088,16 @@ when they are used by Seraphine, which will cost more time</source>
         <location filename="../../view/setting_interface.py" line="57"/>
         <source>Show game modes in Game Infomation interface based on your current game mode</source>
         <translation>基于你所处的游戏模式筛选对局信息界面显示的战绩</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="181"/>
+        <source>Team color</source>
+        <translation>预组队颜色</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="182"/>
+        <source>Change the highlight color of premade teams in game info</source>
+        <translation>修改对局信息中预组队的高亮颜色</translation>
     </message>
 </context>
 <context>

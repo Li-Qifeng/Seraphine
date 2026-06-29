@@ -81,9 +81,6 @@ class Config(QConfig):
     apiConcurrencyNumber = RangeConfigItem("Functions", "ApiConcurrencyNumber", 1,
                                            RangeValidator(1, 100), restart=True)
 
-    gameInfoFilter = ConfigItem(
-        "Functions", "GameInfoFilter", False, BoolValidator())
-
     showTierInGameInfo = ConfigItem("Functions", "ShowTierInGameInfo", False,
                                     BoolValidator())
     autoShowOpgg = ConfigItem("Functions", "AutoShowOpgg", True,
@@ -130,9 +127,6 @@ class Config(QConfig):
     enableAutoSelectTimeoutCompleted = ConfigItem("Functions",
                                                   "EnableAutoSelectTimeoutCompleted", False,
                                                   BoolValidator())
-
-    enableRandomSkin = ConfigItem(
-        "Functions", "enableRandomSkin", False, BoolValidator())
 
     enableAutoSelectChampion = ConfigItem(
         "Functions", "EnableAutoSelectChampion", False, BoolValidator())
@@ -181,10 +175,6 @@ class Config(QConfig):
     searchHistory = ConfigItem(
         "Other", "SearchHistory", ""
     )
-
-    enableGameStartMinimize = ConfigItem("General",
-                                         "EnableGameStartMinimize", False,
-                                         BoolValidator())
 
     enableCheckUpdate = ConfigItem("General",
                                    "EnableCheckUpdate", False,
