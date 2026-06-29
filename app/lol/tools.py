@@ -21,7 +21,7 @@ from .tools_pure import (
     separateTeams,
     sortedSummonersByGameRole,
     parseGames,
-    parseSummonerOrder,
+    parseSummonerOrder,  # noqa: F401  re-export for app.view.game_info_interface
 )
 from .tools_pure import (
     SummonerParsedData,
