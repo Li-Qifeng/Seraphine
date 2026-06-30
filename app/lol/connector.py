@@ -1153,135 +1153,168 @@ class LolClientConnector(QObject):
             return None
 
     async def submitHonor(self, recipientPuuid: str,
-                          honorType: str = "HEART",
-                          summonerId: int = None) -> bool:
+                          honorCategory: str = "HEART",
+                          summonerId: int = None,
+                          gameId: int = None) -> bool:
         """提交本局队友点赞.
 
-        优先使用实测可用的 /lol-honor-store/v1/ballot 端点 (带 summonerId),
-        失败时回退到 honor-v2 系列端点.
+        使用 POST /lol-honor-v2/v1/honor-player 端点 (参考 sona/lol-bot 等开源项目),
+        失败时回退到旧版 POST /lol-honor/v1/honor.
 
-        实测日志:
-        - /lol-honor-store/v1/ballot POST {summonerId, honorCategory}: 成功
-        - /lol-honor/v1/honor POST {honorType, recipientPuuid}: 404 (端点不存在)
-        - /lol-honor-v2/v1/ballot PUT: 400 (方法不支持)
-        - /lol-honor-v2/v1/ballot PATCH: Server disconnected
+        v2 端点 body: {puuid, summonerId, gameId, honorCategory}
+        v1 端点 body: {honorType, recipientPuuid}
+
+        实测日志 (2026-06-30):
+        - v2 端点 HTTP 200 body="failed_to_contact_honor_server" → 假成功
+        - v1 端点 HTTP 204 body="" → 可能也是假成功 (国服 honor 服务器无法联系)
+        - 需二次验证: 提交后重新 GET ballot, 检查 honoredPlayers 是否含目标 puuid
+
+        国服 wegame 注意:
+        - 国服 LCU 是腾讯修改版, honor 后端服务可能无法联系 Riot 服务器
+        - failed_to_contact_honor_server 是 LCU 内部错误, 非 API 路径问题
+        - 这种情况下 honoredPlayers 不会更新, 二次验证会正确识别假成功
 
         Args:
-            recipientPuuid: 目标召唤师 puuid (用于 honor-v2 回退和日志)
-            honorType: 点赞类型, 通常为 HEART
-            summonerId: 目标召唤师 summonerId (来自 ballot.eligibleAllies[].summonerId),
-                        用于 honor-store 端点. None 时跳过该端点.
+            recipientPuuid: 目标召唤师 puuid
+            honorCategory: 点赞类型, HEART/COOL/SHOTCALLER
+            summonerId: 目标召唤师 summonerId (来自 ballot.eligibleAllies)
+            gameId: 当前对局 gameId (来自 ballot.gameId)
 
         Returns:
-            True 仅当提交成功.
+            True 仅当二次验证 honoredPlayers 包含目标 puuid.
         """
         try:
             puuid = str(recipientPuuid)
 
-            # 端点 1 (实测可用): /lol-honor-store/v1/ballot 带 summonerId
-            if summonerId is not None:
+            # 端点 1 (当前 LCU 版本): POST /lol-honor-v2/v1/honor-player
+            if summonerId is not None and gameId is not None:
                 try:
                     data = {
-                        "summonerId": int(summonerId),
-                        "honorCategory": honorType,
+                        "puuid": puuid,
+                        "summonerId": summonerId,
+                        "gameId": gameId,
+                        "honorCategory": honorCategory,
                     }
                     res = await self.__post(
-                        "/lol-honor-store/v1/ballot", data=data)
+                        "/lol-honor-v2/v1/honor-player", data=data)
                     body_text = ""
                     try:
                         body_text = await res.text()
                     except Exception:
                         pass
                     logger.error(
-                        f"submitHonor honor-store/ballot: "
+                        f"submitHonor /lol-honor-v2/v1/honor-player: "
                         f"HTTP {res.status} body={body_text[:200]}",
                         TAG)
-                    if res.status in (200, 204):
-                        return True
+                    # HTTP 200 但 body 可能是 "failed_to_contact_honor_server"
+                    if res.status in (200, 204) and \
+                            "failed_to_contact" not in body_text:
+                        if await self._verifyHonor(puuid):
+                            return True
+                        logger.error(
+                            "submitHonor v2: HTTP success but "
+                            "honoredPlayers not updated (fake success)",
+                            TAG)
                 except Exception as e:
                     logger.error(
-                        f"submitHonor honor-store/ballot failed: {e}", TAG)
+                        f"submitHonor /lol-honor-v2/v1/honor-player "
+                        f"failed: {e}", TAG)
 
-            # 端点 2 (回退): POST /lol-honor-v2/v1/ballot 带 honoredPlayers
+            # 端点 2 (旧版 LCU 回退): POST /lol-honor/v1/honor
             try:
                 data = {
-                    "honoredPlayers": [
-                        {"puuid": puuid, "honorType": honorType}],
-                }
-                res = await self.__post(
-                    "/lol-honor-v2/v1/ballot", data=data)
-                body_text = ""
-                try:
-                    body_text = await res.text()
-                except Exception:
-                    pass
-                logger.error(
-                    f"submitHonor honor-v2/ballot POST: "
-                    f"HTTP {res.status} body={body_text[:200]}",
-                    TAG)
-                if res.status in (200, 204):
-                    return True
-            except Exception as e:
-                logger.error(
-                    f"submitHonor honor-v2/ballot POST failed: {e}", TAG)
-
-            # 端点 3 (回退): POST /lol-honor-v2/v1/honor
-            try:
-                data = {
-                    "honorType": honorType,
+                    "honorType": honorCategory,
                     "recipientPuuid": puuid,
                 }
-                res = await self.__post(
-                    "/lol-honor-v2/v1/honor", data=data)
+                res = await self.__post("/lol-honor/v1/honor", data=data)
                 body_text = ""
                 try:
                     body_text = await res.text()
                 except Exception:
                     pass
                 logger.error(
-                    f"submitHonor honor-v2/honor POST: "
+                    f"submitHonor /lol-honor/v1/honor: "
                     f"HTTP {res.status} body={body_text[:200]}",
                     TAG)
-                if res.status in (200, 204):
-                    return True
+                if res.status in (200, 204) and \
+                        "failed_to_contact" not in body_text:
+                    if await self._verifyHonor(puuid):
+                        return True
+                    logger.error(
+                        "submitHonor v1: HTTP success but "
+                        "honoredPlayers not updated (fake success)",
+                        TAG)
             except Exception as e:
                 logger.error(
-                    f"submitHonor honor-v2/honor POST failed: {e}", TAG)
+                    f"submitHonor /lol-honor/v1/honor failed: {e}", TAG)
 
             logger.error(
-                f"submitHonor: all endpoints failed for {puuid}", TAG)
+                f"submitHonor: all endpoints failed for {puuid} "
+                f"(可能原因: 国服 honor 服务器无法联系)", TAG)
             return False
         except (aiohttp.ClientError, AttributeError, ValueError,
                 TypeError) as e:
             logger.error(f"submitHonor failed: {e}", TAG)
             return False
 
-    async def sealHonorBallot(self) -> bool:
-        """封存 honor ballot, 使提交的点赞生效.
+    async def _verifyHonor(self, puuid: str,
+                           maxRetries: int = 3,
+                           interval: float = 0.8) -> bool:
+        """二次验证: 提交后重新 GET ballot, 检查 honoredPlayers 是否含目标 puuid.
 
-        POST /lol-honor-v2/v1/ballot (无 body, 与 GET ballot 同 plugin).
-        必须在 submitHonor 之后调用, 否则客户端不会真正记录 honor.
-        成功返回 True.
+        LCU 处理 honor 提交可能有延迟, 最多重试 maxRetries 次, 每次间隔 interval 秒.
+        国服 wegame 的 LCU 可能无法联系 Riot honor 服务器, 此时 honoredPlayers
+        永远不会更新, 本方法会正确识别这种假成功.
+
+        honoredPlayers 元素格式 (实测 2026-06-30 17:32):
+        - dict: {'honorType': 'HEART', 'recipientPuuid': '<puuid>'}
+        - 也可能兼容旧格式: {'summonerId': N, 'puuid': '<puuid>'}
+        - 或 string: '<puuid>'
+
+        Returns:
+            True 仅当 honoredPlayers 包含目标 puuid.
         """
-        try:
-            res = await self.__post("/lol-honor-v2/v1/ballot")
-            body_text = ""
+        for i in range(maxRetries):
             try:
-                body_text = await res.text()
-            except Exception:
-                pass
-            if res.status in (200, 204):
-                logger.error(
-                    f"sealHonorBallot: HTTP {res.status} body={body_text[:200]}",
-                    TAG)
-                return True
-            logger.error(
-                f"sealHonorBallot HTTP {res.status} body={body_text[:200]}",
-                TAG)
-            return False
-        except (aiohttp.ClientError, AttributeError) as e:
-            logger.error(f"sealHonorBallot failed: {e}", TAG)
-            return False
+                res = await self.__get("/lol-honor-v2/v1/ballot")
+                if res.status != 200:
+                    await asyncio.sleep(interval)
+                    continue
+                data = await res.json()
+                honored = data.get('honoredPlayers') if isinstance(
+                    data, dict) else None
+                if not isinstance(honored, list):
+                    await asyncio.sleep(interval)
+                    continue
+                # 兼容多种 honoredPlayers 元素格式
+                for h in honored:
+                    if isinstance(h, str) and h == puuid:
+                        logger.error(
+                            f"_verifyHonor: honoredPlayers contains "
+                            f"target puuid (try {i+1})", TAG)
+                        return True
+                    if isinstance(h, dict):
+                        # 实测字段是 recipientPuuid (v1 端点格式)
+                        # 也兼容 puuid (v2 端点格式)
+                        h_puuid = h.get('recipientPuuid') or h.get('puuid')
+                        if h_puuid == puuid:
+                            logger.error(
+                                f"_verifyHonor: honoredPlayers contains "
+                                f"target puuid (try {i+1})", TAG)
+                            return True
+                # honoredPlayers 不为空但不含目标, 可能是 LCU 还在处理
+                if honored:
+                    logger.error(
+                        f"_verifyHonor: honoredPlayers={honored} "
+                        f"target={puuid} (try {i+1})", TAG)
+            except Exception as e:
+                logger.error(f"_verifyHonor try {i+1} failed: {e}", TAG)
+            await asyncio.sleep(interval)
+
+        logger.error(
+            f"_verifyHonor: honoredPlayers never updated with {puuid} "
+            f"after {maxRetries} retries", TAG)
+        return False
 
     @retry()
     async def getClientZoom(self) -> int:

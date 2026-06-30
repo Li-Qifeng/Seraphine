@@ -999,9 +999,8 @@ class MainWindow(FluentWindow):
         """EndOfGame 阶段自动给队友点赞.
 
         使用 /lol-honor-v2/v1/ballot (GET) 获取可点赞队友候选,
-        按策略选一个后 POST /lol-honor-v2/v1/honor 提交, 然后 seal ballot.
-        connector.submitHonor 内部会 GET ballot 二次验证 honoredPlayers
-        是否真的包含目标 puuid, 避免 LCU 对错误路径返回 204 的"伪成功".
+        按策略选一个后 POST /lol-honor-v2/v1/honor-player 提交.
+        v2 端点提交后客户端自动记录, 无需 seal ballot.
         策略: friends_first (默认) / friends_only / best_score / random.
 
         ballot.eligibleAllies 可能因 LCU 时序问题为空 (尤其 ARAM Mayhem),
@@ -1040,6 +1039,9 @@ class MainWindow(FluentWindow):
                     TAG)
                 return
 
+            # ballot.gameId 用于 v2 honor-player 端点
+            gameId = ballot.get("gameId")
+
             # 拉好友列表
             friends = await connector.getFriends()
             friendsPuuid = {f.get("puuid") for f in friends
@@ -1061,23 +1063,24 @@ class MainWindow(FluentWindow):
                 return
 
             # ballot.eligibleAllies 同时含 summonerId 和 puuid;
-            # honor-store 端点需要 summonerId, 传给 connector 作为首选.
+            # v2 honor-player 端点需要 summonerId + gameId.
             summonerId = target.get("summonerId")
 
             logger.error(
                 f"Auto honor: picked target={target} strategy={strategy}",
                 TAG)
             ok = await connector.submitHonor(
-                puuid, "HEART", summonerId=summonerId)
+                puuid, "HEART", summonerId=summonerId, gameId=gameId)
             name = target.get("summonerName") or puuid
             if ok:
-                # 封存 ballot, 否则客户端不会真正记录 honor
-                sealed = await connector.sealHonorBallot()
+                # submitHonor 内部已二次验证 honoredPlayers
                 logger.error(
-                    f"Auto honored: {name} (strategy={strategy}, sealed={sealed})",
+                    f"Auto honored: {name} (strategy={strategy}, verified)",
                     TAG)
             else:
-                logger.error(f"Auto honor submit failed: {name}", TAG)
+                logger.error(
+                    f"Auto honor failed: {name} "
+                    f"(国服 LCU 可能无法联系 honor 服务器)", TAG)
         except Exception as e:
             logger.error(f"Auto honor failed: {e}", TAG)
 
