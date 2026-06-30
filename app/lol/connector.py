@@ -472,7 +472,11 @@ class LolClientConnector(QObject):
         icon = f"./app/resource/game/profile icons/{iconId}.jpg"
 
         if not os.path.exists(icon):
-            path = self.manager.getSummonerProfileIconPath(iconId)
+            # manager 可能在 LCU 刚启动时尚未初始化 (None), 兜底用 LCU 端点直接拉取
+            if self.manager is not None:
+                path = self.manager.getSummonerProfileIconPath(iconId)
+            else:
+                path = f"/lol-game-data/assets/v1/profile-icons/{iconId}.jpg"
             res = await self.__get(path)
 
             with open(icon, "wb") as f:
@@ -488,7 +492,10 @@ class LolClientConnector(QObject):
         icon = f"app/resource/game/item icons/{iconId}.png"
 
         if not os.path.exists(icon):
-            path = self.manager.getItemIconPath(iconId)
+            if self.manager is not None:
+                path = self.manager.getItemIconPath(iconId)
+            else:
+                path = f"/lol-game-data/assets/v1/items/{iconId}.png"
             res = await self.__get(path)
 
             with open(icon, "wb") as f:
@@ -501,7 +508,10 @@ class LolClientConnector(QObject):
         icon = f"app/resource/game/augment icons/{augmentId}.png"
 
         if not os.path.exists(icon):
-            path = self.manager.getAugmentsIconPath(augmentId)
+            if self.manager is not None:
+                path = self.manager.getAugmentsIconPath(augmentId)
+            else:
+                path = f"/lol-game-data/assets/v1/cherry-augments/{augmentId}/icon.png"
             res = await self.__get(path)
 
             with open(icon, "wb") as f:
@@ -547,7 +557,10 @@ class LolClientConnector(QObject):
         icon = f"app/resource/game/summoner spell icons/{spellId}.png"
 
         if not os.path.exists(icon):
-            path = self.manager.getSummonerSpellIconPath(spellId)
+            if self.manager is not None:
+                path = self.manager.getSummonerSpellIconPath(spellId)
+            else:
+                path = f"/lol-game-data/assets/v1/summoner-spells/{spellId}.png"
             res = await self.__get(path)
 
             with open(icon, "wb") as f:
@@ -569,7 +582,10 @@ class LolClientConnector(QObject):
         icon = f"app/resource/game/champion icons/{championId}.png"
 
         if not os.path.exists(icon):
-            path = self.manager.getChampionIconPath(championId)
+            if self.manager is not None:
+                path = self.manager.getChampionIconPath(championId)
+            else:
+                path = f"/lol-game-data/assets/v1/champion-icons/{championId}.png"
             res = await self.__get(path)
 
             with open(icon, "wb") as f:

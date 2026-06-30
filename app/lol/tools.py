@@ -126,7 +126,8 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
     try:
         gamesInfo = await gameTask
     except Exception as e:
-        logger.error(f"parseSummonerData: failed to fetch games: {e}", "tools")
+        # ReferenceError 表示 LCU 尚未就绪 (启动竞态), 降为 warning 避免日志噪音
+        logger.warning(f"parseSummonerData: failed to fetch games: {e}", "tools")
         champions = []
         games = {}
     else:
@@ -161,7 +162,7 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
     try:
         rankInfo = await rankTask
     except Exception as e:
-        logger.error(f"parseSummonerData: failed to fetch rank: {e}", "tools")
+        logger.warning(f"parseSummonerData: failed to fetch rank: {e}", "tools")
         rankInfo = {}
 
     return {
