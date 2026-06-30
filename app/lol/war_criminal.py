@@ -1,19 +1,16 @@
-"""战犯/躺赢狗诊断算法.
+"""全队 5 档评级算法.
 
 设计原则 (用户明确要求):
 1. 只看本局数据, 不讨论局外因素 (挂机/网络/对手代练等)
 2. 海克斯大乱斗 (queueId=2400) 视野分不计入评分
 3. 海克斯强化纳入计分: 按 OPGG 强化 pick/win 算用户组合强度, 强组合英雄"预期贡献"基线更高
-4. 历史对照使用 OPGG 该英雄胜率: 胜率高的英雄在胜局"躺赢狗"概率与负局"战犯"概率都应更大
+4. 历史对照使用 OPGG 该英雄胜率: 胜率高的英雄在胜局"躺赢"概率与负局"战犯"概率都应更大
 5. 标准化: 所有指标按队伍内同位置平均算 z-score, 避免全输出阵容里坦克被误判
 
-输出 verdict (只有两种):
-- "war_criminal" (负局 worst, 是战犯)
-- "carried_dog" (胜局 worst, 是躺赢狗)
-
-子状态 (通过 teamUnderperformed 标记传递, 不作为独立 verdict):
-- teamUnderperformed=True: 整队表现都偏低, worst 与第二名差距不大
-  此时战犯用橙色显示, tooltip 标注"整队表现都偏低, 不全是你的锅"
+输出 5 档评级 (胜方/败方各一套贴吧风标签, 或马系风通用标签):
+- 胜方: 神 / 爹 / 小有亮点 / 躺赢狗 / 消失
+- 败方: 人类 / 类人 / 战犯嫌疑人 / 甲级战犯 / 初升东曦
+- 马系: 上等马 / 中上等马 / 中等马 / 下等马 / 纯牛马
 """
 import asyncio
 import logging
@@ -30,13 +27,6 @@ AUGMENT_BASELINE_WEIGHT = 0.3
 
 # OPGG 胜率对最终评分的权重: 胜率高的英雄在躺赢/战犯判定时偏离放大
 CHAMPION_BASELINE_WEIGHT = 0.4
-
-# 灵敏度档位 -> z 阈值
-SENSITIVITY_Z = {
-    'loose': 0.6,   # 宽松: 更易判定为躺赢狗/战犯
-    'normal': 0.8,
-    'strict': 1.1,
-}
 
 # 各项指标权重 (按角色粗二分: 全输出/坦克辅助). 海克斯模式一律走"输出"分支
 # 数值越大表示该指标对"贡献"的正向权重越大
@@ -71,7 +61,7 @@ ROLE_WEIGHTS = {
 
 
 class ParticipantStats(TypedDict, total=False):
-    """战犯评分所需的本局玩家数据 (从 parseGameDetailData 提取)."""
+    """评级所需的本局玩家数据 (从 parseGameDetailData 提取)."""
     puuid: Optional[str]
     championId: int
     kills: int
@@ -87,15 +77,6 @@ class ParticipantStats(TypedDict, total=False):
     visionScore: float
     win: bool
     augmentIds: list         # 海克斯强化 id 列表 (空表示非海克斯)
-
-
-class VerdictResult(TypedDict, total=False):
-    verdict: str
-    suspect: Optional[ParticipantStats]
-    score: float
-    secondScore: float
-    threshold: float
-    evidence: list   # list of dict {metric, value, teamAvg, zScore, severity}
 
 
 def _kda(stats: ParticipantStats) -> float:
@@ -344,26 +325,22 @@ def _buildEvidence(myDmg, avgDmg, zDmg,
     return items
 
 
-async def diagnoseTeam(team: list,
-                       queueId: Optional[int],
-                       isWin: bool,
-                       sensitivity: str = 'normal') -> Optional[VerdictResult]:
-    """诊断一队玩家, 找出最显著的"躺赢狗"或"战犯".
+async def _computeTeamScores(team: list,
+                              queueId: Optional[int]) -> list:
+    """计算全队每个玩家的 z-score 贡献分 (一次计算, 供分级使用).
 
     Args:
-        team: list[ParticipantStats], 同队玩家 (5 或 4 人)
-        queueId: 队列 id, 用于判断海克斯模式
-        isWin: 该队是否获胜 (胜局找躺赢狗, 负局找战犯)
-        sensitivity: 'loose' | 'normal' | 'strict'
+        team: list[ParticipantStats], 同队玩家
+        queueId: 队列 id (用于判断海克斯模式)
 
     Returns:
-        VerdictResult 或 None (队伍太小/无数据时).
+        list[dict], 每项 {puuid, championId, score, evidence}, 按 score 降序.
+        队伍太小 (<2人) 时返回空列表.
     """
     if not team or len(team) < 2:
-        return None
+        return []
 
     isHextech = queueId in HEXTECH_QUEUE_IDS
-    threshold = SENSITIVITY_Z.get(sensitivity, SENSITIVITY_Z['normal'])
 
     # 计算每个玩家的 baseline (异步并发)
     baselines = await asyncio.gather(
@@ -376,68 +353,149 @@ async def diagnoseTeam(team: list,
         contribution, evidence = _computeContribution(
             p, team, role, baselines[i], isHextech)
         scored.append({
-            'participant': p,
-            'score': contribution,
+            'puuid': p.get('puuid'),
+            'championId': p.get('championId', 0) or 0,
+            'score': round(contribution, 3),
             'evidence': evidence,
         })
 
-    scored.sort(key=lambda x: x['score'])
-    worst = scored[0]
-    second = scored[1] if len(scored) > 1 else None
-    secondScore = second['score'] if second else 0.0
-    gap = secondScore - worst['score']  # worst 与第二名的差距 (正数=worst 更差)
-
-    # 判定整队是否低迷: worst 显著为负且与第二名差距不大
-    # 这种情况下仍命名 worst 为战犯/躺赢狗, 但标记为"团队低迷"
-    teamUnderperformed = (worst['score'] < -0.5 and gap < threshold)
-
-    # 始终命名 worst 为战犯 (败方) 或躺赢狗 (胜方)
-    # 团队低迷作为子状态通过 teamUnderperformed 标记传递, 在徽章说明里标注
-    verdict = 'carried_dog' if isWin else 'war_criminal'
-    return {
-        'verdict': verdict,
-        'suspect': worst['participant'],
-        'score': round(worst['score'], 3),
-        'secondScore': round(secondScore, 3),
-        'gap': round(gap, 3),
-        'threshold': threshold,
-        'evidence': worst['evidence'],
-        'teamUnderperformed': teamUnderperformed,
-    }
+    # 按 score 降序 (贡献最大的在前)
+    scored.sort(key=lambda x: x['score'], reverse=True)
+    return scored
 
 
-def verdictLabel(verdict: str, isWin: bool) -> str:
-    """verdict -> 用户可见标签.
+# ===========================================================================
+# 全队 5 档评级 (扩展: 给每个队友打标签, 不只是 worst)
+# ===========================================================================
 
-    只有两种标签: 战犯 (败方 worst) / 躺赢狗 (胜方 worst).
-    团队低迷作为子状态通过 teamUnderperformed 标记传递, 不再作为独立 verdict.
+# 5 档评级阈值 (基于 z-score 综合贡献分)
+# score 越高 = 对团队贡献越大
+GRADE_THRESHOLDS = (1.0, 0.3, -0.3, -1.0)  # 5 档的分界点
+
+# 贴吧风标签 (胜方/败方各一套)
+GRADE_LABELS_TIEBA = {
+    True: ['神', '爹', '小有亮点', '躺赢狗', '消失'],      # 胜方
+    False: ['人类', '类人', '战犯嫌疑人', '甲级战犯', '初升东曦'],  # 败方
+}
+
+# 马系风标签 (胜败方通用)
+GRADE_LABELS_HORSE = {
+    True: ['上等马', '中上等马', '中等马', '下等马', '纯牛马'],
+    False: ['上等马', '中上等马', '中等马', '下等马', '纯牛马'],
+}
+
+
+def gradeFromScore(score: float) -> int:
+    """z-score 综合贡献分 -> 5 档评级 (1=最高, 5=最低).
+
+    阈值参考 GRADE_THRESHOLDS:
+      z >= 1.0   -> 1
+      0.3 <= z < 1.0 -> 2
+      -0.3 < z < 0.3 -> 3
+      -1.0 <= z <= -0.3 -> 4
+      z < -1.0  -> 5
     """
-    if verdict == 'war_criminal':
-        return '战犯'
-    if verdict == 'carried_dog':
-        return '躺赢狗'
-    return ''
+    if score >= GRADE_THRESHOLDS[0]:
+        return 1
+    if score >= GRADE_THRESHOLDS[1]:
+        return 2
+    if score > GRADE_THRESHOLDS[2]:
+        return 3
+    if score >= GRADE_THRESHOLDS[3]:
+        return 4
+    return 5
+
+
+def gradeLabel(grade: int, isWin: bool, style: str = 'tieba') -> str:
+    """档位 (1-5) -> 用户可见标签文本.
+
+    Args:
+        grade: 1-5 (1=最高, 5=最低)
+        isWin: 该玩家所在队是否获胜
+        style: 'tieba' (贴吧风, 胜败方不同) | 'horse' (马系风, 通用)
+    """
+    if style == 'horse':
+        labels = GRADE_LABELS_HORSE.get(isWin, GRADE_LABELS_HORSE[True])
+    else:
+        labels = GRADE_LABELS_TIEBA.get(isWin, GRADE_LABELS_TIEBA[True])
+    idx = max(1, min(5, grade)) - 1
+    return labels[idx]
+
+
+class TeamRatingResult(TypedDict, total=False):
+    """全队评级结果 (每个玩家一项)."""
+    puuid: Optional[str]
+    championId: int
+    score: float           # z-score 综合贡献分
+    grade: int             # 1-5 档位
+    label: str             # 标签文本 (已按风格/胜败方转换)
+    isWin: bool
+    isCurrent: bool        # 是否当前召唤师
+    evidence: list         # 各指标 z-score 证据
+
+
+async def rateEntireTeam(team: list,
+                         queueId: Optional[int],
+                         isWin: bool,
+                         style: str = 'tieba',
+                         currentPuuid: Optional[str] = None) -> list:
+    """给全队每个人计算 5 档评级.
+
+    调用 `_computeTeamScores` 一次计算 z-score, 然后分级并加标签.
+
+    Args:
+        team: list[ParticipantStats], 同队玩家
+        queueId: 队列 id (用于判断海克斯模式)
+        isWin: 该队是否获胜
+        style: 标签风格 'tieba' | 'horse'
+        currentPuuid: 当前召唤师 puuid (用于标记 isCurrent)
+
+    Returns:
+        list[TeamRatingResult], 按 score 降序 (贡献最大的在前).
+        队伍太小 (<2人) 时返回空列表.
+    """
+    scored = await _computeTeamScores(team, queueId)
+    if not scored:
+        return []
+
+    rated = []
+    for item in scored:
+        grade = gradeFromScore(item['score'])
+        label = gradeLabel(grade, isWin, style)
+        rated.append({
+            'puuid': item['puuid'],
+            'championId': item['championId'],
+            'score': item['score'],
+            'grade': grade,
+            'label': label,
+            'isWin': isWin,
+            'isCurrent': (currentPuuid is not None
+                          and item['puuid'] == currentPuuid),
+            'evidence': item['evidence'],
+        })
+
+    return rated
 
 
 async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
-                                  sensitivity: str = 'normal',
-                                  gameId: int = None) -> bool:
-    """从已解析的对局数据诊断战犯, 写入缓存.
+                                  gameId: int = None,
+                                  ratingStyle: str = 'tieba') -> bool:
+    """从已解析的对局数据计算全队 5 档评级, 写入缓存.
 
     可用于:
     - 游戏结束时诊断最近一局 (main_window.__diagnoseLastGame)
     - 查看历史对局详情时实时诊断 (search_interface)
 
-    诊断策略 (用户需求):
-    - 胜方队: 诊断 carried_dog (躺赢狗) — 胜方中表现显著低于队友的人
-    - 败方队: 诊断 war_criminal (战犯) — 败方中表现显著低于队友的人
-    - 同时写入当前召唤师所在队的 verdict (向后兼容, 生涯卡片用)
+    诊断策略:
+    - 胜方队: 计算 winnerRating (5档评级, 含"躺赢狗"档)
+    - 败方队: 计算 loserRating (5档评级, 含"甲级战犯"/"初升东曦"档)
+    - 每个玩家根据 z-score 贡献分分到 1-5 档, 贴吧风/马系风标签
 
     Args:
         parsed: parseGameDetailData 的返回值
-        currentPuuid: 当前召唤师 puuid
-        sensitivity: 灵敏度 'loose'|'normal'|'strict'
+        currentPuuid: 当前召唤师 puuid (用于标记 isCurrent)
         gameId: 对局 ID (优先用 parsed 中的)
+        ratingStyle: 评级标签风格 'tieba' | 'horse'
 
     Returns:
         True 如果诊断成功并写入缓存
@@ -452,18 +510,13 @@ async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
         queueId = parsed.get('queueId')
         teams = parsed.get('teams') or {}
 
-        winnerDiag = None   # 胜方诊断 (找躺赢狗)
-        loserDiag = None    # 败方诊断 (找战犯), 优先当前召唤师所在败方队
-        currentDiag = None  # 当前召唤师所在队的诊断
+        winnerRating = None  # 胜方全队评级
+        loserRating = None   # 败方全队评级
 
         for tidStr, teamInfo in teams.items():
             summoners = (teamInfo or {}).get('summoners') or []
             if len(summoners) < 2:
                 continue
-
-            teamPuuids = {s.get('puuid') for s in summoners
-                          if isinstance(s, dict)}
-            isCurrentTeam = currentPuuid in teamPuuids
 
             # teamInfo['win'] 可能是 'Win'/'Loss' 字符串或布尔值
             # bool('Loss') == True (非空字符串), 不能直接 bool()
@@ -495,67 +548,39 @@ async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
                     augmentIds=s.get('augmentIds') or [],
                 ))
 
-            result = await diagnoseTeam(teamStats, queueId, teamWin,
-                                         sensitivity)
-            if not result:
+            # 全队 5 档评级 (一次计算 baseline + z-score, 然后分级)
+            teamRating = await rateEntireTeam(
+                teamStats, queueId, teamWin,
+                style=ratingStyle,
+                currentPuuid=currentPuuid,
+            )
+
+            if not teamRating:
                 continue
 
-            verdict = result.get('verdict')
-            label = verdictLabel(verdict, teamWin)
-            suspect = result.get('suspect') or {}
-            isCurrentSuspect = (
-                suspect.get('puuid') is not None and
-                suspect.get('puuid') == currentPuuid)
-            teamUnderperformed = bool(result.get('teamUnderperformed', False))
-
-            diag = {
-                'verdict': verdict,
-                'label': label,
-                'suspectPuuid': suspect.get('puuid') or '',
-                'score': result.get('score', 0.0),
-                'evidence': result.get('evidence') or [],
-                'teamId': tidStr,
-                'isWin': teamWin,
-                'teamUnderperformed': teamUnderperformed,
-            }
-
             # 胜方: 只记录第一个 (通常只有 1 个胜方)
-            if teamWin and winnerDiag is None:
-                winnerDiag = diag
+            if teamWin and winnerRating is None:
+                winnerRating = teamRating
 
             # 败方: 优先当前召唤师所在的败方队; 否则取第一个败方
             if not teamWin:
+                teamPuuids = {s.get('puuid') for s in summoners
+                              if isinstance(s, dict)}
+                isCurrentTeam = currentPuuid in teamPuuids
                 if isCurrentTeam:
-                    loserDiag = diag  # 当前召唤师所在败方队优先
-                elif loserDiag is None:
-                    loserDiag = diag
+                    loserRating = teamRating
+                elif loserRating is None:
+                    loserRating = teamRating
 
-            # 当前召唤师所在队
-            if isCurrentTeam:
-                currentDiag = {
-                    **diag,
-                    'isCurrentSuspect': isCurrentSuspect,
-                }
-
-            logger.error(
-                f"WarCriminal verdict: game={gid} team={tidStr} "
-                f"win={teamWin} verdict={verdict} score={result.get('score')} "
-                f"teamUnderperformed={teamUnderperformed} "
-                f"suspect_is_current={isCurrentSuspect}",
+            logger.info(
+                f"TeamRating: game={gid} team={tidStr} win={teamWin} "
+                f"players={len(teamRating)}",
                 extra={'tag': TAG})
 
-        # verdict 只会是 war_criminal / carried_dog, 都有意义, 全部保留
         setVerdict(
             gameId=gid,
-            verdict=currentDiag['verdict'] if currentDiag else None,
-            label=currentDiag['label'] if currentDiag else None,
-            isCurrentSuspect=currentDiag.get(
-                'isCurrentSuspect', False) if currentDiag else False,
-            score=currentDiag['score'] if currentDiag else 0.0,
-            evidence=currentDiag['evidence'] if currentDiag else [],
-            suspectPuuid=currentDiag['suspectPuuid'] if currentDiag else None,
-            winner=winnerDiag,
-            loser=loserDiag,
+            winnerRating=winnerRating,
+            loserRating=loserRating,
         )
         return True
 

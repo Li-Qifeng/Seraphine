@@ -1,9 +1,11 @@
 import asyncio
 from app.common.config import cfg
 from app.common.icons import Icon
-from app.common.qfluentwidgets import SettingCardGroup, SwitchSettingCard
+from app.common.qfluentwidgets import (SettingCardGroup, SwitchSettingCard,
+                                        ComboBoxSettingCard)
 from app.common.style_sheet import StyleSheet
 from app.components.seraphine_interface import SeraphineInterface
+from app.components.setting_cards import QueueFilterCard
 from app.view.auxiliary_cards import (
     OnlineStatusCard,
     ProfileBackgroundCard,
@@ -42,6 +44,13 @@ class AuxiliaryInterface(SeraphineInterface):
             self.tr("海克斯"), self.scrollWidget)
         self.toolsGroup = SettingCardGroup(
             self.tr("工具"), self.scrollWidget)
+
+        self.gameInfoGroup = SettingCardGroup(
+            self.tr("游戏信息"), self.scrollWidget)
+        self.teamRatingGroup = SettingCardGroup(
+            self.tr("全队评级"), self.scrollWidget)
+        self.opggGroup = SettingCardGroup(
+            self.tr("OPGG 助手"), self.scrollWidget)
 
         self.onlineStatusCard = OnlineStatusCard(
             title=self.tr("Online status"),
@@ -188,6 +197,61 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.hextechAssistAutoShow,
             self.hextechGroup)
 
+        # --- 游戏信息组 ---
+        self.queueFilterCard = QueueFilterCard(
+            self.tr("Game Infomation filter"),
+            self.tr(
+                "Show game modes in Game Infomation interface based on your current game mode"),
+            cfg.queueFilter,
+            parent=self.gameInfoGroup)
+
+        self.autoClearGameinfoCard = SwitchSettingCard(
+            Icon.ATTACHTEXT, self.tr("Reserve Game Information interface"),
+            self.tr(
+                "Reserve Game Information interface until the next champion selection starts"),
+            cfg.enableReserveGameinfo,
+            parent=self.gameInfoGroup)
+
+        self.gameInfoShowTierCard = SwitchSettingCard(
+            Icon.TROPHY, self.tr("Show tier in game information"),
+            self.tr(
+                "Show tier icon in game information interface. Enabling this option affects APP's performance"),
+            cfg.showTierInGameInfo,
+            parent=self.gameInfoGroup)
+
+        # --- 全队评级组 ---
+        self.enableTeamRatingCard = SwitchSettingCard(
+            Icon.TROPHY, self.tr("Team rating badges"),
+            self.tr(
+                "Show a 5-tier rating badge (e.g. 神/爹/小有亮点/躺赢狗/消失) "
+                "for each teammate in game detail view"),
+            cfg.enableTeamRating,
+            parent=self.teamRatingGroup)
+
+        self.teamRatingStyleCard = ComboBoxSettingCard(
+            cfg.teamRatingStyle,
+            Icon.SCALEFIT,
+            self.tr("Team rating style"),
+            self.tr(
+                "Tieba: 贴吧风 (win/loss separate labels); "
+                "Horse: 马系风 (上等马/中等马/下等马/纯牛马)"),
+            texts=[self.tr("Tieba"), self.tr("Horse")],
+            parent=self.teamRatingGroup)
+
+        # --- OPGG 助手组 ---
+        self.autoShowOpggCard = SwitchSettingCard(
+            Icon.WINDOW, self.tr("Show OP.GG window automatically"),
+            self.tr("Show OP.GG window automatically when champion selection starts"),
+            cfg.autoShowOpgg,
+            parent=self.opggGroup)
+
+        self.opggOnTopCard = SwitchSettingCard(
+            Icon.PADDINGTOP, self.tr("Show OP.GG window on top"),
+            self.tr(
+                "Show OP.GG window in front of other windows while selecting champions"),
+            cfg.enableOpggOnTop,
+            parent=self.opggGroup)
+
         self.__initLayout()
 
     def setEnabled(self, enabled: bool) -> None:
@@ -246,8 +310,24 @@ class AuxiliaryInterface(SeraphineInterface):
         self.toolsGroup.addSettingCard(self.fixDpiCard)
         self.toolsGroup.addSettingCard(self.restartClientCard)
 
+        # 游戏信息
+        self.gameInfoGroup.addSettingCard(self.queueFilterCard)
+        self.gameInfoGroup.addSettingCard(self.autoClearGameinfoCard)
+        self.gameInfoGroup.addSettingCard(self.gameInfoShowTierCard)
+
+        # 全队评级
+        self.teamRatingGroup.addSettingCard(self.enableTeamRatingCard)
+        self.teamRatingGroup.addSettingCard(self.teamRatingStyleCard)
+
+        # OPGG 助手
+        self.opggGroup.addSettingCard(self.autoShowOpggCard)
+        self.opggGroup.addSettingCard(self.opggOnTopCard)
+
         self.expandLayout.setSpacing(30)
         self.expandLayout.setContentsMargins(36, 0, 36, 0)
+        self.expandLayout.addWidget(self.gameInfoGroup)
+        self.expandLayout.addWidget(self.teamRatingGroup)
+        self.expandLayout.addWidget(self.opggGroup)
         self.expandLayout.addWidget(self.automationGroup)
         self.expandLayout.addWidget(self.hextechGroup)
         self.expandLayout.addWidget(self.profileGroup)

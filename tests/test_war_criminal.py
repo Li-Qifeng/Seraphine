@@ -1,10 +1,10 @@
 """Tests for war_criminal.py core algorithm.
 
-战犯/躺赢狗诊断核心算法 (纯函数, 无 LCU/Qt 依赖):
+全队 5 档评级核心算法 (纯函数, 无 LCU/Qt 依赖):
 - 海克斯大乱斗视野分不计入评分
 - 海克斯强化组合影响预期贡献基线
 - OPGG 英雄胜率影响判定权重 (高胜率英雄更易被判躺赢狗/战犯)
-- verdict 标签: 胜局=躺赢狗, 负局=战犯
+- rateEntireTeam: 全队每人 5 档评级 (z-score -> grade 1-5)
 
 mock OPGG 基线模块 (champion_baseline / augment_baseline) 以避免网络请求.
 """
@@ -28,8 +28,9 @@ import app.lol.champion_baseline  # noqa: E402, F401
 
 from app.lol.war_criminal import (  # noqa: E402
     ParticipantStats,
-    diagnoseTeam,
-    verdictLabel,
+    rateEntireTeam,
+    gradeFromScore,
+    gradeLabel,
     _kda,
     _zScore,
     _roleOf,
@@ -90,7 +91,7 @@ class TestRoleOf:
         assert _roleOf(3, 420) == 'tank_support'  # 奇数 -> tank_support
 
 
-# ---------- diagnoseTeam 集成测试 ----------
+# ---------- rateEntireTeam 集成测试 ----------
 
 def _makeParticipant(puuid, championId, damage=25000, deaths=5, gold=10000,
                      cs=200, kills=5, assists=5, win=True, augmentIds=None,
@@ -114,41 +115,46 @@ def _run_async(coro):
         loop.close()
 
 
-class TestDiagnoseTeam:
+def _neutral_baselines():
+    """mock OPGG 基线返回 None (降级到纯 z-score)."""
+    return (
+        patch('app.lol.augment_baseline.getHextechAugmentScore',
+              new=AsyncMock(return_value=None)),
+        patch('app.lol.champion_baseline.getChampionBaselineWinrate',
+              new=AsyncMock(return_value=None)),
+    )
+
+
+class TestRateEntireTeam:
     def test_team_too_small(self):
-        """少于 2 人无法评分."""
-        result = _run_async(diagnoseTeam([], 420, True, 'normal'))
-        assert result is None
+        """少于 2 人无法评级, 返回空列表."""
+        with _neutral_baselines()[0], _neutral_baselines()[1]:
+            result = _run_async(rateEntireTeam([], 420, True))
+            assert result == []
 
-        result = _run_async(diagnoseTeam(
-            [_makeParticipant('p1', 1, 20000)], 420, True, 'normal'))
-        assert result is None
+            team = [_makeParticipant('p1', 1)]
+            result = _run_async(rateEntireTeam(team, 420, True))
+            assert result == []
 
-    def test_war_criminal_obvious(self):
-        """明显的战犯: 伤害远低于队友, 死亡远高于队友."""
-        # mock 基线模块返回中性 (None = 降级到纯 z-score)
-        with patch('app.lol.augment_baseline.getHextechAugmentScore',
-                   new=AsyncMock(return_value=None)), \
-             patch('app.lol.champion_baseline.getChampionBaselineWinrate',
-                   new=AsyncMock(return_value=None)):
+    def test_obvious_worst_gets_lowest_grade(self):
+        """明显最差的玩家 (败方) 应拿到最低档 (4 或 5)."""
+        with _neutral_baselines()[0], _neutral_baselines()[1]:
             team = [
-                _makeParticipant('p1', 1, 30000, deaths=3),  # 正常输出
-                _makeParticipant('p2', 2, 28000, deaths=4),
-                _makeParticipant('p3', 3, 32000, deaths=5),
-                _makeParticipant('p4', 4, 5000, deaths=12),   # 战犯: 伤害 1/6, 死亡 2 倍
-                _makeParticipant('p5', 5, 31000, deaths=4),
+                _makeParticipant('p1', 1, 30000, deaths=3, win=False),
+                _makeParticipant('p2', 2, 28000, deaths=4, win=False),
+                _makeParticipant('p3', 3, 32000, deaths=5, win=False),
+                _makeParticipant('p4', 4, 5000, deaths=12, win=False),   # 战犯
+                _makeParticipant('p5', 5, 31000, deaths=4, win=False),
             ]
-            result = _run_async(diagnoseTeam(team, 420, False, 'normal'))
-            assert result is not None
-            assert result['verdict'] == 'war_criminal'
-            assert result['suspect']['puuid'] == 'p4'
+            result = _run_async(rateEntireTeam(team, 420, isWin=False))
+            assert len(result) == 5
+            p4 = next(r for r in result if r['puuid'] == 'p4')
+            assert p4['grade'] >= 4  # 至少档 4 (战犯嫌疑人)
+            assert p4['score'] < 0
 
     def test_carried_dog_obvious(self):
-        """胜局明显的躺赢狗: 伤害低/死亡多但赢了."""
-        with patch('app.lol.augment_baseline.getHextechAugmentScore',
-                   new=AsyncMock(return_value=None)), \
-             patch('app.lol.champion_baseline.getChampionBaselineWinrate',
-                   new=AsyncMock(return_value=None)):
+        """胜方明显躺赢狗: 伤害低/死亡多但赢了, 应拿低档."""
+        with _neutral_baselines()[0], _neutral_baselines()[1]:
             team = [
                 _makeParticipant('p1', 1, 35000, deaths=3, win=True),
                 _makeParticipant('p2', 2, 33000, deaths=4, win=True),
@@ -156,17 +162,14 @@ class TestDiagnoseTeam:
                 _makeParticipant('p4', 4, 6000, deaths=10, win=True),  # 躺赢狗
                 _makeParticipant('p5', 5, 34000, deaths=4, win=True),
             ]
-            result = _run_async(diagnoseTeam(team, 420, True, 'normal'))
-            assert result is not None
-            assert result['verdict'] == 'carried_dog'
-            assert result['suspect']['puuid'] == 'p4'
+            result = _run_async(rateEntireTeam(team, 420, isWin=True))
+            p4 = next(r for r in result if r['puuid'] == 'p4')
+            assert p4['grade'] >= 4  # 躺赢狗档
+            assert p4['score'] < 0
 
-    def test_balanced_team_still_names_suspect(self):
-        """均衡队伍: 仍会命名 worst, 但分数接近 0, 不强烈指向."""
-        with patch('app.lol.augment_baseline.getHextechAugmentScore',
-                   new=AsyncMock(return_value=None)), \
-             patch('app.lol.champion_baseline.getChampionBaselineWinrate',
-                   new=AsyncMock(return_value=None)):
+    def test_balanced_team_all_grade_3(self):
+        """均衡队伍: 全员数据接近, z-score 接近 0, 都在档 3."""
+        with _neutral_baselines()[0], _neutral_baselines()[1]:
             team = [
                 _makeParticipant('p1', 1, 25000, deaths=5, win=True),
                 _makeParticipant('p2', 2, 24000, deaths=4, win=True),
@@ -174,19 +177,15 @@ class TestDiagnoseTeam:
                 _makeParticipant('p4', 4, 24500, deaths=5, win=True),
                 _makeParticipant('p5', 5, 25500, deaths=5, win=True),
             ]
-            result = _run_async(diagnoseTeam(team, 420, True, 'normal'))
-            assert result is not None
-            # 新设计: 始终命名 worst 为躺赢狗 (胜局) / 战犯 (败局)
-            assert result['verdict'] == 'carried_dog'
-            # 均衡队伍 worst 分数不应极端负
-            assert result['score'] > -1.5
+            result = _run_async(rateEntireTeam(team, 420, isWin=True))
+            assert len(result) == 5
+            for r in result:
+                # 均衡队伍最差也不应极端负
+                assert r['score'] > -1.5
 
     def test_hextech_vision_not_counted(self):
-        """海克斯大乱斗视野分不计入: 视野全 0 不影响评分, 均衡队伍 worst 不极端."""
-        with patch('app.lol.augment_baseline.getHextechAugmentScore',
-                   new=AsyncMock(return_value=None)), \
-             patch('app.lol.champion_baseline.getChampionBaselineWinrate',
-                   new=AsyncMock(return_value=None)):
+        """海克斯大乱斗视野分不计入: 视野全 0 不影响评分."""
+        with _neutral_baselines()[0], _neutral_baselines()[1]:
             team = [
                 _makeParticipant('p1', 1, 30000, deaths=3, visionScore=0, win=False),
                 _makeParticipant('p2', 2, 28000, deaths=4, visionScore=0, win=False),
@@ -194,21 +193,17 @@ class TestDiagnoseTeam:
                 _makeParticipant('p4', 4, 31000, deaths=4, visionScore=0, win=False),
                 _makeParticipant('p5', 5, 29000, deaths=4, visionScore=0, win=False),
             ]
-            # 海克斯模式 2400
-            result = _run_async(diagnoseTeam(team, 2400, False, 'normal'))
-            assert result is not None
-            # 新设计: 败局始终命名 worst 为战犯
-            assert result['verdict'] == 'war_criminal'
-            # 视野全 0 不应导致极端误判, worst 分数不应极端负
-            assert result['score'] > -1.5
+            result = _run_async(rateEntireTeam(team, 2400, isWin=False))
+            # 视野全 0 不应导致极端误判
+            for r in result:
+                assert r['score'] > -1.5
 
     def test_baseline_amplifies_strong_champion(self):
-        """OPGG 胜率高的英雄, 同样表现差更易被判战犯.
+        """OPGG 胜率高的英雄, 同样表现差更易得低分.
 
-        模拟: 同一玩家在同一局中, 当 championBaselineWinrate 从 None 变 0.6,
-        应更容易被判战犯 (score 更低).
+        模拟: 同一玩家在同一局中, 当 championBaselineWinrate 从 None 变 0.65,
+        score 应更低 (高胜率英雄预期贡献高, 实际贡献低被进一步扣分).
         """
-        # 5 人, p4 略差但不算极端
         team = [
             _makeParticipant('p1', 1, 28000, deaths=5),
             _makeParticipant('p2', 2, 27000, deaths=6),
@@ -222,7 +217,7 @@ class TestDiagnoseTeam:
                    new=AsyncMock(return_value=None)), \
              patch('app.lol.champion_baseline.getChampionBaselineWinrate',
                    new=AsyncMock(return_value=None)):
-            r1 = _run_async(diagnoseTeam(team, 420, False, 'normal'))
+            r1 = _run_async(rateEntireTeam(team, 420, isWin=False))
 
         # 2) p4 的英雄基线胜率 0.65 (高)
         async def mock_wr(cid, qid):
@@ -233,22 +228,18 @@ class TestDiagnoseTeam:
                    new=AsyncMock(return_value=None)), \
              patch('app.lol.champion_baseline.getChampionBaselineWinrate',
                    new=AsyncMock(side_effect=mock_wr)):
-            r2 = _run_async(diagnoseTeam(team, 420, False, 'normal'))
+            r2 = _run_async(rateEntireTeam(team, 420, isWin=False))
 
-        # 两种情况都应给出诊断, 且 r2 中 p4 的 score 应更低
-        # (高胜率英雄预期贡献高, 实际贡献低被进一步扣分)
-        assert r1 is not None
-        assert r2 is not None
-        # r2 应更倾向战犯 (p4 score 更低)
-        # 不强制 verdict 必为 war_criminal (因为差距不够大), 但 score 应更低
-        # 由于 setVerdict 中 score 来自 worst, 这里比较 suspect 是否为 p4
-        # 实际更稳的断言: r2.suspect 是 p4 且 score 比 r1 更低
-        # (但若 r1 也是 p4, 我们比较 score 数值)
-        if r1['suspect']['puuid'] == 'p4' and r2['suspect']['puuid'] == 'p4':
-            assert r2['score'] <= r1['score'] + 0.001  # 允许数值误差
+        # 两种情况都应给出评级
+        assert len(r1) == 5
+        assert len(r2) == 5
+        # r2 中 p4 的 score 应更低 (高胜率英雄预期贡献高, 实际贡献低被进一步扣分)
+        p4_r1 = next(r for r in r1 if r['puuid'] == 'p4')
+        p4_r2 = next(r for r in r2 if r['puuid'] == 'p4')
+        assert p4_r2['score'] <= p4_r1['score'] + 0.001  # 允许数值误差
 
     def test_augment_baseline_amplifies_strong_combo(self):
-        """强海克斯强化组合的玩家, 实际贡献低更易被判战犯."""
+        """强海克斯强化组合的玩家, 实际贡献低更易得低分."""
         team = [
             _makeParticipant('p1', 1, 28000, deaths=5, augmentIds=[1, 2, 3]),
             _makeParticipant('p2', 2, 27000, deaths=6, augmentIds=[4, 5, 6]),
@@ -267,77 +258,57 @@ class TestDiagnoseTeam:
                    new=AsyncMock(side_effect=mock_aug)), \
              patch('app.lol.champion_baseline.getChampionBaselineWinrate',
                    new=AsyncMock(return_value=None)):
-            result = _run_async(diagnoseTeam(team, 2400, False, 'normal'))
-            assert result is not None
-            # 强组合英雄实际贡献低, 更易被判战犯
-            assert result['suspect']['puuid'] == 'p4'
-
-    def test_sensitivity_strict_more_likely_team_underperformed(self):
-        """strict 灵敏度 (阈值高) 更易标记 teamUnderperformed, loose 不易.
-
-        新设计: verdict 始终为 war_criminal/carried_dog,
-        灵敏度通过 teamUnderperformed 子状态体现:
-        - strict (阈值 1.1): gap < 1.1 更易满足 -> teamUnderperformed=True
-        - loose  (阈值 0.6): gap < 0.6 更难满足 -> teamUnderperformed=False
-        """
-        # 中等差距: worst 与第二名 gap 约 0.9-1.0
-        team = [
-            _makeParticipant('p1', 1, 28000, deaths=5),
-            _makeParticipant('p2', 2, 27000, deaths=6),
-            _makeParticipant('p3', 3, 29000, deaths=4),
-            _makeParticipant('p4', 4, 24000, deaths=7),  # 中等差
-            _makeParticipant('p5', 5, 28000, deaths=5),
-        ]
-        with patch('app.lol.augment_baseline.getHextechAugmentScore',
-                   new=AsyncMock(return_value=None)), \
-             patch('app.lol.champion_baseline.getChampionBaselineWinrate',
-                   new=AsyncMock(return_value=None)):
-            r_strict = _run_async(diagnoseTeam(team, 420, False, 'strict'))
-            r_loose = _run_async(diagnoseTeam(team, 420, False, 'loose'))
-        # 两者都命名 worst 为战犯 (新设计始终命名)
-        assert r_strict['verdict'] == 'war_criminal'
-        assert r_loose['verdict'] == 'war_criminal'
-        # strict 阈值高 -> gap < threshold 更易满足 -> teamUnderperformed=True
-        # loose 阈值低 -> gap < threshold 更难满足 -> teamUnderperformed=False
-        assert r_strict['teamUnderperformed'] is True
-        assert r_loose['teamUnderperformed'] is False
+            result = _run_async(rateEntireTeam(team, 2400, isWin=False))
+            assert len(result) == 5
+            # p4 应是 score 最低的 (强组合英雄实际贡献低, 更易被判低档)
+            p4 = next(r for r in result if r['puuid'] == 'p4')
+            others = [r['score'] for r in result if r['puuid'] != 'p4']
+            assert p4['score'] < min(others)
 
 
-class TestVerdictLabel:
-    def test_war_criminal_label(self):
-        assert verdictLabel('war_criminal', False) == '战犯'
+class TestGradeLabel:
+    def test_tieba_win(self):
+        assert gradeLabel(1, True, 'tieba') == '神'
+        assert gradeLabel(4, True, 'tieba') == '躺赢狗'
 
-    def test_carried_dog_label(self):
-        assert verdictLabel('carried_dog', True) == '躺赢狗'
+    def test_tieba_loss(self):
+        assert gradeLabel(4, False, 'tieba') == '甲级战犯'
+        assert gradeLabel(5, False, 'tieba') == '初升东曦'
 
-    def test_obsolete_verdicts_return_empty(self):
-        """team_underperformed / no_clear_suspect 不再作为独立 verdict."""
-        assert verdictLabel('team_underperformed', False) == ''
-        assert verdictLabel('no_clear_suspect', True) == ''
+    def test_horse_universal(self):
+        for isWin in (True, False):
+            assert gradeLabel(1, isWin, 'horse') == '上等马'
 
-    def test_unknown_label(self):
-        assert verdictLabel('xyz', True) == ''
+    def test_grade_out_of_range_clamped(self):
+        assert gradeLabel(0, True, 'tieba') == '神'
+        assert gradeLabel(99, True, 'tieba') == '消失'
+
+
+class TestGradeFromScore:
+    def test_high_positive(self):
+        assert gradeFromScore(2.5) == 1
+        assert gradeFromScore(1.0) == 1
+
+    def test_neutral(self):
+        assert gradeFromScore(0.0) == 3
+
+    def test_high_negative(self):
+        assert gradeFromScore(-1.5) == 5
 
 
 class TestWarCriminalCache:
     def test_set_and_get(self):
         from app.lol.war_criminal_cache import setVerdict, getVerdict, clear
         clear()
-        setVerdict(
-            gameId=12345,
-            verdict='war_criminal',
-            label='战犯',
-            isCurrentSuspect=True,
-            score=-1.85,
-            evidence=[{'metric': 'damage'}],
-        )
+        winner_rating = [
+            {'puuid': 'p1', 'grade': 1, 'label': '神', 'score': 2.0,
+             'isWin': True, 'isCurrent': False, 'evidence': []},
+        ]
+        setVerdict(gameId=12345, winnerRating=winner_rating)
         cached = getVerdict(12345)
         assert cached is not None
-        assert cached['verdict'] == 'war_criminal'
-        assert cached['label'] == '战犯'
-        assert cached['isCurrentSuspect'] is True
-        assert cached['score'] == -1.85
-        assert len(cached['evidence']) == 1
+        assert cached['winnerRating'] == winner_rating
+        assert cached['winnerRating'][0]['label'] == '神'
 
     def test_get_missing_returns_none(self):
         from app.lol.war_criminal_cache import getVerdict, clear
@@ -346,7 +317,7 @@ class TestWarCriminalCache:
 
     def test_clear(self):
         from app.lol.war_criminal_cache import setVerdict, getVerdict, clear
-        setVerdict(1, 'war_criminal', '战犯', True, -1.0, [])
+        setVerdict(1, winnerRating=[{'puuid': 'p1', 'grade': 1}])
         clear()
         assert getVerdict(1) is None
 

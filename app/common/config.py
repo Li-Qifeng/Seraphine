@@ -117,12 +117,12 @@ class Config(QConfig):
     autoHonorDelay = RangeConfigItem(
         "Functions", "AutoHonorDelay", 1, RangeValidator(0, 5))
 
-    # 战犯/躺赢狗诊断
-    enableWarCriminal = ConfigItem("Functions",
-                                    "EnableWarCriminal", True, BoolValidator())
-    warCriminalSensitivity = OptionsConfigItem(
-        "Functions", "WarCriminalSensitivity", "normal",
-        OptionsValidator(["loose", "normal", "strict"]))
+    # 全队 5 档评级 (胜方/败方各一套贴吧风标签, 或马系风通用标签)
+    enableTeamRating = ConfigItem("Functions",
+                                   "EnableTeamRating", True, BoolValidator())
+    teamRatingStyle = OptionsConfigItem(
+        "Functions", "TeamRatingStyle", "tieba",
+        OptionsValidator(["tieba", "horse"]))
 
     enableAutoSelectTimeoutCompleted = ConfigItem("Functions",
                                                   "EnableAutoSelectTimeoutCompleted", False,
@@ -248,7 +248,7 @@ class Config(QConfig):
 
 YEAR = 2023
 AUTHOR = "Zzaphkiel"
-VERSION = "1.1.5"
+VERSION = "1.1.6"
 BETA = None
 FEEDBACK_URL = "https://github.com/Zzaphkiel/Seraphine/issues?q=is%3Aissue"
 GITHUB_URL = "https://github.com/Zzaphkiel/Seraphine"

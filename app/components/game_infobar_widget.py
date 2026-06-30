@@ -327,204 +327,10 @@ class AugmentRow(QFrame):
             pass
 
 
-class VerdictBadge(QFrame):
-    """战犯/躺赢狗徽章: 图标+文本的醒目标签.
-
-    只有两种标签:
-    - 战犯 (war_criminal): 红色系
-    - 躺赢狗 (carried_dog): 金色系
-
-    子状态:
-    - teamUnderperformed=True: 团队整体低迷, 该嫌疑者与队友差距不大
-      此时战犯用橙色显示 (降低视觉权重, 表示"不是全怪他")
-
-    样式 (参考 Material Design 3 tonal palette + Fluent Design accent):
-    - isSuspect=True  (当前召唤师是嫌疑者): 实色背景 + 白字, 醒目
-    - isSuspect=False (本局有 verdict 但当前召唤师不是嫌疑者):
-      保留类型颜色作描边, 背景半透明, 让用户一眼看出类型但不喧宾夺主
-    """
-
-    # (light_fg_suspect, light_bg_suspect, light_border_suspect,
-    #  light_fg_other, light_bg_other, light_border_other,
-    #  dark_fg_suspect, dark_bg_suspect, dark_border_suspect,
-    #  dark_fg_other, dark_bg_other, dark_border_other)
-    # 配色参考 Material Design 3 tonal palette: 主色调 + on-color + outline
-    _COLORS = {
-        # 战犯: M3 red tonal (error container 风格)
-        '战犯': ('#ffffff', '#b3261e', '#7e1a14',
-                 '#b3261e', 'rgba(179,38,30,0.10)', '#dc4744',
-                 '#ffffff', '#b3261e', '#f2b8b5',
-                 '#f2b8b5', 'rgba(242,184,181,0.14)', '#f2b8b5'),
-        # 躺赢狗: M3 amber/gold tonal
-        '躺赢狗': ('#ffffff', '#b8860b', '#7a5a00',
-                   '#856100', 'rgba(184,134,11,0.12)', '#cba433',
-                   '#ffffff', '#b8860b', '#ffd54f',
-                   '#ffd54f', 'rgba(255,213,79,0.16)', '#ffd54f'),
-        # 团队低迷时战犯用橙色 (M3 orange tonal, 比 red 弱)
-        '战犯_团队低迷': ('#ffffff', '#c46200', '#8a4400',
-                          '#c46200', 'rgba(196,98,0,0.12)', '#e89641',
-                          '#ffffff', '#c46200', '#ffb874',
-                          '#ffb874', 'rgba(255,184,116,0.16)', '#ffb874'),
-    }
-
-    # 用 Unicode 几何符号替代 emoji, 保证跨平台渲染一致性
-    _ICONS = {
-        '战犯': '▲',
-        '躺赢狗': '◇',
-    }
-
-    _METRIC_LABELS = {
-        'damage': '伤害', 'deaths': '死亡', 'gold': '经济',
-        'kda': 'KDA', 'damage_taken': '承伤', 'shield_heal': '护盾治疗',
-        'cc': '控制时长', 'vision': '视野',
-        'kill_participation': '参团率', 'damage_efficiency': '伤害转化率',
-    }
-
-    # 指标格式: 'int' 千分位整数, 'pct' 百分比, 'float' 两位小数
-    _METRIC_FORMATS = {
-        'damage': 'int', 'damage_taken': 'int', 'shield_heal': 'int',
-        'gold': 'int', 'cc': 'int',
-        'deaths': 'int', 'kda': 'float',
-        'kill_participation': 'pct', 'damage_efficiency': 'float',
-        'vision': 'float',
-    }
-
-    def __init__(self, label: str, isSuspect: bool = False,
-                 evidence: list = None, teamUnderperformed: bool = False,
-                 parent=None):
-        super().__init__(parent)
-        self.label = label
-        self.teamUnderperformed = teamUnderperformed
-
-        self.hBoxLayout = QHBoxLayout(self)
-        self.hBoxLayout.setContentsMargins(8, 2, 8, 2)
-        self.hBoxLayout.setSpacing(4)
-
-        icon_text = self._ICONS.get(label, '')
-        if icon_text:
-            self.iconLabel = QLabel(icon_text)
-            self.iconLabel.setStyleSheet("font: 10px 'Segoe UI';")
-            self.hBoxLayout.addWidget(self.iconLabel)
-
-        self.textLabel = QLabel(label)
-        self.textLabel.setStyleSheet(
-            "font: bold 11px 'Microsoft YaHei', 'Segoe UI';")
-        self.hBoxLayout.addWidget(self.textLabel)
-
-        self.setFixedHeight(24)
-
-        # 团队低迷的战犯用橙色色板
-        color_key = label
-        if teamUnderperformed and label == '战犯':
-            color_key = '战犯_团队低迷'
-        palette = self._COLORS.get(color_key)
-        if palette is None:
-            palette = ('#fff', '#555', '#333',
-                       '#555', 'rgba(85,85,85,0.12)', '#555',
-                       '#fff', '#555', '#555',
-                       '#aaa', 'rgba(85,85,85,0.18)', '#aaa')
-
-        if isDarkTheme():
-            if isSuspect:
-                fg, bg, border = palette[6], palette[7], palette[8]
-            else:
-                fg, bg, border = palette[9], palette[10], palette[11]
-        else:
-            if isSuspect:
-                fg, bg, border = palette[0], palette[1], palette[2]
-            else:
-                fg, bg, border = palette[3], palette[4], palette[5]
-
-        # M3 风格: 圆角 8px, 描边 1px, 背景实色或半透明
-        self.setStyleSheet(
-            f"VerdictBadge {{ background: {bg}; "
-            f"border: 1px solid {border}; border-radius: 8px; }}")
-        self.textLabel.setStyleSheet(
-            f"QLabel {{ color: {fg}; "
-            f"font: bold 11px 'Microsoft YaHei', 'Segoe UI'; "
-            f"background: transparent; border: none; }}")
-        if icon_text:
-            self.iconLabel.setStyleSheet(
-                f"QLabel {{ color: {fg}; font: 10px 'Segoe UI'; "
-                f"background: transparent; border: none; }}")
-
-        # 设置 evidence tooltip
-        if evidence:
-            tip = self._formatEvidence(evidence, label, teamUnderperformed)
-            if tip:
-                self.setToolTip(tip)
-                self.installEventFilter(
-                    ToolTipFilter(self, 300, ToolTipPosition.BOTTOM))
-
-    def _formatMetricValue(self, metric: str, val) -> str:
-        """根据指标类型格式化数值."""
-        fmt = self._METRIC_FORMATS.get(metric, 'float')
-        try:
-            v = float(val)
-        except (TypeError, ValueError):
-            return str(val)
-        if fmt == 'int':
-            return f"{v:,.0f}"
-        if fmt == 'pct':
-            return f"{v * 100:.0f}%"
-        return f"{v:.2f}"
-
-    def _formatEvidence(self, evidence: list, label: str,
-                        teamUnderperformed: bool = False) -> str:
-        """将诊断证据列表格式化为 tooltip 文本.
-
-        输出面向普通玩家, 用口语化短句描述偏离情况, 不暴露 z-score 等统计量.
-        团队低迷时在标题后追加说明.
-        """
-        # 标题: 根据标签给出一句通俗解释
-        title_map = {
-            '战犯': '这把你拖了队伍后腿',
-            '躺赢狗': '这把你被队友带飞了',
-        }
-        title = title_map.get(label, label)
-        lines = [f"【{label}】{title}"]
-
-        # 团队低迷子状态标注
-        if teamUnderperformed:
-            lines.append('  (整队表现都偏低, 不全是你的锅)')
-
-        for item in evidence:
-            metric_key = item.get('metric', '')
-            metric = self._METRIC_LABELS.get(metric_key, metric_key)
-            val = item.get('value', 0)
-            avg = item.get('teamAvg', 0)
-            sev = item.get('severity', 'normal')
-            if sev == 'normal':
-                continue
-
-            # 偏离程度描述 (基于 severity)
-            is_high = sev in ('high_pos', 'high_neg')
-            degree = '显著' if is_high else '略'
-
-            val_str = self._formatMetricValue(metric_key, val)
-            avg_str = self._formatMetricValue(metric_key, avg)
-
-            # 描述方向: 死亡偏高=坏事, 其他指标偏高=好事
-            if metric == '死亡':
-                if sev in ('high_pos', 'pos'):
-                    comment = f"{degree}偏多 (送得厉害)"
-                else:
-                    comment = f"{degree}偏少"
-            elif sev in ('high_neg', 'neg'):
-                comment = f"{degree}垫底"
-            else:  # high_pos / pos
-                comment = f"{degree}突出"
-
-            lines.append(
-                f"· {metric}: {val_str} | 队友平均 {avg_str} — {comment}")
-
-        return '\n'.join(lines) if len(lines) > 1 else ''
-
-
 class GameInfoBar(ColorAnimationFrame):
     def __init__(self, game: dict = None, parent: QWidget = None,
-                 verdictLabel: str = None, verdictIsSuspect: bool = False,
-                 verdictEvidence: list = None):
+                 grade: int = None, gradeLabel: str = '',
+                 gradeEvidence: list = None, isCurrent: bool = False):
         if game['remake']:
             type = 'remake'
         elif game['win']:
@@ -533,9 +339,10 @@ class GameInfoBar(ColorAnimationFrame):
             type = 'lose'
 
         self.gameId = game['gameId']
-        self.verdictLabel = verdictLabel
-        self.verdictIsSuspect = verdictIsSuspect
-        self.verdictEvidence = verdictEvidence or []
+        self.grade = grade
+        self.gradeLabel = gradeLabel
+        self.gradeEvidence = gradeEvidence or []
+        self.isCurrent = isCurrent
 
         super().__init__(type=type, parent=parent)
         self.hBoxLayout = QHBoxLayout(self)
@@ -596,9 +403,10 @@ class GameInfoBar(ColorAnimationFrame):
         else:
             self.hBoxLayout.addSpacing(15)
         self.hBoxLayout.addWidget(self.mapTime)
-        # 战犯/躺赢狗徽章 (仅当本局有 verdict 命中时显示)
-        if self.verdictLabel:
+        # 全队 5 档评级徽章 (仅当本局有评级数据时显示)
+        if self.gradeLabel:
+            from app.components.grade_badge import GradeBadge
             self.hBoxLayout.addSpacing(8)
             self.hBoxLayout.addWidget(
-                VerdictBadge(self.verdictLabel, self.verdictIsSuspect,
-                             self.verdictEvidence))
+                GradeBadge(self.grade, self.gradeLabel, self.isCurrent,
+                           self.gradeEvidence))

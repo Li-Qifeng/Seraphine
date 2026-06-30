@@ -290,6 +290,7 @@ class MainWindow(FluentWindow):
             self.__onChampSelectChanged)
         signalBus.lcuApiExceptionRaised.connect(
             self.__onShowLcuConnectError)
+        signalBus.lcuNotConnected.connect(self.__onLcuNotConnected)
         signalBus.getCmdlineError.connect(
             self.__showNeedAdminMessageBox)
 
@@ -369,6 +370,24 @@ class MainWindow(FluentWindow):
             orient=Qt.Vertical,
             parent=self,
             position=InfoBarPosition.BOTTOM_RIGHT
+        )
+
+    def __onLcuNotConnected(self):
+        # LCU 未就绪仍有请求发送时, 由 @retry 统一拦截 ReferenceError 后发射此信号
+        # 复用 lastTipsTime/lastTipsType 限频, 避免短时间内大量请求刷屏
+        if time.time() - self.lastTipsTime < 1.5 and self.lastTipsType is ReferenceError:
+            return
+        self.lastTipsTime = time.time()
+        self.lastTipsType = ReferenceError
+
+        InfoBar.warning(
+            self.tr("Client not connected"),
+            self.tr("League of Legends client is not running. "
+                    "Please start the client first."),
+            orient=Qt.Vertical,
+            duration=4000,
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            parent=self
         )
 
     def __onWindowHide(self, hide):
@@ -1332,10 +1351,10 @@ class MainWindow(FluentWindow):
         if not cfg.get(cfg.enableReserveGameinfo):
             self.gameInfoInterface.clear()
 
-        # 战犯/躺赢狗诊断: EndOfGame→Lobby 阶段评分并写缓存.
-        # 必须 await 完成, 否则紧接着的生涯刷新拿不到 verdict 缓存, 徽章不显示
-        if cfg.get(cfg.enableWarCriminal):
-            logger.error("WarCriminal: diagnose triggered (game end)", TAG)
+        # 全队 5 档评级: EndOfGame→Lobby 阶段评分并写缓存.
+        # 必须 await 完成, 否则紧接着的生涯刷新拿不到评级缓存, 徽章不显示
+        if cfg.get(cfg.enableTeamRating):
+            logger.info("TeamRating: diagnose triggered (game end)", TAG)
             await self.__diagnoseLastGame()
 
     async def __diagnoseLastGame(self):
@@ -1414,9 +1433,9 @@ class MainWindow(FluentWindow):
                 logger.error(f"WarCriminal: parseGameDetailData returned None for {gameId}", TAG)
                 return
 
-            sensitivity = cfg.get(cfg.warCriminalSensitivity)
-            await diagnoseGameFromParsed(parsed, currentPuuid, sensitivity,
-                                          gameId)
+            ratingStyle = cfg.get(cfg.teamRatingStyle)
+            await diagnoseGameFromParsed(parsed, currentPuuid, gameId,
+                                          ratingStyle=ratingStyle)
         except Exception as e:
             logger.error(f"WarCriminal diagnose failed: {e}", TAG)
 

@@ -3134,6 +3134,36 @@ when they are used by Seraphine, which will cost more time</source>
         <source>Strict</source>
         <translation>严格</translation>
     </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="158"/>
+        <source>Team rating badges</source>
+        <translation>队友评级徽章</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="160"/>
+        <source>Show a 5-tier rating badge (e.g. 神/爹/小有亮点/躺赢狗/消失) for each teammate in game detail view</source>
+        <translation>在对局详情中为每个队友显示 5 档评级徽章（如 神/爹/小有亮点/躺赢狗/消失）</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="167"/>
+        <source>Team rating style</source>
+        <translation>队友评级风格</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="169"/>
+        <source>Tieba: 贴吧风 (win/loss separate labels); Horse: 马系风 (上等马/中等马/下等马/纯牛马)</source>
+        <translation>贴吧风：胜方/败方不同标签；马系风：上等马/中等马/下等马/纯牛马</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="171"/>
+        <source>Tieba</source>
+        <translation>贴吧风</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="171"/>
+        <source>Horse</source>
+        <translation>马系风</translation>
+    </message>
 </context>
 <context>
     <name>SpectateCard</name>

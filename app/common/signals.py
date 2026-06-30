@@ -14,6 +14,9 @@ class SignalBus(QObject):
 
     # connector:
     lcuApiExceptionRaised = pyqtSignal(str, object)
+    # LCU 未就绪 (lcuSess is None) 时仍有请求发送, 由 @retry 统一拦截后发射,
+    # UI 层接收并显示"客户端未连接"提示, 不再抛 ReferenceError 给上层
+    lcuNotConnected = pyqtSignal()
     currentSummonerProfileChanged = pyqtSignal(dict)
     gameStatusChanged = pyqtSignal(str)
     champSelectChanged = pyqtSignal(dict)

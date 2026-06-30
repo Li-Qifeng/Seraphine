@@ -16,7 +16,7 @@ from app.components.seraphine_interface import SeraphineInterface
 from app.components.setting_cards import (LineEditSettingCard, GameTabColorSettingCard,
                                           LooseSwitchSettingCard, ProxySettingCard,
                                           DeathsNumberColorSettingCard, ThemeColorSettingCard,
-                                          QueueFilterCard, TeamColorSettingCard)
+                                          TeamColorSettingCard)
 from app.components.message_box import MultiPathSettingMsgBox
 
 
@@ -36,9 +36,6 @@ class SettingInterface(SeraphineInterface):
 
         self.generalGroup = SettingCardGroup(self.tr("通用"),
                                              self.scrollWidget)
-
-        self.gameFuncGroup = SettingCardGroup(self.tr("游戏功能"),
-                                              self.scrollWidget)
 
         self.aboutGroup = SettingCardGroup(self.tr("关于"),
                                            self.scrollWidget)
@@ -103,57 +100,6 @@ class SettingInterface(SeraphineInterface):
             self.tr(
                 "Setting the maximum number of games shows in the career interface"),
             self.generalGroup)
-
-        # --- 游戏功能组卡片 ---
-        self.queueFilterCard = QueueFilterCard(
-            self.tr("Game Infomation filter"),
-            self.tr(
-                "Show game modes in Game Infomation interface based on your current game mode"),
-            cfg.queueFilter,
-            parent=self.gameFuncGroup
-        )
-
-        self.autoClearGameinfoCard = SwitchSettingCard(
-            Icon.ATTACHTEXT, self.tr("Reserve Game Information interface"),
-            self.tr(
-                "Reserve Game Information interface until the next champion selection starts"),
-            cfg.enableReserveGameinfo,
-            parent=self.gameFuncGroup
-        )
-
-        self.gameInfoShowTierCard = SwitchSettingCard(
-            Icon.TROPHY, self.tr("Show tier in game information"),
-            self.tr(
-                "Show tier icon in game information interface. Enabling this option affects APP's performance"),
-            cfg.showTierInGameInfo,
-            parent=self.gameFuncGroup)
-
-        self.autoShowOpggCard = SwitchSettingCard(
-            Icon.WINDOW, self.tr("Show OP.GG window automatically"),
-            self.tr("Show OP.GG window automatically when champion selection starts"),
-            cfg.autoShowOpgg,
-            parent=self.gameFuncGroup)
-        self.opggOnTopCard = SwitchSettingCard(
-            Icon.PADDINGTOP, self.tr(
-                "Show OP.GG window on top"),
-            self.tr(
-                "Show OP.GG window in front of other windows while selecting champions"),
-            cfg.enableOpggOnTop,
-            parent=self.gameFuncGroup)
-        self.enableWarCriminalCard = SwitchSettingCard(
-            Icon.TROPHY, self.tr("War criminal diagnosis"),
-            self.tr(
-                "Identify the worst performer on each team (war criminal / carried dog) based on in-game stats"),
-            cfg.enableWarCriminal,
-            parent=self.gameFuncGroup)
-        self.warCriminalSensitivityCard = ComboBoxSettingCard(
-            cfg.warCriminalSensitivity,
-            Icon.SCALEFIT,
-            self.tr("War criminal sensitivity"),
-            self.tr(
-                "Loose: easier to flag; Normal: balanced; Strict: only obvious cases"),
-            texts=[self.tr("Loose"), self.tr("Normal"), self.tr("Strict")],
-            parent=self.gameFuncGroup)
 
         # --- 个性化组卡片 ---
         self.micaCard = SwitchSettingCard(
@@ -291,15 +237,6 @@ class SettingInterface(SeraphineInterface):
         self.generalGroup.addSettingCard(self.apiConcurrencyCount)
         self.generalGroup.addSettingCard(self.careerGamesCount)
 
-        # 游戏功能组
-        self.gameFuncGroup.addSettingCard(self.queueFilterCard)
-        self.gameFuncGroup.addSettingCard(self.autoClearGameinfoCard)
-        self.gameFuncGroup.addSettingCard(self.gameInfoShowTierCard)
-        self.gameFuncGroup.addSettingCard(self.autoShowOpggCard)
-        self.gameFuncGroup.addSettingCard(self.opggOnTopCard)
-        self.gameFuncGroup.addSettingCard(self.enableWarCriminalCard)
-        self.gameFuncGroup.addSettingCard(self.warCriminalSensitivityCard)
-
         # 关于组
         self.aboutGroup.addSettingCard(self.checkUpdateCard)
         self.aboutGroup.addSettingCard(self.httpProxyCard)
@@ -313,7 +250,6 @@ class SettingInterface(SeraphineInterface):
         self.expandLayout.setContentsMargins(36, 0, 36, 0)
         self.expandLayout.addWidget(self.personalizationGroup)
         self.expandLayout.addWidget(self.generalGroup)
-        self.expandLayout.addWidget(self.gameFuncGroup)
         self.expandLayout.addWidget(self.aboutGroup)
 
     def __connectSignalToSlot(self):

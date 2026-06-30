@@ -561,24 +561,35 @@ class CareerInterface(SeraphineInterface):
                 QSpacerItem(1, 1, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
     def __makeGameInfoBar(self, game: dict) -> 'GameInfoBar':
-        """创建战绩卡片, 若战犯缓存命中则附加 verdict 徽章."""
-        verdictLabel = None
-        verdictIsSuspect = False
-        verdictEvidence = []
+        """创建战绩卡片, 若评级缓存命中则附加当前召唤师的档位徽章."""
+        grade = None
+        gradeLabel = ''
+        gradeEvidence = []
+        isCurrent = False
         try:
-            from app.lol.war_criminal_cache import getVerdict
-            cached = getVerdict(game.get('gameId'))
-            if cached and cached.get('verdict') not in (
-                    None, 'no_clear_suspect'):
-                verdictLabel = cached.get('label')
-                verdictIsSuspect = bool(cached.get('isCurrentSuspect'))
-                verdictEvidence = cached.get('evidence') or []
+            if cfg.get(cfg.enableTeamRating):
+                from app.lol.war_criminal_cache import getTeamRating
+                # 判断当前召唤师所在队是胜方还是败方
+                isWin = bool(game.get('win'))
+                ratingList = getTeamRating(game.get('gameId'), isWin)
+                if not ratingList:
+                    # 缓存未命中或胜败方判断错误时尝试另一队
+                    ratingList = getTeamRating(game.get('gameId'), not isWin)
+                if ratingList:
+                    # 找到当前召唤师的评级项
+                    currentPuuid = self.puuid
+                    for r in ratingList:
+                        if r.get('puuid') == currentPuuid:
+                            grade = r.get('grade')
+                            gradeLabel = r.get('label', '')
+                            gradeEvidence = r.get('evidence') or []
+                            isCurrent = True
+                            break
         except Exception:
             pass
 
-        return GameInfoBar(game, verdictLabel=verdictLabel,
-                           verdictIsSuspect=verdictIsSuspect,
-                           verdictEvidence=verdictEvidence)
+        return GameInfoBar(game, grade=grade, gradeLabel=gradeLabel,
+                           gradeEvidence=gradeEvidence, isCurrent=isCurrent)
 
     def __onfilterComboBoxChanged(self, index):
         self.gameInfoArea.delegate.vScrollBar.resetValue(0)

@@ -113,11 +113,20 @@ def retry(count=5, retry_sep=0):
                 exce = exce if exce else RetryMaximumAttempts(
                     "Exceeded maximum retry attempts.")
 
-                # ReferenceError 为 LCU 未就绪仍有请求发送时抛出, 直接吞掉不用提示
+                # ReferenceError: LCU 未就绪 (lcuSess is None) 仍有请求发送时抛出,
+                # 统一发射 lcuNotConnected 信号通知 UI 层显示"客户端未连接"提示,
+                # 不再 raise 给上层 (避免 qasync 弹错误对话框), 直接返回 None
+                if type(exce) is ReferenceError:
+                    with connector.dqLock:
+                        req_obj.response = exce
+                    logger.warning(
+                        f"LCU not ready, skip {func.__name__}", TAG)
+                    signalBus.lcuNotConnected.emit()
+                    return None
+
                 # 其余异常弹一个提示
-                if type(exce) is not ReferenceError:
-                    signalBus.lcuApiExceptionRaised.emit(
-                        func.__name__, exce)
+                signalBus.lcuApiExceptionRaised.emit(
+                    func.__name__, exce)
 
                 with connector.dqLock:
                     req_obj.response = exce
