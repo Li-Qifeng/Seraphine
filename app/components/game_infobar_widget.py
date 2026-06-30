@@ -338,7 +338,7 @@ class VerdictBadge(QFrame):
     - teamUnderperformed=True: 团队整体低迷, 该嫌疑者与队友差距不大
       此时战犯用橙色显示 (降低视觉权重, 表示"不是全怪他")
 
-    样式:
+    样式 (参考 Material Design 3 tonal palette + Fluent Design accent):
     - isSuspect=True  (当前召唤师是嫌疑者): 实色背景 + 白字, 醒目
     - isSuspect=False (本局有 verdict 但当前召唤师不是嫌疑者):
       保留类型颜色作描边, 背景半透明, 让用户一眼看出类型但不喧宾夺主
@@ -348,31 +348,45 @@ class VerdictBadge(QFrame):
     #  light_fg_other, light_bg_other, light_border_other,
     #  dark_fg_suspect, dark_bg_suspect, dark_border_suspect,
     #  dark_fg_other, dark_bg_other, dark_border_other)
+    # 配色参考 Material Design 3 tonal palette: 主色调 + on-color + outline
     _COLORS = {
-        '战犯': ('#fff', '#c0392b', '#922b21',
-                 '#c0392b', 'rgba(192,57,43,0.12)', '#e74c3c',
-                 '#fff', '#c0392b', '#e74c3c',
-                 '#ff6b6b', 'rgba(231,76,60,0.18)', '#ff6b6b'),
-        '躺赢狗': ('#fff', '#d4a017', '#a67c00',
-                   '#a67c00', 'rgba(212,160,23,0.14)', '#d4a017',
-                   '#fff', '#d4a017', '#ffc107',
-                   '#ffd54f', 'rgba(255,193,7,0.18)', '#ffc107'),
-        # 团队低迷时战犯用橙色 (比红色弱, 表示"不是全怪他")
-        '战犯_团队低迷': ('#fff', '#e67e22', '#a05a14',
-                          '#e67e22', 'rgba(230,126,34,0.14)', '#e67e22',
-                          '#fff', '#d68910', '#f39c12',
-                          '#ffb74d', 'rgba(243,156,18,0.18)', '#f39c12'),
+        # 战犯: M3 red tonal (error container 风格)
+        '战犯': ('#ffffff', '#b3261e', '#7e1a14',
+                 '#b3261e', 'rgba(179,38,30,0.10)', '#dc4744',
+                 '#ffffff', '#b3261e', '#f2b8b5',
+                 '#f2b8b5', 'rgba(242,184,181,0.14)', '#f2b8b5'),
+        # 躺赢狗: M3 amber/gold tonal
+        '躺赢狗': ('#ffffff', '#b8860b', '#7a5a00',
+                   '#856100', 'rgba(184,134,11,0.12)', '#cba433',
+                   '#ffffff', '#b8860b', '#ffd54f',
+                   '#ffd54f', 'rgba(255,213,79,0.16)', '#ffd54f'),
+        # 团队低迷时战犯用橙色 (M3 orange tonal, 比 red 弱)
+        '战犯_团队低迷': ('#ffffff', '#c46200', '#8a4400',
+                          '#c46200', 'rgba(196,98,0,0.12)', '#e89641',
+                          '#ffffff', '#c46200', '#ffb874',
+                          '#ffb874', 'rgba(255,184,116,0.16)', '#ffb874'),
     }
 
+    # 用 Unicode 几何符号替代 emoji, 保证跨平台渲染一致性
     _ICONS = {
-        '战犯': '⚠',
-        '躺赢狗': '🐶',
+        '战犯': '▲',
+        '躺赢狗': '◇',
     }
 
     _METRIC_LABELS = {
         'damage': '伤害', 'deaths': '死亡', 'gold': '经济',
         'kda': 'KDA', 'damage_taken': '承伤', 'shield_heal': '护盾治疗',
         'cc': '控制时长', 'vision': '视野',
+        'kill_participation': '参团率', 'damage_efficiency': '伤害转化率',
+    }
+
+    # 指标格式: 'int' 千分位整数, 'pct' 百分比, 'float' 两位小数
+    _METRIC_FORMATS = {
+        'damage': 'int', 'damage_taken': 'int', 'shield_heal': 'int',
+        'gold': 'int', 'cc': 'int',
+        'deaths': 'int', 'kda': 'float',
+        'kill_participation': 'pct', 'damage_efficiency': 'float',
+        'vision': 'float',
     }
 
     def __init__(self, label: str, isSuspect: bool = False,
@@ -383,20 +397,21 @@ class VerdictBadge(QFrame):
         self.teamUnderperformed = teamUnderperformed
 
         self.hBoxLayout = QHBoxLayout(self)
-        self.hBoxLayout.setContentsMargins(6, 2, 6, 2)
-        self.hBoxLayout.setSpacing(3)
+        self.hBoxLayout.setContentsMargins(8, 2, 8, 2)
+        self.hBoxLayout.setSpacing(4)
 
         icon_text = self._ICONS.get(label, '')
         if icon_text:
             self.iconLabel = QLabel(icon_text)
-            self.iconLabel.setStyleSheet("font: 12px 'Segoe UI';")
+            self.iconLabel.setStyleSheet("font: 10px 'Segoe UI';")
             self.hBoxLayout.addWidget(self.iconLabel)
 
         self.textLabel = QLabel(label)
-        self.textLabel.setStyleSheet("font: bold 11px 'Microsoft YaHei', 'Segoe UI';")
+        self.textLabel.setStyleSheet(
+            "font: bold 11px 'Microsoft YaHei', 'Segoe UI';")
         self.hBoxLayout.addWidget(self.textLabel)
 
-        self.setFixedHeight(26)
+        self.setFixedHeight(24)
 
         # 团队低迷的战犯用橙色色板
         color_key = label
@@ -420,15 +435,18 @@ class VerdictBadge(QFrame):
             else:
                 fg, bg, border = palette[3], palette[4], palette[5]
 
+        # M3 风格: 圆角 8px, 描边 1px, 背景实色或半透明
         self.setStyleSheet(
             f"VerdictBadge {{ background: {bg}; "
-            f"border: 1px solid {border}; border-radius: 6px; }}")
+            f"border: 1px solid {border}; border-radius: 8px; }}")
         self.textLabel.setStyleSheet(
             f"QLabel {{ color: {fg}; "
-            f"font: bold 11px 'Microsoft YaHei', 'Segoe UI'; }}")
+            f"font: bold 11px 'Microsoft YaHei', 'Segoe UI'; "
+            f"background: transparent; border: none; }}")
         if icon_text:
             self.iconLabel.setStyleSheet(
-                f"QLabel {{ color: {fg}; font: 12px 'Segoe UI'; }}")
+                f"QLabel {{ color: {fg}; font: 10px 'Segoe UI'; "
+                f"background: transparent; border: none; }}")
 
         # 设置 evidence tooltip
         if evidence:
@@ -437,6 +455,19 @@ class VerdictBadge(QFrame):
                 self.setToolTip(tip)
                 self.installEventFilter(
                     ToolTipFilter(self, 300, ToolTipPosition.BOTTOM))
+
+    def _formatMetricValue(self, metric: str, val) -> str:
+        """根据指标类型格式化数值."""
+        fmt = self._METRIC_FORMATS.get(metric, 'float')
+        try:
+            v = float(val)
+        except (TypeError, ValueError):
+            return str(val)
+        if fmt == 'int':
+            return f"{v:,.0f}"
+        if fmt == 'pct':
+            return f"{v * 100:.0f}%"
+        return f"{v:.2f}"
 
     def _formatEvidence(self, evidence: list, label: str,
                         teamUnderperformed: bool = False) -> str:
@@ -458,8 +489,8 @@ class VerdictBadge(QFrame):
             lines.append('  (整队表现都偏低, 不全是你的锅)')
 
         for item in evidence:
-            metric = self._METRIC_LABELS.get(
-                item.get('metric', ''), item.get('metric', ''))
+            metric_key = item.get('metric', '')
+            metric = self._METRIC_LABELS.get(metric_key, metric_key)
             val = item.get('value', 0)
             avg = item.get('teamAvg', 0)
             sev = item.get('severity', 'normal')
@@ -467,17 +498,11 @@ class VerdictBadge(QFrame):
                 continue
 
             # 偏离程度描述 (基于 severity)
-            # high_*: 显著, 普通 pos/neg: 略
             is_high = sev in ('high_pos', 'high_neg')
             degree = '显著' if is_high else '略'
 
-            # metric 是数值型时格式化千分位
-            if metric in ('伤害', '承伤', '护盾治疗', '控制时长'):
-                val_str = f"{val:,.0f}"
-                avg_str = f"{avg:,.0f}"
-            else:
-                val_str = f"{val}"
-                avg_str = f"{avg}"
+            val_str = self._formatMetricValue(metric_key, val)
+            avg_str = self._formatMetricValue(metric_key, avg)
 
             # 描述方向: 死亡偏高=坏事, 其他指标偏高=好事
             if metric == '死亡':

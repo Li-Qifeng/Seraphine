@@ -3099,6 +3099,41 @@ when they are used by Seraphine, which will cost more time</source>
         <source>Change the highlight color of premade teams in game info</source>
         <translation>修改对局信息中预组队的高亮颜色</translation>
     </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="144"/>
+        <source>War criminal diagnosis</source>
+        <translation>战犯诊断</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="146"/>
+        <source>Identify the worst performer on each team (war criminal / carried dog) based on in-game stats</source>
+        <translation>根据本局数据识别每队表现最差的玩家（战犯/躺赢狗）</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="152"/>
+        <source>War criminal sensitivity</source>
+        <translation>战犯诊断灵敏度</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="154"/>
+        <source>Loose: easier to flag; Normal: balanced; Strict: only obvious cases</source>
+        <translation>宽松：更易标记；正常：平衡；严格：仅明显案例</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="155"/>
+        <source>Loose</source>
+        <translation>宽松</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="155"/>
+        <source>Normal</source>
+        <translation>正常</translation>
+    </message>
+    <message>
+        <location filename="../../view/setting_interface.py" line="155"/>
+        <source>Strict</source>
+        <translation>严格</translation>
+    </message>
 </context>
 <context>
     <name>SpectateCard</name>

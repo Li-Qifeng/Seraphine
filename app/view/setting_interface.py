@@ -140,6 +140,20 @@ class SettingInterface(SeraphineInterface):
                 "Show OP.GG window in front of other windows while selecting champions"),
             cfg.enableOpggOnTop,
             parent=self.gameFuncGroup)
+        self.enableWarCriminalCard = SwitchSettingCard(
+            Icon.TROPHY, self.tr("War criminal diagnosis"),
+            self.tr(
+                "Identify the worst performer on each team (war criminal / carried dog) based on in-game stats"),
+            cfg.enableWarCriminal,
+            parent=self.gameFuncGroup)
+        self.warCriminalSensitivityCard = ComboBoxSettingCard(
+            cfg.warCriminalSensitivity,
+            Icon.SCALEFIT,
+            self.tr("War criminal sensitivity"),
+            self.tr(
+                "Loose: easier to flag; Normal: balanced; Strict: only obvious cases"),
+            texts=[self.tr("Loose"), self.tr("Normal"), self.tr("Strict")],
+            parent=self.gameFuncGroup)
 
         # --- 个性化组卡片 ---
         self.micaCard = SwitchSettingCard(
@@ -283,6 +297,8 @@ class SettingInterface(SeraphineInterface):
         self.gameFuncGroup.addSettingCard(self.gameInfoShowTierCard)
         self.gameFuncGroup.addSettingCard(self.autoShowOpggCard)
         self.gameFuncGroup.addSettingCard(self.opggOnTopCard)
+        self.gameFuncGroup.addSettingCard(self.enableWarCriminalCard)
+        self.gameFuncGroup.addSettingCard(self.warCriminalSensitivityCard)
 
         # 关于组
         self.aboutGroup.addSettingCard(self.checkUpdateCard)

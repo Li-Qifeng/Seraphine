@@ -42,26 +42,30 @@ SENSITIVITY_Z = {
 # 数值越大表示该指标对"贡献"的正向权重越大
 ROLE_WEIGHTS = {
     'dps': {  # 输出位 (法师/ADC/刺客/战士)
-        'damage': 0.40,
-        'gold': 0.15,
-        'cs': 0.10,
-        'kda': 0.20,
-        'death': 0.15,
+        'damage': 0.30,
+        'gold': 0.10,
+        'cs': 0.08,
+        'kda': 0.15,
+        'death': 0.12,
         'damage_taken': 0.0,
         'shield_heal': 0.0,
         'cc': 0.0,
         'vision': 0.0,
+        'damage_efficiency': 0.10,   # 伤害/金币 (经济效率)
+        'kill_participation': 0.15,  # 参团率 (团队参与度)
     },
     'tank_support': {  # 坦克/辅助
-        'damage_taken': 0.30,
-        'cc': 0.20,
-        'shield_heal': 0.20,
-        'damage': 0.10,
-        'kda': 0.10,
-        'death': 0.10,
+        'damage_taken': 0.25,
+        'cc': 0.18,
+        'shield_heal': 0.17,
+        'damage': 0.08,
+        'kda': 0.08,
+        'death': 0.08,
         'gold': 0.0,
         'cs': 0.0,
         'vision': 0.0,  # 海克斯不计视野, 其他模式默认也不算
+        'damage_efficiency': 0.0,
+        'kill_participation': 0.16,
     },
 }
 
@@ -208,6 +212,19 @@ def _computeContribution(stats: ParticipantStats,
     # 海克斯模式视野分不计入
     visions = [] if isHextech else [p.get('visionScore') or 0 for p in team]
 
+    # 参团率: (kills+assists) / team_total_kills
+    teamTotalKills = sum(p.get('kills', 0) or 0 for p in team)
+    killParticipations = [
+        ((p.get('kills', 0) or 0) + (p.get('assists', 0) or 0)) /
+        max(teamTotalKills, 1)
+        for p in team
+    ]
+    # 伤害转化率: damage / max(gold, 1)
+    damageEfficiencies = [
+        (p.get('damage') or 0) / max(p.get('gold') or 0, 1)
+        for p in team
+    ]
+
     # 该玩家实际值 (会被 baseline 调整预期)
     myDmg = stats.get('damage') or 0
     myGold = stats.get('gold') or 0
@@ -218,6 +235,10 @@ def _computeContribution(stats: ParticipantStats,
     myShieldHeal = _shieldHeal(stats)
     myCc = stats.get('ccTime') or 0
     myVision = stats.get('visionScore') or 0
+    myKills = stats.get('kills', 0) or 0
+    myAssists = stats.get('assists', 0) or 0
+    myKp = (myKills + myAssists) / max(teamTotalKills, 1)
+    myEff = myDmg / max(myGold, 1)
 
     # z-score: 实际值 vs 队友
     z_dmg = _zScore(damages, myDmg)
@@ -229,6 +250,8 @@ def _computeContribution(stats: ParticipantStats,
     z_sh = _zScore(shieldHeals, myShieldHeal)
     z_cc = _zScore(ccs, myCc)
     z_vis = _zScore(visions, myVision) if visions else 0.0
+    z_kp = _zScore(killParticipations, myKp)
+    z_eff = _zScore(damageEfficiencies, myEff)
 
     # 海克斯模式视野权重强制归零
     if isHextech:
@@ -246,7 +269,9 @@ def _computeContribution(stats: ParticipantStats,
         w.get('damage_taken', 0) * z_taken +
         w.get('shield_heal', 0) * z_sh +
         w.get('cc', 0) * z_cc +
-        w.get('vision', 0) * z_vis
+        w.get('vision', 0) * z_vis +
+        w.get('damage_efficiency', 0) * z_eff +
+        w.get('kill_participation', 0) * z_kp
     )
     # 死亡越多越扣分 (z_death 正值表示比队友死更多)
     contribution -= w.get('death', 0) * z_death
@@ -262,6 +287,8 @@ def _computeContribution(stats: ParticipantStats,
         myCc, _mean(ccs), z_cc,
         myVision, _mean(visions), z_vis,
         isHextech,
+        myKp, _mean(killParticipations), z_kp,
+        myEff, _mean(damageEfficiencies), z_eff,
     )
 
     return contribution, evidence
@@ -275,7 +302,9 @@ def _buildEvidence(myDmg, avgDmg, zDmg,
                    mySh, avgSh, zSh,
                    myCc, avgCc, zCc,
                    myVis, avgVis, zVis,
-                   isHextech) -> list:
+                   isHextech,
+                   myKp, avgKp, zKp,
+                   myEff, avgEff, zEff) -> list:
     def sev(z):
         if z >= 1.5:
             return 'high_pos'
@@ -302,6 +331,12 @@ def _buildEvidence(myDmg, avgDmg, zDmg,
          'zScore': round(zSh, 2), 'severity': sev(zSh)},
         {'metric': 'cc', 'value': myCc, 'teamAvg': avgCc,
          'zScore': round(zCc, 2), 'severity': sev(zCc)},
+        {'metric': 'kill_participation', 'value': round(myKp, 3),
+         'teamAvg': round(avgKp, 3), 'zScore': round(zKp, 2),
+         'severity': sev(zKp)},
+        {'metric': 'damage_efficiency', 'value': round(myEff, 2),
+         'teamAvg': round(avgEff, 2), 'zScore': round(zEff, 2),
+         'severity': sev(zEff)},
     ]
     if not isHextech:
         items.append({'metric': 'vision', 'value': myVis, 'teamAvg': avgVis,
