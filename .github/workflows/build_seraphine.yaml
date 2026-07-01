@@ -42,6 +42,12 @@ jobs:
         with:
           python-version: '3.8'
           cache: 'pip'
+      - name: Compile translations (.ts -> .qm)
+        run: |
+          python -m venv .venv-i18n
+          .venv-i18n\Scripts\python.exe -m pip install --upgrade pip
+          .venv-i18n\Scripts\python.exe -m pip install pyside2
+          .venv-i18n\Scripts\pyside2-lrelease.exe app/resource/i18n/Seraphine.zh_CN.ts -qm app/resource/i18n/Seraphine.zh_CN.qm
       - name: Pack Seraphine
         run: |
           pip install -r requirements.txt
