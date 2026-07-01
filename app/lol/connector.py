@@ -239,6 +239,11 @@ class LolClientConnector(QObject):
         self.dqLock = threading.Lock()
         self.callStack = deque(maxlen=10)
 
+        # match-history 快速缓存: 避免 Lobby 阶段多个调用方重复请求
+        # 格式: (puuid, begIndex, endIndex, data, timestamp)
+        self._gamesFastCache = None
+        self._gamesCacheTTL = 5.0  # 秒
+
         # 状态锁: 保护 start/close 临界区, 防止多客户端切换时
         # close 与 start 并发执行 (例如 lolClientEnded 与 lolClientChanged
         # 信号触发的 task 在 asyncio 事件循环中交错).
@@ -673,6 +678,20 @@ class LolClientConnector(QObject):
             因为 LCU 的 match-history 可能持续为空 (如服务端问题), 在 API 层
             无限重试会导致与 @retry 装饰器形成嵌套爆炸, 阻塞 UI 转圈.
         """
+        # 快速缓存命中: Lobby 阶段多个调用方 (战犯诊断/生涯/搜索)
+        # 共享同一份预取结果, 避免重复请求互相阻塞
+        if self._gamesFastCache is not None:
+            c_puuid, c_beg, c_end, c_data, c_ts = self._gamesFastCache
+            if (c_puuid == puuid
+                    and c_beg <= begIndex
+                    and c_end >= endIndex
+                    and time.time() - c_ts < self._gamesCacheTTL):
+                logger.debug(
+                    f"getSummonerGamesByPuuid: fast cache hit for "
+                    f"{puuid} [{begIndex}-{endIndex}] (cached [{c_beg}-{c_end}])",
+                    TAG)
+                return c_data
+
         expected = endIndex - begIndex + 1
         last_exc = None
         for attempt in range(4):  # 0,1,2,3 共 4 次
@@ -705,6 +724,8 @@ class LolClientConnector(QObject):
 
                 # 若返回条数充足, 直接返回
                 if len(gameList) >= expected:
+                    self._gamesFastCache = (puuid, begIndex, endIndex,
+                                            games, time.time())
                     return games
 
                 # LCU 缓存过期: gameCount 远大于实际返回条数, 等待重试
@@ -737,6 +758,9 @@ class LolClientConnector(QObject):
 
                 # 空响应或数据不足但无 stale 迹象, 直接返回
                 # 不在此处重试空响应: LCU 可能持续为空, 与 @retry 形成嵌套爆炸
+                if gameList:
+                    self._gamesFastCache = (puuid, begIndex, endIndex,
+                                            games, time.time())
                 return games
             except SummonerGamesNotFound as e:
                 last_exc = e

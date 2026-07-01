@@ -952,6 +952,23 @@ class MainWindow(FluentWindow):
                 asyncio.create_task(self.__autoPlayAgain())
         elif status == 'Lobby':
             title = self.tr("Lobby")
+
+            # 预取 match-history: 一次请求, 战犯诊断/生涯/搜索页共享
+            # 取三者的最大范围, 存到 connector 的 fast cache 中
+            max_needed = max(
+                1,                                        # __diagnoseLastGame 需要 1 条
+                cfg.get(cfg.careerGamesNumber),           # 生涯页需要
+                20,                                       # 搜索页需要 20 条
+            )
+            if isinstance(self.currentSummoner, dict):
+                prefetch_puuid = self.currentSummoner.get('puuid')
+                if prefetch_puuid:
+                    logger.error(
+                        f"Lobby: prefetching games [{0}-{max_needed - 1}] "
+                        f"for {prefetch_puuid}", TAG)
+                    await connector.getSummonerGamesByPuuid(
+                        prefetch_puuid, 0, max_needed - 1)
+
             # 战犯诊断必须在生涯刷新前完成, 否则 verdict 缓存还没写入,
             # 战绩卡片渲染时 getVerdict 命中不到, 徽章不会显示
             await self.__onGameEnd()
