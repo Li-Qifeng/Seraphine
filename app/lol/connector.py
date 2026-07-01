@@ -683,22 +683,44 @@ class LolClientConnector(QObject):
                 if "games" not in res:
                     raise SummonerGamesNotFound()
 
+                # LCU 响应结构: res["games"] 是容器 dict
+                # {"gameCount": N, "games": [game1, ...], "gameBeginDate": ...}
+                # 注意 gameCount/games 都在 res["games"] 内部, 不在 res 顶层
                 games = res["games"]
-                gameCount = res.get("gameCount", len(games))
+
+                # 防御性: 正常为 dict, 异常时可能为 list
+                if isinstance(games, dict):
+                    gameList = games.get("games") or []
+                    gameCount = games.get("gameCount", len(gameList))
+                elif isinstance(games, list):
+                    gameList = games
+                    gameCount = len(gameList)
+                else:
+                    gameList = []
+                    gameCount = 0
 
                 # 若返回条数充足, 直接返回
-                if len(games) >= expected:
+                if len(gameList) >= expected:
                     return games
 
-                # 若是第一次请求且 games 非空但 gameCount 远大于实际返回 (LCU 缓存过期),
-                # 等待后重试. 典型场景: 游戏刚结束, LCU 还没刷新 match-history,
-                # 返回旧的 2 条数据.
-                if attempt < 3 and len(games) < expected and gameCount > len(games) + 2:
+                # LCU 缓存过期: gameCount 远大于实际返回条数, 等待重试
+                # 典型场景: 游戏刚结束, LCU 还没刷新 match-history
+                if attempt < 3 and len(gameList) < expected \
+                        and gameCount > len(gameList) + 2:
                     logger.error(
                         f"getSummonerGamesByPuuid: stale cache detected "
-                        f"(attempt={attempt}, got={len(games)}, "
+                        f"(attempt={attempt}, got={len(gameList)}, "
                         f"gameCount={gameCount}, expected={expected}), "
                         f"retrying in 2s", TAG)
+                    await asyncio.sleep(2)
+                    continue
+
+                # 完全空响应: gameCount=0 但期望非零, LCU 尚未刷新, 等待重试
+                if attempt < 3 and len(gameList) == 0 and expected > 0:
+                    logger.error(
+                        f"getSummonerGamesByPuuid: empty response "
+                        f"(attempt={attempt}, gameCount={gameCount}, "
+                        f"expected={expected}), retrying in 2s", TAG)
                     await asyncio.sleep(2)
                     continue
 
