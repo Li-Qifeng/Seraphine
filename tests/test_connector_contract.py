@@ -82,12 +82,15 @@ def mock_lcu():
 
     - lcuSess 设为非 None: 通过 @needLcu 的 `is None` 检查
     - semaphore 设为 None: @retry 检测到后跳过并发 semaphore, 直接执行
+    - _gamesFastCache 清空: 避免测试间缓存污染
     """
     connector.lcuSess = MagicMock()
     connector.semaphore = None
+    connector._gamesFastCache = None
     yield connector
     connector.lcuSess = None
     connector.semaphore = None
+    connector._gamesFastCache = None
 
 
 def _patch_get(ret_val):
