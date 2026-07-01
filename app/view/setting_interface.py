@@ -205,7 +205,7 @@ class SettingInterface(SeraphineInterface):
         self.aboutCard = HyperlinkCard(
             GITHUB_URL, self.tr("View GitHub"), Icon.INFO, self.tr('About'),
             self.tr('Copyright') + ' © ' + f"{YEAR}, {AUTHOR}. " +
-            self.tr('Maintained by') + f" {MAINTAINER}. " +
+            '维护者：' + f"{MAINTAINER}. " +
             self.tr('Version') + f" {BETA or VERSION}", self.aboutGroup)
         self.aboutCard.linkButton.setIcon(Icon.GITHUB)
 
