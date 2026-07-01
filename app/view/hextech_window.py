@@ -57,6 +57,7 @@ class HextechSelectInterface(QFrame):
         self._buttons = {}       # championId -> RoundIconButton (备选席)
         self._mineButton = None  # 手持头像
         self._selectedId = None
+        self._rendering = False  # 防止 _renderSelectInterface 重入
 
         self.__initLayout()
         StyleSheet.HEXTECH_WINDOW.apply(self)
@@ -100,23 +101,36 @@ class HextechSelectInterface(QFrame):
         self.gridLayout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
 
     def clearAll(self):
-        """清空所有头像"""
+        """清空所有头像
+
+        注意: 必须先 setParent(None) 切断 widget 与父级的关联, 再 deleteLater.
+        否则在 deleteLater 的延迟期间, Qt 事件循环仍可能向这些 widget 派发
+        paintEvent/enterEvent/tooltip 事件, 若此时它们引用了已清理的资源
+        (如 _toolTipFilter 被置 None), 会触发原生崩溃 (segfault).
+        该问题在抢英雄窗口高频刷新 (WS 每帧触发) 时尤为常见.
+        """
         # 先主动隐藏所有 tooltip, 避免 deleteLater 延迟期间 tooltip 堆叠不消失
         for btn in list(self._buttons.values()):
             btn.cleanupToolTip()
+            btn.setParent(None)
         if self._mineButton:
             self._mineButton.cleanupToolTip()
+            self._mineButton.setParent(None)
         # 清备选席
         while self.gridLayout.count():
             item = self.gridLayout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
         self._buttons = {}
         # 清手持
         while self.mineLayout.count():
             item = self.mineLayout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
         self._mineButton = None
         self._selectedId = None
 
@@ -309,49 +323,64 @@ class HextechWindow(OpggWindowBase):
         await self._renderSelectInterface(data)
 
     async def _renderSelectInterface(self, data):
-        """渲染: 手持(顶部) + 备选席(主体, 愿望单金色高亮)"""
-        bench = _getBenchChampionIds(data)
-        mine = _getLocalChampionId(data)
+        """渲染: 手持(顶部) + 备选席(主体, 愿望单金色高亮)
 
-        fp = (frozenset(bench), mine)
-        if fp == self._lastRenderedKey:
+        防竞态: async 方法在 await 网络期间, 可能被新的 session 信号重入,
+        或窗口被关闭导致 widget 失效. 通过 _rendering 标志防止重入,
+        并在每次 await 后检查窗口是否仍然可见 (isVisible).
+        """
+        if self.selectInterface._rendering:
             return
-        self._lastRenderedKey = fp
+        self.selectInterface._rendering = True
+        try:
+            bench = _getBenchChampionIds(data)
+            mine = _getLocalChampionId(data)
 
-        wishlist = cfg.get(cfg.hextechChampions) or []
-        wishlistSet = set(wishlist)
-        prevSelected = self.selectInterface.getSelectedId()
+            fp = (frozenset(bench), mine)
+            if fp == self._lastRenderedKey:
+                return
+            self._lastRenderedKey = fp
 
-        self.selectInterface.clearAll()
+            wishlist = cfg.get(cfg.hextechChampions) or []
+            wishlistSet = set(wishlist)
+            prevSelected = self.selectInterface.getSelectedId()
 
-        # 手持
-        if mine:
-            name, icon = await self._getChampionNameIcon(mine)
-            self.selectInterface.setMine(mine, icon, name)
+            self.selectInterface.clearAll()
 
-        # 备选席 (愿望单排前面)
-        benchSorted = sorted(bench, key=lambda c: (
-            0 if c in wishlistSet else 1,
-            wishlist.index(c) if c in wishlistSet else 999))
-        for cid in benchSorted:
-            name, icon = await self._getChampionNameIcon(cid)
-            isWl = cid in wishlistSet
-            self.selectInterface.addBenchChampion(
-                cid, icon, name,
-                isWishlist=isWl,
-                priority=(wishlist.index(cid) + 1) if isWl else 0,
-                buffTip=self._getBuffTip(cid))
+            # 手持
+            if mine:
+                name, icon = await self._getChampionNameIcon(mine)
+                if not self.isVisible():
+                    return
+                self.selectInterface.setMine(mine, icon, name)
 
-        # 恢复选中
-        if prevSelected and prevSelected in self.selectInterface._buttons:
-            self.selectInterface.selectChampion(prevSelected)
+            # 备选席 (愿望单排前面)
+            benchSorted = sorted(bench, key=lambda c: (
+                0 if c in wishlistSet else 1,
+                wishlist.index(c) if c in wishlistSet else 999))
+            for cid in benchSorted:
+                name, icon = await self._getChampionNameIcon(cid)
+                if not self.isVisible():
+                    return
+                isWl = cid in wishlistSet
+                self.selectInterface.addBenchChampion(
+                    cid, icon, name,
+                    isWishlist=isWl,
+                    priority=(wishlist.index(cid) + 1) if isWl else 0,
+                    buffTip=self._getBuffTip(cid))
 
-        # 状态
-        hitWl = wishlistSet & set(bench)
-        if hitWl and not self.championSelection.manualGrabRequested:
-            self.selectInterface.setStatus(self.tr("愿望单命中★"))
-        elif not self.championSelection.manualGrabRequested:
-            self.selectInterface.setStatus(self.tr("点击备选席抢夺"))
+            # 恢复选中
+            if prevSelected and prevSelected in self.selectInterface._buttons:
+                self.selectInterface.selectChampion(prevSelected)
+
+            # 状态
+            hitWl = wishlistSet & set(bench)
+            if hitWl and not self.championSelection.manualGrabRequested:
+                self.selectInterface.setStatus(self.tr("愿望单命中★"))
+            elif not self.championSelection.manualGrabRequested:
+                self.selectInterface.setStatus(self.tr("点击备选席抢夺"))
+        finally:
+            self.selectInterface._rendering = False
 
     # ----------------------------------------------------------
     async def _getChampionNameIcon(self, championId):

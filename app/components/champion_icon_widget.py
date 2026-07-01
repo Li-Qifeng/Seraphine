@@ -115,7 +115,12 @@ class RoundIconButton(QFrame):
     def cleanupToolTip(self):
         """主动隐藏并清理 tooltip, 解决 deleteLater 延迟期间 tooltip 堆叠不消失的问题"""
         if self._toolTipFilter:
-            self._toolTipFilter.hideToolTip()
+            try:
+                self._toolTipFilter.hideToolTip()
+            except RuntimeError:
+                # 防御: filter 内部的 widget 已被 Qt 原生删除 (RuntimeError:
+                # wrapped C/C++ object of type ... has been deleted)
+                pass
             self._toolTipFilter = None
 
     def paintEvent(self, event) -> None:
