@@ -5,7 +5,7 @@
 >
 > **当前适用版本**：`v1.1.5`（`app/common/config.py:239`）
 > **原作者 / 年份**：Zzaphkiel / 2023
-> **当前维护者**：YOUR_NAME（[YOUR_GITHUB_ID/Seraphine](https://github.com/YOUR_GITHUB_ID/Seraphine)）—— 本仓库为 [Zzaphkiel/Seraphine](https://github.com/Zzaphkiel/Seraphine) 的二次开发版本
+> **当前维护者**：Li-Qifeng（[Li-Qifeng/Seraphine](https://github.com/Li-Qifeng/Seraphine)）—— 本仓库为 [Zzaphkiel/Seraphine](https://github.com/Zzaphkiel/Seraphine) 的二次开发版本
 > **许可证**：GPLv3（禁止商用）
 > **目标平台**：Windows（桌面端，仅 64 位）
 
@@ -852,7 +852,7 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 | LCU WebSocket | `wss://127.0.0.1:{port}/` | 实时事件推送（4 个订阅） |
 | Tencent SGP | `https://{server}-sgp.lol.qq.com:21019/...` | 国服战绩/排位/观战补充（Bearer 鉴权） |
 | OPGG | `lol-api-champion.op.gg` | 英雄排行 + 出装加点 |
-| GitHub API | `api.github.com/repos/YOUR_GITHUB_ID/Seraphine/...`（默认指向当前维护者 fork，见 `util.Github`） | Release / 公告 / `ver.json` kill-switch |
+| GitHub API | `api.github.com/repos/Li-Qifeng/Seraphine/...`（默认指向当前维护者 fork，见 `util.Github`） | Release / 公告 / `ver.json` kill-switch |
 | 大乱斗之家 | `jddld.com` | ARAM Buff 数据 |
 | 腾讯 gtimg | `game.gtimg.cn` | 英雄中文昵称/关键词 |
 

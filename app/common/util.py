@@ -22,7 +22,7 @@ TAG = "Util"
 
 class Github:
     # 二次开发: 默认指向当前维护者的 fork 仓库, 用于 Release / 公告 / ver.json 拉取
-    def __init__(self, user="YOUR_GITHUB_ID", repositories="Seraphine"):
+    def __init__(self, user="Li-Qifeng", repositories="Seraphine"):
         self.githubApi = "https://api.github.com"
 
         self.user = user
