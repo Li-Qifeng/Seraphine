@@ -52,17 +52,55 @@ class Github:
 
     def checkUpdate(self):
         """
-        检查版本更新
-        @return: 有更新 -> info, 无更新 -> None
+        检查版本更新 (基于 tufup 增量更新框架).
+
+        新流程 (完全替换旧 7z 全量替换):
+        1. 调 tufup_updater.check_update() 从 GitHub Pages 拉取 tufup metadata,
+           判断是否有新版本 (tufup 内部做语义化版本比较 + patch/全量决策).
+        2. 若有更新, 拉 GitHub releases info (用于弹窗显示 release body)
+           和 ver.json (kill-switch). 这两步 best effort, 失败不阻塞更新.
+        3. 返回 info dict 供 UpdateMessageBox 显示.
+
+        旧实现直接拉 GitHub releases/latest 做字符串相等比较, 已废弃.
+        _coerce_version 仍保留供其他场景使用.
+
+        @return: 有更新 -> info dict (含 tag_name/body/forbidden/new_version),
+                 无更新 / 失败 -> None
         """
-        info = self.getReleasesInfo()
+        # 延迟 import 避免 tufup 未安装时 util 模块加载失败
+        from app.common.tufup_updater import check_update as tufup_check
 
-        ver_info = self.__get_ver_info()
-        info["forbidden"] = ver_info.get("forbidden", False)
+        has_update, new_version = tufup_check()
+        if not has_update or not new_version:
+            return None
 
-        if info.get("tag_name")[1:] != VERSION:
-            return info
-        return None
+        # 有更新: best effort 拉 release body 和 kill-switch
+        info = {
+            "tag_name": f"v{new_version}",
+            "new_version": new_version,
+            "body": "",
+            "forbidden": False,
+        }
+
+        try:
+            release_info = self.getReleasesInfo()
+            # tag_name 匹配才用其 body, 避免 tufup 与 GitHub release 不同步时
+            # 显示错误的 release notes
+            if release_info.get("tag_name", "").lstrip('v') == new_version:
+                info["body"] = release_info.get("body", "")
+                # 保留 assets 供 "Manually Download" 按钮使用
+                if "assets" in release_info:
+                    info["assets"] = release_info["assets"]
+        except Exception as e:
+            logger.warning(f"failed to fetch release info for body: {e}", TAG)
+
+        try:
+            ver_info = self.__get_ver_info()
+            info["forbidden"] = ver_info.get("forbidden", False)
+        except Exception as e:
+            logger.warning(f"failed to fetch ver.json kill-switch: {e}", TAG)
+
+        return info
 
     def __get_ver_info(self):
         url = f'{self.githubApi}/repos/{self.user}/{self.repositories}/contents/document/ver.json'

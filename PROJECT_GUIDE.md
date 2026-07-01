@@ -78,7 +78,8 @@ Seraphine 是一个 **Windows 桌面端英雄联盟（League of Legends）辅助
 | 进程/系统 | psutil | 5.9.8 | 检测 LoL 客户端 PID、读取 cmdline |
 | Win32 | pywin32（隐式） | — | `win32api`/`win32gui`/`winreg`/`ctypes.windll` |
 | 剪贴板 | pyperclip | 1.8.2 | 复制错误信息等 |
-| 压缩 | py7zr | 0.21.0 | 读取/打包 7z（自更新流程） |
+| 增量更新 | tufup | ≥0.10.0 | 基于 TUF 的安全增量更新（bsdiff 补丁） |
+| 版本比较 | packaging | ≥23.0 | PEP 440 语义版本比较（自更新检测） |
 | 缓存 | async-lru / functools.lru_cache | 2.0.4 / 内置 | OPGG / ARAM 数据的异步 LRU 缓存 |
 | 打包 | PyInstaller | 5.13（仅 CI/打包） | 打包为单目录 `Seraphine.exe` |
 
@@ -96,21 +97,36 @@ push 到 main 分支
         ├─ build-seraphine job（windows-latest, py3.8）
         │     pip install -r requirements.txt
         │     pip install pyinstaller==5.13
-        │     .\make.ps1            # → Seraphine.7z
-        │     upload-artifact
+        │     .\make.ps1 -keepDist   # → Seraphine.7z + 保留 dist/Seraphine
+        │     upload-artifact (Seraphine.7z + Seraphine-dist)
         │
-        └─ release job（ubuntu-latest, 依赖 build）
-              用 git blame 检测 VERSION 是否在上次 release 后被修改
-              若 UPDATED == true:
-                download artifact → ncipollo/release-action
-                发布 tag v{VERSION} 的 GitHub Release（附件 Seraphine.7z）
+        ├─ release job（ubuntu-latest, 依赖 build）
+        │     用 git diff HEAD~1 HEAD 检测 VERSION 行是否在本次提交被修改
+        │     若 UPDATED == true:
+        │       download artifact → ncipollo/release-action
+        │       发布 tag v{VERSION} 的 GitHub Release（附件 Seraphine.7z + .sha256）
+        │     outputs: updated / version （供下游 publish-tufup 复用）
+        │
+        └─ publish-tufup job（ubuntu-latest, 依赖 build+release, 仅 VERSION 变更时运行）
+              download Seraphine-dist artifact
+              恢复 gh-pages 上既有 tufup 仓库 (metadata + targets, patch 链需要)
+              从 secret TUFUP_KEYS_B64 恢复 TUF 签名密钥（首次运行生成新密钥）
+              tufup_repo.py init / add-bundle:
+                将 dist/Seraphine 打包为 Seraphine-{version}.tar.gz (target)
+                与上一版生成 bsdiff .patch (增量补丁)
+                签名并刷新 metadata (root/targets/snapshot/timestamp)
+              peaceiris/actions-gh-pages 部署到 gh-pages/tufup/ (keep_files 保留旧 targets)
 ```
 
-- **Gitee 镜像**：`sync.py` 通过 Gitee OAuth 把 Release 同步到 Gitee（国内访问）。
-- **应用内自更新**：`app/common/update.py` 在运行时生成 `updater.ps1`，逻辑为：等待主进程退出 → 按 `filelist.txt` 删除旧文件 → 从 `%APPDATA%\Seraphine\temp` 移入新版 → 重启。
+- **Gitee 镜像**：`sync.py` 通过 Gitee OAuth 把 Release（含 `.7z` + `.sha256`）同步到 Gitee（国内访问），幂等可重入。
+- **增量自更新（tufup）**：基于 TUF（The Update Framework）安全标准。客户端 `app/common/tufup_updater.py` 通过 `check_update()` 拉取 gh-pages 上的 metadata 判断是否有新版本，`download_and_install()` 下载 bsdiff 补丁并就地应用、重启。流程：下载 patch → 应用到安装目录 → 重启。**不再需要 7z 解压、删除旧文件、`updater.ps1`**。
+  - **可信根**：`app/resource/tufup/metadata/root.json` 随应用分发（loose 文件），客户端据此校验 gh-pages 上 metadata 的签名。
+  - **托管**：tufup 仓库（`metadata/` + `targets/`）托管在 GitHub Pages 的 `gh-pages` 分支 `tufup/` 子目录。
+  - **密钥管理**：TUF 签名密钥以 tar.gz→base64 形式存于 GitHub secret `TUFUP_KEYS_B64`，CI 运行时还原；首次运行（无 secret）生成新密钥并输出到 step summary，需开发者手动保存为 secret，同时下载 root.json artifact 提交到 `app/resource/tufup/metadata/`。
+  - **服务端脚本**：`tufup_repo.py`（仓库根）提供 `init`/`add-bundle`/`pack-keys`/`unpack-keys` 子命令，封装了 CI 非交互式运行所需的 `input()` 屏蔽逻辑（`Keys.create_key_pair` 与 `make_gztar_archive` 都会交互式询问覆盖）。
 - **版本 kill-switch**：`document/ver.json`（如 `{"0.12.3": {"forbidden": false}}`），应用启动时检查，可用于远程禁用有问题的版本。
 
-> **发包约定**：不要手敲 Release，只改 `VERSION` 让 CI 自动出包。`make.ps1` 产物结构：`Seraphine/Seraphine.exe` + `app/resource/`（源码目录已被 PyInstaller 冻结进 exe，仅保留资源）。
+> **发包约定**：不要手敲 Release，只改 `VERSION` 让 CI 自动出包并发布 tufup 增量更新。`make.ps1` 产物结构：`Seraphine/Seraphine.exe` + `app/resource/`（源码目录已被 PyInstaller 冻结进 exe，仅保留资源；`tufup/metadata/root.json` 作为 loose 文件保留其中）。
 
 ### 1.4 运行环境约束
 
@@ -150,7 +166,8 @@ push 到 main 分支
 │  app/common/      基础设施（单例）                           │
 │    config.py(cfg) signals.py(signalBus) logger.py(logger)   │
 │    util.py(github + Win32/进程辅助) style_sheet.py          │
-│    update.py(自更新) icons.py qfluentwidgets.py             │
+│    tufup_updater.py(增量更新) version_utils.py(版本比较)    │
+│    icons.py qfluentwidgets.py                                │
 └─────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────┐   ┌──────────────────────────────┐
@@ -394,7 +411,8 @@ WaitingForStatus   → 仅更新标题
 | `logger.py` | rotating 日志（2MB×20） | `Logger`, `logger` |
 | `util.py` | Win32/进程辅助 + GitHub 更新/公告拉取 | `Github`, `getLolClientPid(s)`, `getPortTokenServerByPid`, `getLoLPathByRegistry`, `getLolClientVersion`, `getLolClientWindowPos` |
 | `style_sheet.py` | QSS 主题映射 + 颜色 pub/sub | `StyleSheet`, `ColorChangeable`, `__ColorManager` |
-| `update.py` | 生成 `updater.ps1` 实现应用内自更新 | — |
+| `tufup_updater.py` | 基于 tufup 的客户端增量更新封装（检查/下载/应用补丁） | `check_update()`, `download_and_install()`, `get_current_version()` |
+| `version_utils.py` | 纯函数版本比较（PEP 440），独立于 util.py 的 Windows 依赖以便单测 | `coerce_version()` |
 | `icons.py` | Fluent 图标集中引用 | `Icon` |
 | `qfluentwidgets.py` | PyQt-Fluent-Widgets 再导出（去广告） | — |
 
@@ -639,23 +657,30 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 开发者侧：
   1. 改 app/common/config.py 的 VERSION（如 "1.1.4" → "1.1.5"），如有 BETA 则设 BETA 字符串
   2. commit + push 到 main
-  3. CI 自动：build（windows-latest, py3.8, make.ps1 → Seraphine.7z）
-              → release（检测 VERSION 变更 → 发布 GitHub Release v1.1.5）
+  3. CI 自动：
+     build  (windows-latest, py3.8, make.ps1 -keepDist → Seraphine.7z + dist/Seraphine)
+       → release  (git diff 检测 VERSION 变更 → 发布 GitHub Release v1.1.5)
+       → publish-tufup  (打 tar.gz + bsdiff 补丁 → 部署到 gh-pages/tufup/)
   4. sync.py 把 Release 镜像到 Gitee（CI 或手动）
 
 产物结构（make.ps1）：
   Seraphine.7z
    └─ Seraphine/
         ├─ Seraphine.exe        # PyInstaller -w -i logo.ico main.py
-        ├─ app/resource/         # 仅资源（源码已冻结进 exe）
-        └─ filelist.txt          # 供 updater.ps1 删除旧文件用
+        └─ app/resource/         # 仅资源（源码已冻结进 exe；含 tufup/metadata/root.json）
 
 本地预打包测试：
   pip install pyinstaller==5.13   # 在 seraphine 环境下
-  .\make -dest .                  # 或默认当前目录
+  .\make.ps1 -dest .              # 或默认当前目录
+  # 需保留 dist 用于本地 tufup 测试时加 -keepDist:
+  .\make.ps1 -keepDist
 ```
 
-**要点**：只改 `VERSION`，不手动发 Release；`make.ps1` 会删除 dist 里的 `app/common`、`app/components`、`app/lol`、`app/view` 源码目录（已被 PyInstaller 冻结），勿误以为丢失。
+**要点**：
+- 只改 `VERSION`，不手动发 Release。
+- `make.ps1` 会删除 dist 里的 `app/common`、`app/components`、`app/lol`、`app/view` 源码目录（已被 PyInstaller 冻结），勿误以为丢失；`-keepDist` 保留 `dist/Seraphine` 供 tufup 打 `tar.gz` 增量包。
+- PyInstaller 命令含 `--collect-submodules tufup --collect-submodules tuf`：tufup.client 为函数内延迟导入，tuf 内部有动态导入，需显式收集子模块否则 frozen 后运行时 ImportError。
+- **tufup 首次 bootstrap**：仓库无 `TUFUP_KEYS_B64` secret 时，publish-tufup job 会生成新密钥并输出到 step summary，需开发者（a）将密钥存为 secret `TUFUP_KEYS_B64`，（b）下载 `tufup-root-json` artifact 中的 `root.json` 提交到 `app/resource/tufup/metadata/root.json` 后重新发版，客户端方可校验更新。
 
 ---
 
@@ -683,14 +708,16 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 ### 5.3 代码质量问题（现状→风险→建议）
 
 #### ① 测试套件（已有初步覆盖）
-- **现状**：已有 6 个测试文件共 189 用例（CI windows-latest 全绿）：
+- **现状**：已有 8 个测试文件共 213 用例（CI windows-latest 全绿）：
   - `tests/test_tools_pure.py`（35 用例，覆盖 `translateTier`、`timeStampToStr`、`separateTeams`、`parseSummonerOrder`、`sortedSummonersByGameRole`、`parseGames`、`parseRankInfo`、`parseDetailRankInfo`）。
   - `tests/test_connector_contract.py`（31 用例，mock 私有 HTTP 方法注入预设 LCU 响应，验证 connector 公共方法的返回值结构、异常分支、响应转换契约，覆盖 `getSummonerByPuuid` / `getSummonerGamesByPuuid` / `getRankedStatsByPuuid` / `getCurrentSummoner` / `getGameStatus` / `getMapSide` / `getLobbyStatus` / `getMatchmakingStatus` / `isLobbyReadyToSearch` / `isInTencent` / `getLoginSummonerByPid` / `startMatchmaking`）。
   - `tests/test_json_manager.py`（41 用例，纯数据访问层单测，mock 掉 `static_data.registerAugmentRarity` 副作用后由 8 份构造 JSON 实例化 `JsonManager`，覆盖 `getItemIconPath` / `getSummonerSpellIconPath` / `getRuneIconPath` / `getRuneName` / `getRuneDesc`（含 HTML 白名单过滤与 `.strip("<br>")` 字符集剥离语义）/ `getChampionIconPath` / `getMapNameById` / `getNameMapByQueueId` / `getSkinListByChampionName` / `getSkinIdByChampionAndSkinName` / `getAugmentsIconPath` / `getPerkStyles` 等）。
   - `tests/test_parse_game_info.py`（21 用例，`parseGameInfoByGameflowSession` 契约测试，mock `parseSummonerGameInfo` / `getSummonerGamesInfoViaSGP` / `connector.isInTencent`，覆盖不支持队列早返回、`side='ally'/'enemy'` 选队、`separateTeams` 找不到 summoner 返回 None、**FIXME 修复契约（重复 summonerId / `0` / `None` 去重过滤）**、去重后空 team 返回 None、`parseSummonerGameInfo` 返回 None 被过滤、返回结构 `{summoners, champions, order}`、ranked (420/440) 按 `selectedPosition` 排序、`useSGP` 路径与异常 fallback）。
   - `tests/test_war_criminal.py`（33 用例，覆盖 `_kda`/`_zScore`/`_roleOf` 纯函数、`rateEntireTeam` 集成（明显 worst/明显躺赢狗/平衡全档3/海克斯视野不计/OPGG基线放大/强化基线放大）、`gradeLabel`/`gradeFromScore` 分级、`war_criminal_cache` 读写、`pickHonorTarget` 4 策略。stub PyQt5 使非 Windows 环境可导入）。
   - `tests/test_team_rating.py`（28 用例，专测全队 5 档评级：`gradeFromScore` 阈值边界、`gradeLabel` 贴吧风/马系风胜败方、`rateEntireTeam` 全队分级与排序、缓存 `getTeamRating` 胜败方查询）。
-- **运行方式**：`python -m pytest tests/`（CI 共 189 passed）。CI 在非 Windows 环境通过 `tests/conftest.py` stub `winreg/win32api/win32gui` 使 connector 可导入；`test_war_criminal.py`/`test_team_rating.py` 额外 stub `PyQt5` 使评级算法可独立单测。
+  - `tests/test_version_compare.py`（10 用例，覆盖 `version_utils.coerce_version` 的 PEP 440 解析：`v` 前缀剥离、空串/None 容错、预发布/构建元数据、非法版本回退为原串比较）。
+  - `tests/test_tufup_updater.py`（14 用例，覆盖 `tufup_updater` 封装逻辑：开发模式（无 Seraphine.exe）跳过、`root.json` 缺失、`check_update` 成功/无更新/网络异常、`download_and_install` 成功/失败/`progress_hook` 透传/`purge_dst_dir` 默认 True。mock `app.common.config` 与 `tufup.client.Client`，sandbox 无 PyQt5 可跑）。
+- **运行方式**：`python -m pytest tests/`（CI 共 213 passed）。CI 在非 Windows 环境通过 `tests/conftest.py` stub `winreg/win32api/win32gui` 使 connector 可导入；`test_war_criminal.py`/`test_team_rating.py` 额外 stub `PyQt5` 使评级算法可独立单测；`test_tufup_updater.py`/`test_version_compare.py` 纯逻辑无 GUI 依赖。
 - **CI lint**：`.github/workflows/build_seraphine.yaml` 的 `lint-and-test` job 已用 `ruff check app/ tests/ --output-format=github` **强制阻断**（曾为 `continue-on-error: true` advisory 模式，现已收紧）；161 个历史 ruff 错误（136 个 `--fix` 自动修复 + 18 个手动修复，含 E711/E402/E741/F823/W293）已清零。
 - **建议**：后续给 `tools.py` 的 `parseAllyGameInfo` 等带状态依赖的函数补测试；可选引入 `mypy`/`pyright` CI。
 
@@ -825,7 +852,9 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 | 信号总线 | `app\common\signals.py`（`signalBus`） |
 | 日志器 | `app\common\logger.py`（`logger`） |
 | Win32/进程辅助 + GitHub | `app\common\util.py` |
-| 自更新 | `app\common\update.py` |
+| 增量更新（客户端） | `app\common\tufup_updater.py` |
+| 版本比较（纯函数） | `app\common\version_utils.py` |
+| tufup 仓库管理（CI 端） | `tufup_repo.py`（仓库根） |
 | LCU 连接器（REST+WS） | `app\lol\connector.py`（`connector`） |
 | 业务逻辑 / 自动 B/P | `app\lol\tools.py`（`ChampionSelection` 等） |
 | 纯函数（可单测） | `app\lol\tools_pure.py`（`pickHonorTarget` 等） |
@@ -862,7 +891,8 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 | requests | 2.32.3 | 同步 HTTP（更新检查、Gitee 同步） |
 | psutil | 5.9.8 | 进程检测 |
 | pyperclip | 1.8.2 | 剪贴板 |
-| py7zr | 0.21.0 | 7z 读写 |
+| tufup | ≥0.10.0 | TUF 增量更新（bsdiff 补丁） |
+| packaging | ≥23.0 | PEP 440 版本比较 |
 | async-lru | 2.0.4 | 异步 LRU 缓存 |
 | pywin32（隐式） | — | Win32 API |
 | PyInstaller | 5.13（仅打包） | 打包 |

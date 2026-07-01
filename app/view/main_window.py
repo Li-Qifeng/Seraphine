@@ -470,7 +470,7 @@ class MainWindow(FluentWindow):
 
         if not msgBox.exec():
             signalBus.terminateListeners.emit()
-            sys.exit()
+            QApplication.quit()
 
     def __showNeedAdminMessageBox(self):
         msgBox = MessageBox(self.tr("Get cmdline error"), self.tr(
@@ -479,7 +479,7 @@ class MainWindow(FluentWindow):
         msgBox.exec()
 
         signalBus.terminateListeners.emit()
-        sys.exit()
+        QApplication.quit()
 
     def __initSystemTray(self):
         self.trayIcon = QSystemTrayIcon(self)

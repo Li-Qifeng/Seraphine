@@ -6,6 +6,7 @@ Requests==2.32.3
 aiohttp==3.10.10
 psutil==5.9.8
 qasync==0.27.1
-py7zr==0.21.0
 async-lru==2.0.4
+packaging>=23.0
+tufup>=0.10.0
 pytest>=8.0

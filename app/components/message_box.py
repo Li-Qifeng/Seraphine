@@ -1,22 +1,18 @@
 from qasync import asyncSlot
-import aiohttp
 import os
-import shutil
-import sys
 import webbrowser
-import py7zr
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (QPushButton, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QPushButton, QVBoxLayout, QWidget, QApplication)
 
 from app.common.qfluentwidgets import (MessageBoxBase, SmoothScrollArea,
                                        BodyLabel, TextEdit, TitleLabel,
                                        ProgressBar, PrimaryPushButton, ComboBox)
 
-from app.common.config import VERSION, cfg, LOCAL_PATH, BETA
+from app.common.config import VERSION, cfg, BETA
 from app.common.util import getLolClientPidSlowly
 from app.common.signals import signalBus
-from app.common.update import runUpdater
+from app.common.tufup_updater import download_and_install as tufup_install
 from app.lol.connector import connector
 from app.components.multi_champion_select import MultiChampionSelectWidget
 from app.components.multi_lol_path_setting import PathDraggableWidget
@@ -93,21 +89,13 @@ class UpdateMessageBox(MessageBoxBase):
     @asyncSlot()
     async def __onYesButtonClicked(self):
         '''
-        该函数负责
-        1. 删除 `LOCAL_PATH` 中之前可能下载过的文件
-        2. 重新下载新版本压缩包
-        3. 解压缩，并删除压缩包
-        4. 释放并运行 bat 文件，关闭自己
-        5. 删除当前文件夹下的自己，并将解压好的新版本拷贝进来
-        6. 重新运行自己
+        tufup 增量更新流程 (完全替换旧 7z 全量替换):
+        1. 调 tufup_updater.download_and_install() 下载 patch/full archive
+        2. tufup 内部解压 + 生成 install bat (Windows) 等待主进程退出后替换
+        3. 主进程走 QApplication.quit() 优雅退出, tufup 的 bat 接管重启
+
+        旧流程 (7z 下载 + py7zr 解压 + updater.ps1) 已移除.
         '''
-
-        # url = f"{github.proxyApi}/{self.info['assets'][0]['browser_download_url']}"
-
-        # 把下载地址换成 Gitee 的
-        url: str = self.info['assets'][0]['browser_download_url']
-        url = url.replace("github", "gitee")
-        url = url.replace("Zzaphkiel/Seraphine", "Zzaphkiel/seraphine")
 
         self.myYesButton.setEnabled(False)
         self.myCancelButton.setEnabled(False)
@@ -115,54 +103,67 @@ class UpdateMessageBox(MessageBoxBase):
 
         self.infoLabel.setVisible(True)
         self.bar.setVisible(True)
+        self.infoLabel.setText(self.tr("Downloading update..."))
 
-        zipPath = f'{LOCAL_PATH}/Seraphine.7z'
-        if os.path.exists(zipPath):
-            os.remove(zipPath)
+        # tufup 的下载进度回调: 更新 ProgressBar
+        last_pct = -1
 
-        dirPath = f'{LOCAL_PATH}/temp'
-        if os.path.exists(dirPath):
-            shutil.rmtree(dirPath, ignore_errors=True)
+        def progress_hook(bytes_done: int, bytes_total: int):
+            nonlocal last_pct
+            if bytes_total <= 0:
+                return
+            pct = int(bytes_done * 100 / bytes_total)
+            if pct != last_pct:
+                last_pct = pct
+                self.bar.setValue(pct)
+                self.infoLabel.setText(
+                    f"{bytes_done / (1024*1024):.1f} MB / "
+                    f"{bytes_total / (1024*1024):.1f} MB ({pct}%)")
+                QApplication.processEvents()  # 避免 UI 冻结
 
-        async with aiohttp.ClientSession() as sess:
-            resp = await sess.get(url)
-            length = int(resp.headers['content-length'])
-            self.bar.setMaximum(length)
-            cur = 0
+        # 调用 tufup 下载并安装. purge_dst_dir=True 清空安装目录再移入新版,
+        # 解决旧 filelist.txt 无法清理用户手动加文件的问题.
+        # tufup 的 install_update (Windows) 会生成 bat: 等待主进程退出 →
+        # purge → 移入新版 → 重启. 我们只需在调用后优雅退出.
+        ok = tufup_install(
+            progress_hook=progress_hook,
+            purge_dst_dir=True,
+            exclude_from_purge=None,
+        )
 
-            with open(zipPath, 'wb') as f:
-                async for chunk in resp.content.iter_chunked(1024*1024):
-                    f.write(chunk)
+        if not ok:
+            self.infoLabel.setText(
+                self.tr("Update failed. Please try manually download."))
+            self.bar.setVisible(False)
+            self.myCancelButton.setEnabled(True)
+            self.manuallyButton.setEnabled(True)
+            return
 
-                    cur += len(chunk)
-                    self.bar.setValue(cur)
-                    self.infoLabel.setText(
-                        f"{cur / (1024*1024):.2f} MB / {length / (1024*1024):.2f} MB ({cur * 100 / length:.2f}%)")
+        self.infoLabel.setText(self.tr("Waiting for restart..."))
 
-        self.infoLabel.setText(
-            self.tr("Downloading finished, decompressing..."))
-
-        with py7zr.SevenZipFile(zipPath, mode='r') as z:
-            z.extractall(dirPath)
-
-        os.remove(zipPath)
-        self.infoLabel.setText("Waiting for restart...")
-
-        # 覆盖自己
-        runUpdater()
-
-        # 关掉 QThread 之后退出
+        # 关掉后台 QThread (processListener / checkUpdate / checkNotice),
+        # 再走 QApplication.quit() 优雅退出, 让 aboutToQuit 信号触发
+        # main.py 的 appCloseEvent.set() → eventLoop 退出.
+        # tufup 的 install bat 会等待主进程退出后接管文件替换与重启.
         signalBus.terminateListeners.emit()
-        sys.exit()
+        QApplication.quit()
 
     def __onCancelButtonClicked(self):
         self.reject()
         self.rejected.emit()
 
     def __onManuallyButtonClicked(self):
-        url: str = self.info['assets'][0]['browser_download_url']
-        url = url.replace("github", "gitee")
-        url = url.replace("Zzaphkiel/Seraphine", "Zzaphkiel/seraphine")
+        # tufup 模式下 info 可能没有 assets (GitHub release 未同步),
+        # 退化到打开 GitHub releases 页面让用户手动下载.
+        assets = self.info.get('assets')
+        if assets and len(assets) > 0:
+            url: str = assets[0]['browser_download_url']
+            # Gitee 镜像加速 (国内用户)
+            url = url.replace("github", "gitee")
+            url = url.replace("Zzaphkiel/Seraphine", "Zzaphkiel/seraphine")
+        else:
+            # 无 assets 信息, 打开 GitHub releases 页面
+            url = "https://github.com/Zzaphkiel/Seraphine/releases/latest"
 
         webbrowser.open(url)
 
@@ -458,4 +459,4 @@ class ChangeDpiMessageBox(MessageBoxBase):
 
     def __onYesButtonClicked(self):
         signalBus.terminateListeners.emit()
-        sys.exit()
+        QApplication.quit()
