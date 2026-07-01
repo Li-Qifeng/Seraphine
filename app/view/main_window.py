@@ -541,6 +541,11 @@ class MainWindow(FluentWindow):
 
     async def __changeCareerToCurrentSummoner(self):
         summoner = await connector.getCurrentSummoner()
+        # LCU 未就绪时 @retry 拦截 ReferenceError 返回 None
+        # (已通过 signalBus.lcuNotConnected 发射统一提示)
+        if summoner is None:
+            self.careerInterface.setLoadingPageEnabled(False)
+            return
         self.currentSummoner = summoner
         name = summoner.get("gameName") or summoner['displayName']
         self.careerInterface.setLoginSummonerPuuid(summoner['puuid'])

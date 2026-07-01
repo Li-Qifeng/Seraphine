@@ -376,8 +376,11 @@ class CareerInterface(SeraphineInterface):
                 parent=self.window())
             self.setLoadingPageEnabled(False)
             return
+        # LCU 未就绪时 @retry 拦截 ReferenceError 返回 None
+        if summoner is None:
+            self.setLoadingPageEnabled(False)
+            return
         await self.updateInterface(summoner=summoner)
-        self.setLoadingPageEnabled(False)
 
     @asyncSlot()
     async def refresh(self):
@@ -425,6 +428,12 @@ class CareerInterface(SeraphineInterface):
                 position=InfoBarPosition.BOTTOM_RIGHT,
                 duration=3000,
                 parent=self.window())
+            self.setLoadingPageEnabled(False)
+            return
+
+        # getSummonerByPuuid 在 LCU 未就绪时被 @retry 拦截返回 None
+        # (ReferenceError -> signalBus.lcuNotConnected -> return None)
+        if summoner is None:
             self.setLoadingPageEnabled(False)
             return
 

@@ -672,6 +672,10 @@ class Games(QFrame):
                 # 现在全区都有编号了 万一对局信息中没包含编号 走别的接口单独查一次
                 if self.summonerPuuid and len(str(self.summonerPuuid).strip()) != 0:
                     summonerForTagLine = await connector.getSummonerByPuuid(self.summonerPuuid)
+                    # LCU 未就绪时 @retry 返回 None
+                    if summonerForTagLine is None:
+                        self.summonerName.setEnabled(True)
+                        return
                     if summonerForTagLine['tagLine'] and len(str(summonerForTagLine['tagLine'])) != 0:
                         self.summonerName.tagLine = summonerForTagLine['tagLine']
                     else:

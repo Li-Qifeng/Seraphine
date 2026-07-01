@@ -131,39 +131,51 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
         champions = []
         games = {}
     else:
-        games = {
-            "gameCount": gamesInfo["gameCount"],
-            "wins": 0,
-            "losses": 0,
-            "kills": 0,
-            "deaths": 0,
-            "assists": 0,
-            "games": [],
-        }
-        for game in gamesInfo["games"]:
-            info = await parseGameData(game)
-            if time.time() - info["timeStamp"] / 1000 > 60 * 60 * 24 * 365:
-                continue
-            if not info["remake"] and info["queueId"] != 0:
-                games["kills"] += info["kills"]
-                games["deaths"] += info["deaths"]
-                games["assists"] += info["assists"]
-                if info["win"]:
-                    games["wins"] += 1
-                else:
-                    games["losses"] += 1
-            games["games"].append(info)
+        # LCU 未就绪时 @retry 拦截 ReferenceError 返回 None
+        if gamesInfo is None:
+            logger.warning(
+                "parseSummonerData: gamesInfo is None (LCU not ready)",
+                "tools")
+            champions = []
+            games = {}
+        else:
+            games = {
+                "gameCount": gamesInfo["gameCount"],
+                "wins": 0,
+                "losses": 0,
+                "kills": 0,
+                "deaths": 0,
+                "assists": 0,
+                "games": [],
+            }
+            for game in gamesInfo["games"]:
+                info = await parseGameData(game)
+                if time.time() - info["timeStamp"] / 1000 > 60 * 60 * 24 * 365:
+                    continue
+                if not info["remake"] and info["queueId"] != 0:
+                    games["kills"] += info["kills"]
+                    games["deaths"] += info["deaths"]
+                    games["assists"] += info["assists"]
+                    if info["win"]:
+                        games["wins"] += 1
+                    else:
+                        games["losses"] += 1
+                games["games"].append(info)
 
-        champions = getRecentChampions(games['games'])
-        logger.error(
-            f"parseSummonerData: games fetched count={games['gameCount']} "
-            f"parsed={len(games['games'])}", "tools")
+            champions = getRecentChampions(games['games'])
+            logger.error(
+                f"parseSummonerData: games fetched count={games['gameCount']} "
+                f"parsed={len(games['games'])}", "tools")
 
     try:
         rankInfo = await rankTask
     except Exception as e:
         logger.warning(f"parseSummonerData: failed to fetch rank: {e}", "tools")
         rankInfo = {}
+    else:
+        # LCU 未就绪时 @retry 返回 None
+        if rankInfo is None:
+            rankInfo = {}
 
     return {
         'name': summoner.get("gameName") or summoner['displayName'],
