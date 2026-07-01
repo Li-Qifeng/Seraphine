@@ -719,6 +719,22 @@ class LolClientConnector(QObject):
                     await asyncio.sleep(2)
                     continue
 
+                # 补充: LCU 极端 stale 场景 -- 连 gameCount 也被缓存
+                # (gameCount 与 gameList 条数一致或接近, 但都远小于 expected)
+                # 典型表现: 只返回 2 条, gameCount 也是 2, 但期望 20 条
+                # 仅在 expected 远大于实际返回 (>=5 差距) 且 gameCount>0 时重试,
+                # 避免调用方真的只有少量对局时无意义重试
+                if attempt < 2 and expected - len(gameList) >= 5 \
+                        and 0 < gameCount <= len(gameList) + 2 \
+                        and len(gameList) < 5:
+                    logger.error(
+                        f"getSummonerGamesByPuuid: possible stale cache "
+                        f"(attempt={attempt}, got={len(gameList)}, "
+                        f"gameCount={gameCount}, expected={expected}), "
+                        f"retrying in 2s", TAG)
+                    await asyncio.sleep(2)
+                    continue
+
                 # 空响应或数据不足但无 stale 迹象, 直接返回
                 # 不在此处重试空响应: LCU 可能持续为空, 与 @retry 形成嵌套爆炸
                 return games

@@ -1581,8 +1581,18 @@ class SearchInterface(SeraphineInterface):
 
         self.gamesView.setLoadingPageEnable(True)
 
+        # 等待数据加载, 但设置超时避免死循环
+        # 原代码 while < 10 在数据不足 10 条且 __loadGames 已 return 时会无限挂起
+        max_wait = 50  # 50 * 0.2s = 10s 超时
+        waited = 0
         while len(self.gamesView.gamesTab.queueIdMap.get(tabs.queueId, [])) < 10:
             await asyncio.sleep(.2)
+            waited += 1
+            # 数据加载完成或超时后退出
+            # (gameLoadingTask 为 None 或 done 表示不会再有更多数据了)
+            if (self.gameLoadingTask is None
+                    or self.gameLoadingTask.done()) or waited >= max_wait:
+                break
 
         enable = tabs.queueIdMap.get(tabs.queueId) is not None
         tabs.prevButton.setVisible(enable)

@@ -1489,7 +1489,10 @@ class MainWindow(FluentWindow):
         self.searchInterface.filterComboBox.setCurrentIndex(0)
 
         # 先加载完再切换, 避免加载过程中换搜索目标导致puuid出错 -- By Hpero4
-        await self.searchInterface.searchAndShowFirstPage(self.careerInterface.puuid)
+        # force=True: 从生涯页点击进入详情页时强制重新加载, 避免搜索页之前
+        # 因 LCU stale cache 只拿到少量数据时, 复用旧数据导致左侧列表不全
+        await self.searchInterface.searchAndShowFirstPage(
+            self.careerInterface.puuid, force=True)
         self.checkAndSwitchTo(self.searchInterface)
         self.searchInterface.loadingGameId = gameId
 
