@@ -156,6 +156,8 @@ class MainWindow(FluentWindow):
             try:
                 self.careerInterface.setLoginSummonerPuuid(
                     self.currentSummoner.get('puuid'))
+                # 同步设置 loading 状态以立即 UI 反馈
+                self.careerInterface.setLoadingPageEnabled(True)
                 await self.careerInterface.updateInterface(
                     summoner=self.currentSummoner)
                 # 客户端未连接时停留在生涯页面, 而不是启动页
@@ -543,6 +545,8 @@ class MainWindow(FluentWindow):
         name = summoner.get("gameName") or summoner['displayName']
         self.careerInterface.setLoginSummonerPuuid(summoner['puuid'])
 
+        # 同步设置 loading 状态以立即 UI 反馈
+        self.careerInterface.setLoadingPageEnabled(True)
         asyncio.create_task(self.careerInterface.updateInterface(
             summoner=summoner))
 
@@ -893,6 +897,8 @@ class MainWindow(FluentWindow):
             logger.debug(f"careerInterface close skipped: {e}", TAG)
 
         self.checkAndSwitchTo(self.careerInterface)
+        # 同步设置 loading 状态以立即 UI 反馈
+        self.careerInterface.setLoadingPageEnabled(True)
         await self.careerInterface.updateInterface(puuid=puuid)
 
     @asyncSlot(str)

@@ -384,6 +384,11 @@ class CareerInterface(SeraphineInterface):
         if not self.puuid:
             return
 
+        # 同步设置 loading 状态, 确保 UI 立即反馈
+        # asyncSlot 创建 task 后会立即返回, 若 loading 状态在 await 内设置,
+        # 用户点击刷新按钮后视觉延迟 (按钮不隐藏, loading 动画不显示)
+        self.setLoadingPageEnabled(True)
+
         if self.loadGamesTask and not self.loadGamesTask.done():
             self.loadGamesTask.cancel()
 
@@ -402,7 +407,7 @@ class CareerInterface(SeraphineInterface):
         # 不能同时为空
         assert summoner or puuid
 
-        self.setLoadingPageEnabled(True)
+        # 调用方若需要立即 UI 反馈 (如 refresh 按钮), 应在 await 前同步设置 loading
         self.recentTeammatesInfo = None
 
         if self.recentTeammatesFlyout:
