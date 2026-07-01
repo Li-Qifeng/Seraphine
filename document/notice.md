@@ -1,4 +1,4 @@
 ### 2024 / 6 / 13
 
 - 本程序是**免费**且**开源**的，如果您是从闲鱼 / 淘宝等平台**通过付费渠道**获取的该程序，请立即**退款**。
-- 本程序开源在 https://github.com/Zzaphkiel/Seraphine ，有能力请点击 Star 支持我们的工作。
+- 本程序（二次开发版本）开源在 https://github.com/YOUR_GITHUB_ID/Seraphine ，原项目地址 https://github.com/Zzaphkiel/Seraphine ，有能力请点击 Star 支持我们的工作。

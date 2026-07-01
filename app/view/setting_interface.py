@@ -9,7 +9,7 @@ from PyQt5.QtCore import Qt, QUrl
 from PyQt5.QtGui import QDesktopServices
 
 from app.common.icons import Icon
-from app.common.config import (cfg, YEAR, AUTHOR, VERSION, FEEDBACK_URL, GITHUB_URL, isWin11,
+from app.common.config import (cfg, YEAR, AUTHOR, MAINTAINER, VERSION, FEEDBACK_URL, GITHUB_URL, isWin11,
                                BETA)
 from app.common.style_sheet import StyleSheet
 from app.components.seraphine_interface import SeraphineInterface
@@ -205,6 +205,7 @@ class SettingInterface(SeraphineInterface):
         self.aboutCard = HyperlinkCard(
             GITHUB_URL, self.tr("View GitHub"), Icon.INFO, self.tr('About'),
             self.tr('Copyright') + ' © ' + f"{YEAR}, {AUTHOR}. " +
+            self.tr('Maintained by') + f" {MAINTAINER}. " +
             self.tr('Version') + f" {BETA or VERSION}", self.aboutGroup)
         self.aboutCard.linkButton.setIcon(Icon.GITHUB)
 

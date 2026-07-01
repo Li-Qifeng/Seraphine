@@ -248,10 +248,14 @@ class Config(QConfig):
 
 YEAR = 2023
 AUTHOR = "Zzaphkiel"
+# 二次开发维护者信息 (fork 维护者署名, 与原作者 AUTHOR 区分)
+MAINTAINER = "YOUR_NAME"
+MAINTAINER_URL = "https://github.com/YOUR_GITHUB_ID/Seraphine"
 VERSION = "1.1.9"
 BETA = None
-FEEDBACK_URL = "https://github.com/Zzaphkiel/Seraphine/issues?q=is%3Aissue"
-GITHUB_URL = "https://github.com/Zzaphkiel/Seraphine"
+# 以下 URL 指向当前维护者的 fork 仓库 (接管 Release / Issue 反馈)
+FEEDBACK_URL = "https://github.com/YOUR_GITHUB_ID/Seraphine/issues?q=is%3Aissue"
+GITHUB_URL = "https://github.com/YOUR_GITHUB_ID/Seraphine"
 LOCAL_PATH = f"{os.getenv('APPDATA')}\\Seraphine"
 
 cfg = Config()
