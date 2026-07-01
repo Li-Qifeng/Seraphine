@@ -58,11 +58,12 @@ class TestCheckUpdate:
     def test_update_available(self, tmp_path, monkeypatch):
         """tufup 返回新版本时, check_update 透传 (True, new_version)."""
         (tmp_path / "Seraphine.exe").write_text("fake")
+        # root.json 必须存在 (check_update 用 pathlib.Path.exists 检查)
+        (tmp_path / "app" / "resource" / "tufup" / "metadata").mkdir(parents=True)
+        (tmp_path / "app" / "resource" / "tufup" / "metadata" / "root.json").write_text("{}")
         monkeypatch.chdir(tmp_path)
 
-        # mock root.json 存在
-        with patch.object(tufup_updater.os.path, "exists", return_value=True), \
-             patch.object(tufup_updater, "_make_client") as mock_make:
+        with patch.object(tufup_updater, "_make_client") as mock_make:
             mock_client = MagicMock()
             mock_meta = MagicMock()
             mock_meta.version = "1.2.0"
@@ -77,10 +78,11 @@ class TestCheckUpdate:
     def test_no_update(self, tmp_path, monkeypatch):
         """tufup 返回 None (无新版本) 时, check_update 返回 (False, None)."""
         (tmp_path / "Seraphine.exe").write_text("fake")
+        (tmp_path / "app" / "resource" / "tufup" / "metadata").mkdir(parents=True)
+        (tmp_path / "app" / "resource" / "tufup" / "metadata" / "root.json").write_text("{}")
         monkeypatch.chdir(tmp_path)
 
-        with patch.object(tufup_updater.os.path, "exists", return_value=True), \
-             patch.object(tufup_updater, "_make_client") as mock_make:
+        with patch.object(tufup_updater, "_make_client") as mock_make:
             mock_client = MagicMock()
             mock_client.check_for_updates.return_value = None
             mock_make.return_value = mock_client
@@ -93,10 +95,11 @@ class TestCheckUpdate:
     def test_network_failure_safe(self, tmp_path, monkeypatch):
         """tufup 抛异常 (网络失败) 时, check_update 不抛, 返回 (False, None)."""
         (tmp_path / "Seraphine.exe").write_text("fake")
+        (tmp_path / "app" / "resource" / "tufup" / "metadata").mkdir(parents=True)
+        (tmp_path / "app" / "resource" / "tufup" / "metadata" / "root.json").write_text("{}")
         monkeypatch.chdir(tmp_path)
 
-        with patch.object(tufup_updater.os.path, "exists", return_value=True), \
-             patch.object(tufup_updater, "_make_client") as mock_make:
+        with patch.object(tufup_updater, "_make_client") as mock_make:
             mock_make.side_effect = ConnectionError("network down")
 
             has, ver = tufup_updater.check_update()
