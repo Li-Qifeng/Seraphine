@@ -742,6 +742,86 @@ If champions set by lane are not available, default settings will be used.</sour
         <source>Delay seconds after entering lobby:</source>
         <translation>进入房间后延迟秒数：</translation>
     </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="202"/>
+        <source>Game Infomation filter</source>
+        <translation>对局信息过滤</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="203"/>
+        <source>Show game modes in Game Infomation interface based on your current game mode</source>
+        <translation>基于你所处的游戏模式筛选对局信息界面显示的战绩</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="209"/>
+        <source>Reserve Game Information interface</source>
+        <translation>保留对局信息界面内容</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="210"/>
+        <source>Reserve Game Information interface until the next champion selection starts</source>
+        <translation>保留上一局的对局信息内容直到下一次对局开始</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="216"/>
+        <source>Show tier in game information</source>
+        <translation>对局详情中显示段位</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="217"/>
+        <source>Show tier icon in game information interface. Enabling this option affects APP&apos;s performance</source>
+        <translation>在搜索界面对局详情界面中显示段位，启动该选项将影响加载该界面的速度</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="224"/>
+        <source>Team rating badges</source>
+        <translation>队友评级徽章</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="225"/>
+        <source>Show a 5-tier rating badge (e.g. 神/爹/小有亮点/躺赢狗/消失) for each teammate in game detail view</source>
+        <translation>在对局详情中为每个队友显示 5 档评级徽章（如 神/爹/小有亮点/躺赢狗/消失）</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="234"/>
+        <source>Team rating style</source>
+        <translation>队友评级风格</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="235"/>
+        <source>Tieba: 贴吧风 (win/loss separate labels); Horse: 马系风 (上等马/中等马/下等马/纯牛马)</source>
+        <translation>贴吧风：胜方/败方不同标签；马系风：上等马/中等马/下等马/纯牛马</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="238"/>
+        <source>Tieba</source>
+        <translation>贴吧风</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="238"/>
+        <source>Horse</source>
+        <translation>马系风</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="243"/>
+        <source>Show OP.GG window automatically</source>
+        <translation>自动显示 OP.GG 窗口</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="244"/>
+        <source>Show OP.GG window automatically when champion selection starts</source>
+        <translation>在英雄选择开始时自动显示 OP.GG 窗口</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="249"/>
+        <source>Show OP.GG window on top</source>
+        <translation>置顶 OP.GG 窗口</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="250"/>
+        <source>Show OP.GG window in front of other windows while selecting champions</source>
+        <translation>在英雄选择时将 OP.GG 窗口置顶</translation>
+    </message>
 </context>
 <context>
     <name>CareerInterface</name>
