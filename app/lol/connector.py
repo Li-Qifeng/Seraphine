@@ -666,8 +666,12 @@ class LolClientConnector(QObject):
         Notes:
             LCU `/lol-match-history/v1/products/lol/{puuid}/matches` 端点在游戏
             刚结束时可能返回过期的缓存数据 (例如只有 2 条), 需要等待后端刷新.
-            这里在返回条数明显少于请求数 (gameCount < expected 且 games 为空或少)
-            时重试最多 3 次, 每次间隔 2 秒.
+            这里在返回条数明显少于请求数 (gameCount >> 实际返回数) 时重试最多
+            3 次, 每次间隔 2 秒.
+
+            注意: LCU 返回空但无异常 (gameCount=0) 时直接返回, 不做额外重试.
+            因为 LCU 的 match-history 可能持续为空 (如服务端问题), 在 API 层
+            无限重试会导致与 @retry 装饰器形成嵌套爆炸, 阻塞 UI 转圈.
         """
         expected = endIndex - begIndex + 1
         last_exc = None
@@ -715,15 +719,8 @@ class LolClientConnector(QObject):
                     await asyncio.sleep(2)
                     continue
 
-                # 完全空响应: gameCount=0 但期望非零, LCU 尚未刷新, 等待重试
-                if attempt < 3 and len(gameList) == 0 and expected > 0:
-                    logger.error(
-                        f"getSummonerGamesByPuuid: empty response "
-                        f"(attempt={attempt}, gameCount={gameCount}, "
-                        f"expected={expected}), retrying in 2s", TAG)
-                    await asyncio.sleep(2)
-                    continue
-
+                # 空响应或数据不足但无 stale 迹象, 直接返回
+                # 不在此处重试空响应: LCU 可能持续为空, 与 @retry 形成嵌套爆炸
                 return games
             except SummonerGamesNotFound as e:
                 last_exc = e
