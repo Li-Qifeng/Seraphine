@@ -2886,6 +2886,11 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation>版权所有</translation>
     </message>
     <message>
+        <location filename="../../view/setting_interface.py" line="208"/>
+        <source>Maintained by</source>
+        <translation>由</translation>
+    </message>
+    <message>
         <location filename="../../view/setting_interface.py" line="240"/>
         <source>Version</source>
         <translation>当前版本</translation>
