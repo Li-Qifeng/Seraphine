@@ -42,7 +42,7 @@ class AuxiliaryInterface(SeraphineInterface):
         self.automationGroup = SettingCardGroup(
             self.tr("自动化"), self.scrollWidget)
         self.hextechGroup = SettingCardGroup(
-            self.tr("海克斯"), self.scrollWidget)
+            self.tr("大乱斗"), self.scrollWidget)
         self.toolsGroup = SettingCardGroup(
             self.tr("工具"), self.scrollWidget)
 
@@ -93,8 +93,8 @@ class AuxiliaryInterface(SeraphineInterface):
             self.toolsGroup
         )
         self.leaveQueueCard = LeaveQueueCard(
-            self.tr("Leave queue"),
-            self.tr("Leave the matchmaking queue"),
+            self.tr("秒退"),
+            self.tr("离开队列或退出英雄选择"),
             self.toolsGroup
         )
 
@@ -184,8 +184,8 @@ class AuxiliaryInterface(SeraphineInterface):
             self.automationGroup
         )
         self.hextechChampionCard = HextechChampionCard(
-            self.tr("海克斯/大乱斗抢英雄"),
-            self.tr("在大乱斗/海克斯大乱斗中自动从备选席抢英雄"),
+            self.tr("自动换英雄"),
+            self.tr("在大乱斗中自动从备选席换英雄（无CD强刷）"),
             cfg.enableAutoAramBench,
             cfg.hextechChampions,
             self.hextechGroup)

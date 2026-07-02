@@ -58,8 +58,8 @@ class ChampionsCard(QFrame):
 
 class HextechChampionCard(ExpandGroupSettingCard):
     """
-    海克斯/大乱斗抢英雄 - 愿望单配置卡
-    单一英雄列表 (无分路) + 总开关, 仅在备选席模式 (benchEnabled) 生效
+    大乱斗换英雄 - 愿望单配置卡
+     单一英雄列表 (无分路) + 总开关, 仅在备选席模式 (benchEnabled) 生效
     """
 
     def __init__(self, title, content=None,
@@ -99,10 +99,10 @@ class HextechChampionCard(ExpandGroupSettingCard):
         self.helpButton.setFixedSize(QSize(26, 26))
         self.helpButton.setIconSize(QSize(16, 16))
         self.helpButton.setToolTip(self.tr(
-            "仅在大乱斗 / 海克斯大乱斗（备选席模式）下生效。\n\n"
+            "仅在大乱斗（备选席模式）下生效。\n\n"
             "进入英雄选择后，若备选席出现愿望单中的英雄，"
-            "将按从左到右的优先级顺序自动抢夺。\n\n"
-            "若备选席没有愿望单英雄，抢英雄窗口会显示本局所有英雄，"
+            "将按从左到右的优先级顺序自动抢夺（无CD强刷）。\n\n"
+            "若备选席没有愿望单英雄，换英雄窗口会显示本局所有英雄，"
             "点击任意头像即可手动抢夺。\n\n"
             "提示：愿望单中的英雄可拖拽调整顺序，左侧优先级更高。"))
         self.helpButton.installEventFilter(ToolTipFilter(

@@ -47,7 +47,7 @@ class LeaveQueueCard(SettingCard):
 
     def __init__(self, title, content, parent):
         super().__init__(Icon.EXIT, title, content, parent)
-        self.pushButton = PushButton(self.tr("Leave"))
+        self.pushButton = PushButton(self.tr("秒退"))
         self.pushButton.setMinimumWidth(100)
 
         self.hBoxLayout.addWidget(self.pushButton)
@@ -57,12 +57,12 @@ class LeaveQueueCard(SettingCard):
 
     @asyncSlot()
     async def __onButtonClicked(self):
-        ok = await connector.leaveQueue()
+        ok = await connector.dodge()
         if ok:
-            InfoBar.success("", self.tr("Left queue"), duration=2000,
+            InfoBar.success("", self.tr("已秒退"), duration=2000,
                             parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
         else:
-            InfoBar.warning("", self.tr("Not currently in queue"), duration=2000,
+            InfoBar.warning("", self.tr("当前不在队列中"), duration=2000,
                             parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
 
 class CreatePracticeLobbyCard(ExpandGroupSettingCard):

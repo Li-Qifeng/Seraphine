@@ -23,7 +23,7 @@ TAG = 'HextechWindow'
 
 
 class HextechSelectInterface(QFrame):
-    """抢英雄界面: 手持 + 备选席 (可点击抢). 简洁, 不显示队友."""
+    """换英雄界面: 手持 + 备选席 (可点击换). 简洁, 不显示队友."""
 
     championToggled = pyqtSignal(object)
 
@@ -34,7 +34,7 @@ class HextechSelectInterface(QFrame):
         self.vBoxLayout = QVBoxLayout(self)
 
         # 顶部: 标题 + 状态
-        self.titleLabel = StrongBodyLabel(self.tr("抢英雄"))
+        self.titleLabel = StrongBodyLabel(self.tr("换英雄"))
         self.statusLabel = CaptionLabel("")
 
         # 手持区
@@ -45,7 +45,7 @@ class HextechSelectInterface(QFrame):
         self.mineLayout.setAlignment(Qt.AlignCenter)
 
         # 备选席区
-        self.benchLabel = CaptionLabel(self.tr("备选席（点击抢）"))
+        self.benchLabel = CaptionLabel(self.tr("备选席（点击换）"))
         self.gridWidget = QWidget()
         self.gridLayout = QGridLayout(self.gridWidget)
 
@@ -197,7 +197,7 @@ class HextechSelectInterface(QFrame):
 
 
 class HextechWindow(OpggWindowBase):
-    """海克斯/大乱斗抢英雄窗口: 贴客户端左侧长条"""
+    """大乱斗换英雄窗口: 贴客户端左侧长条"""
 
     def __init__(self, parent=None):
         super().__init__()
@@ -220,7 +220,7 @@ class HextechWindow(OpggWindowBase):
         self.setMinimumHeight(400)
         self.setMaximumHeight(1200)
         self.setWindowIcon(QIcon("app/resource/images/hextech.svg"))
-        self.setWindowTitle(self.tr("抢英雄"))
+        self.setWindowTitle(self.tr("换英雄"))
         self.setCustomBackgroundColor("#f3f3f3", "#202020")
 
     def paintEvent(self, e):
@@ -427,7 +427,7 @@ class HextechWindow(OpggWindowBase):
 
 
 class HextechGrabFlyout(FlyoutViewBase):
-    """抢英雄 Flyout (导航栏按钮点击时弹出)"""
+    """换英雄 Flyout (导航栏按钮点击时弹出)"""
     championGrabRequested = pyqtSignal(int)
 
     def __init__(self, parent=None):
@@ -435,7 +435,7 @@ class HextechGrabFlyout(FlyoutViewBase):
         self._championButtons = []
 
         self.vBoxLayout = QVBoxLayout(self)
-        self.titleLabel = StrongBodyLabel(self.tr("抢英雄"))
+        self.titleLabel = StrongBodyLabel(self.tr("换英雄"))
         self.hintLabel = QLabel(self.tr("点击英雄头像抢夺"))
         self.gridWidget = QWidget()
         self.gridLayout = QGridLayout(self.gridWidget)

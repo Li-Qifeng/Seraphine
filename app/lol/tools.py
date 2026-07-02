@@ -1337,7 +1337,7 @@ def _resolveHextechTarget(bench, mine, selection):
     return None
 
 
-async def _doBenchSwapWithRetry(target, max_retries=2):
+async def _doBenchSwapWithRetry(target, max_retries=20):
     for attempt in range(max_retries):
         try:
             await connector.benchSwap(target)

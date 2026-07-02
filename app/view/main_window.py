@@ -219,11 +219,11 @@ class MainWindow(FluentWindow):
         self.navigationInterface.addItem(
             routeKey='HextechGrab',
             icon=QIcon("app/resource/images/hextech.svg"),
-            text=self.tr("抢英雄"),
+            text=self.tr("换英雄"),
             onClick=self.showHextechWindow,
             selectable=False,
             position=pos,
-            tooltip=self.tr("海克斯/大乱斗抢英雄")
+            tooltip=self.tr("大乱斗无CD换英雄")
         )
 
         self.navigationInterface.addItem(
@@ -234,6 +234,16 @@ class MainWindow(FluentWindow):
             selectable=False,
             position=pos,
             tooltip="OP.GG"
+        )
+
+        self.navigationInterface.addItem(
+            routeKey='Dodge',
+            icon=Icon.EXIT,
+            text=self.tr("秒退"),
+            onClick=self.__onDodgeButtonClicked,
+            selectable=False,
+            position=pos,
+            tooltip=self.tr("秒退"),
         )
 
         self.navigationInterface.addItem(
@@ -1049,7 +1059,8 @@ class MainWindow(FluentWindow):
             return
 
         async def accept():
-            timeDelay = cfg.get(cfg.autoAcceptMatchingDelay)
+            import random
+            timeDelay = cfg.get(cfg.autoAcceptMatchingDelay) or random.uniform(2, 5)
             await asyncio.sleep(timeDelay)
             status = await connector.getReadyCheckStatus()
 
@@ -1682,7 +1693,7 @@ class MainWindow(FluentWindow):
 
     @asyncSlot()
     async def showHextechWindow(self):
-        """导航栏按钮: 弹出抢英雄 Flyout 浮层 (不进入独立页面)"""
+        """导航栏按钮: 弹出换英雄 Flyout 浮层 (不进入独立页面)"""
         if not self.isClientProcessRunning:
             InfoBar.warning(
                 self.tr("提示"),
@@ -1702,7 +1713,7 @@ class MainWindow(FluentWindow):
         if not data or not data.get('benchEnabled'):
             InfoBar.warning(
                 self.tr("提示"),
-                self.tr("当前不在大乱斗/海克斯大乱斗选人中"),
+                self.tr("当前不在大乱斗选人中"),
                 parent=self, duration=3000, position=InfoBarPosition.TOP)
             return
 
@@ -1759,6 +1770,17 @@ class MainWindow(FluentWindow):
         self.setMicaEffectEnabled(isMicaEnabled)
         self.opggWindow.setMicaEffectEnabled(isMicaEnabled)
         self.hextechWindow.setMicaEffectEnabled(isMicaEnabled)
+
+    @asyncSlot()
+    async def __onDodgeButtonClicked(self):
+        if self.isClientProcessRunning:
+            ok = await connector.dodge()
+            if ok:
+                InfoBar.success("", self.tr("已秒退"), duration=2000,
+                                parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+            else:
+                InfoBar.warning("", self.tr("当前不在队列中"), duration=2000,
+                                parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
 
     @asyncSlot()
     async def __onFixLCUButtonClicked(self):

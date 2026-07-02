@@ -815,11 +815,6 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="44"/>
-        <source>海克斯</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../../view/auxiliary_interface.py" line="46"/>
         <source>工具</source>
         <translation type="unfinished"></translation>
@@ -860,16 +855,6 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="186"/>
-        <source>海克斯/大乱斗抢英雄</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../view/auxiliary_interface.py" line="186"/>
-        <source>在大乱斗/海克斯大乱斗中自动从备选席抢英雄</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../../view/auxiliary_interface.py" line="193"/>
         <source>海克斯强化辅助</source>
         <translation type="unfinished"></translation>
@@ -892,30 +877,37 @@ If champions set by lane are not available, default settings will be used.</sour
     <message>
         <location filename="../../view/auxiliary_interface.py" line="95"/>
         <source>Leave queue</source>
-        <translation>离开队列</translation>
+        <translation type="obsolete">离开队列</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="95"/>
         <source>Leave the matchmaking queue</source>
-        <translation>退出匹配队列</translation>
-    </message>
-</context>
-<context>
-    <name>LeaveQueueCard</name>
-    <message>
-        <location filename="../../view/auxiliary_cards/tool_cards.py" line="48"/>
-        <source>Leave</source>
-        <translation>离开</translation>
+        <translation type="obsolete">退出匹配队列</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_cards/tool_cards.py" line="48"/>
-        <source>Left queue</source>
-        <translation>已退出队列</translation>
+        <location filename="../../view/auxiliary_interface.py" line="44"/>
+        <source>大乱斗</source>
+        <translation>大乱斗</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_cards/tool_cards.py" line="48"/>
-        <source>Not currently in queue</source>
-        <translation>当前不在队列中</translation>
+        <location filename="../../view/auxiliary_interface.py" line="95"/>
+        <source>秒退</source>
+        <translation>秒退</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="95"/>
+        <source>离开队列或退出英雄选择</source>
+        <translation>离开队列或退出英雄选择</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="186"/>
+        <source>自动换英雄</source>
+        <translation>自动换英雄</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="186"/>
+        <source>在大乱斗中自动从备选席换英雄（无CD强刷）</source>
+        <translation>在大乱斗中自动从备选席换英雄（无CD强刷）</translation>
     </message>
 </context>
 <context>
@@ -1296,29 +1288,29 @@ If champions set by lane are not available, default settings will be used.</sour
 <context>
     <name>CreatePracticeLobbyCard</name>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="777"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="88"/>
         <source>Create</source>
-        <translation type="obsolete">创建</translation>
+        <translation type="unfinished">创建</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="766"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="77"/>
         <source>Lobby&apos;s name: (cannot be empty)</source>
-        <translation type="obsolete">房间名：（不可为空）</translation>
+        <translation type="unfinished">房间名：（不可为空）</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="813"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="124"/>
         <source>Please input lobby&apos;s name</source>
-        <translation type="obsolete">请输入房间名</translation>
+        <translation type="unfinished">请输入房间名</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="818"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="129"/>
         <source>Please input password</source>
-        <translation type="obsolete">请输入房间密码</translation>
+        <translation type="unfinished">请输入房间密码</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="770"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="81"/>
         <source>Password: (password will NOT be set if it&apos;s empty)</source>
-        <translation type="obsolete">房间密码：（若留空则不设密码）</translation>
+        <translation type="unfinished">房间密码：（若留空则不设密码）</translation>
     </message>
 </context>
 <context>
@@ -1383,9 +1375,9 @@ If champions set by lane are not available, default settings will be used.</sour
 <context>
     <name>FixClientDpiCard</name>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="727"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="18"/>
         <source>Fix</source>
-        <translation type="obsolete">修复</translation>
+        <translation type="unfinished">修复</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="638"/>
@@ -1648,6 +1640,39 @@ If champions set by lane are not available, default settings will be used.</sour
     </message>
 </context>
 <context>
+    <name>LeaveQueueCard</name>
+    <message>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="48"/>
+        <source>Leave</source>
+        <translation type="obsolete">离开</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="48"/>
+        <source>Left queue</source>
+        <translation type="obsolete">已退出队列</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="48"/>
+        <source>Not currently in queue</source>
+        <translation type="obsolete">当前不在队列中</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="50"/>
+        <source>秒退</source>
+        <translation>秒退</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="62"/>
+        <source>已秒退</source>
+        <translation>已秒退</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="65"/>
+        <source>当前不在队列中</source>
+        <translation>当前不在队列中</translation>
+    </message>
+</context>
+<context>
     <name>LineEditSettingCard</name>
     <message>
         <location filename="../../components/setting_cards.py" line="36"/>
@@ -1696,14 +1721,14 @@ If champions set by lane are not available, default settings will be used.</sour
 <context>
     <name>LockConfigCard</name>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="1134"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="276"/>
         <source>Error</source>
-        <translation type="obsolete">错误</translation>
+        <translation type="unfinished">错误</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="1134"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="276"/>
         <source>Failed to set file permissions</source>
-        <translation type="obsolete">设置文件读写属性失败</translation>
+        <translation type="unfinished">设置文件读写属性失败</translation>
     </message>
 </context>
 <context>
@@ -1722,22 +1747,22 @@ If champions set by lane are not available, default settings will be used.</sour
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../view/main_window.py" line="522"/>
+        <location filename="../../view/main_window.py" line="532"/>
         <source>Career</source>
         <translation>生涯</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="524"/>
+        <location filename="../../view/main_window.py" line="534"/>
         <source>Game Information</source>
         <translation>对局信息</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="751"/>
+        <location filename="../../view/main_window.py" line="761"/>
         <source>Start LOL</source>
         <translation>启动游戏</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="525"/>
+        <location filename="../../view/main_window.py" line="535"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
@@ -1752,12 +1777,12 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation type="obsolete">客户端已连接</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="852"/>
+        <location filename="../../view/main_window.py" line="862"/>
         <source>Invalid path</source>
         <translation>路径非法</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="852"/>
+        <location filename="../../view/main_window.py" line="862"/>
         <source>Please set the correct directory of the LOL client in the setting page</source>
         <translation>请在设置页面中设置正确的 LOL 客户端路径</translation>
     </message>
@@ -1767,77 +1792,77 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation>启动页</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="841"/>
+        <location filename="../../view/main_window.py" line="851"/>
         <source>Start LOL successfully</source>
         <translation>启动客户端成功</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="946"/>
+        <location filename="../../view/main_window.py" line="956"/>
         <source>Home</source>
         <translation>游戏大厅</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="949"/>
+        <location filename="../../view/main_window.py" line="959"/>
         <source>Selecting Champions</source>
         <translation>英雄选择</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="970"/>
+        <location filename="../../view/main_window.py" line="980"/>
         <source>Gaming</source>
         <translation>游戏中</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="977"/>
+        <location filename="../../view/main_window.py" line="987"/>
         <source>Waiting for status</source>
         <translation>等待游戏结果</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="979"/>
+        <location filename="../../view/main_window.py" line="989"/>
         <source>End of game</source>
         <translation>游戏结束</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="985"/>
+        <location filename="../../view/main_window.py" line="995"/>
         <source>Lobby</source>
         <translation>房间组队中</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="1026"/>
+        <location filename="../../view/main_window.py" line="1036"/>
         <source>Ready check</source>
         <translation>匹配确认</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="1029"/>
+        <location filename="../../view/main_window.py" line="1039"/>
         <source>Match making</source>
         <translation>匹配中</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="1770"/>
+        <location filename="../../view/main_window.py" line="1792"/>
         <source>Exception occurred 😥</source>
         <translation>程序出现异常 😥</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="523"/>
+        <location filename="../../view/main_window.py" line="533"/>
         <source>Search 👀</source>
         <translation>战绩查询 👀</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="895"/>
+        <location filename="../../view/main_window.py" line="905"/>
         <source>Exit</source>
         <translation>直接退出</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="894"/>
+        <location filename="../../view/main_window.py" line="904"/>
         <source>Minimize</source>
         <translation>最小化到任务栏</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="526"/>
+        <location filename="../../view/main_window.py" line="536"/>
         <source>Quit</source>
         <translation>退出</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="887"/>
+        <location filename="../../view/main_window.py" line="897"/>
         <source>Do you wish to exit?</source>
         <translation>你第一次点击了关闭按钮</translation>
     </message>
@@ -1848,47 +1873,47 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation type="obsolete">请选择点击关闭按钮的默认行为</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="446"/>
+        <location filename="../../view/main_window.py" line="456"/>
         <source>Check Update Failed</source>
         <translation>检查更新失败</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="446"/>
+        <location filename="../../view/main_window.py" line="456"/>
         <source>Failed to check for updates, possibly unable to connect to Github.</source>
         <translation>请确保能连接至 GitHub</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="374"/>
+        <location filename="../../view/main_window.py" line="384"/>
         <source>Connect API</source>
         <translation>请求 API</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="365"/>
+        <location filename="../../view/main_window.py" line="375"/>
         <source>The server returned abnormal content, which may be under maintenance.</source>
         <translation>服务器返回了不正常内容，可能其正在维护中</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="368"/>
+        <location filename="../../view/main_window.py" line="378"/>
         <source>Exceeded maximum retry attempts.</source>
         <translation>超出最大尝试次数</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="374"/>
+        <location filename="../../view/main_window.py" line="384"/>
         <source>LCU request error</source>
         <translation>客户端信息请求失败</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="956"/>
+        <location filename="../../view/main_window.py" line="966"/>
         <source>Blue Team</source>
         <translation>蓝色方</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="958"/>
+        <location filename="../../view/main_window.py" line="968"/>
         <source>Red Team</source>
         <translation>红色方</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="1032"/>
+        <location filename="../../view/main_window.py" line="1042"/>
         <source>Waiting reconnect</source>
         <translation>等待重新连接</translation>
     </message>
@@ -1903,7 +1928,7 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation type="obsolete">tasklist.exe 似乎在您的电脑上不可用</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="249"/>
+        <location filename="../../view/main_window.py" line="259"/>
         <source>Notice</source>
         <translation>公告</translation>
     </message>
@@ -1913,99 +1938,114 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation type="obsolete">复制错误信息并退出</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="239"/>
+        <location filename="../../view/main_window.py" line="249"/>
         <source>Back to Lobby</source>
         <translation>修复无限加载</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="479"/>
+        <location filename="../../view/main_window.py" line="489"/>
         <source>Fetch notice Failed</source>
         <translation>拉取公告失败</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="479"/>
+        <location filename="../../view/main_window.py" line="489"/>
         <source>Failed to fetch notice, possibly unable to connect to Github.</source>
         <translation>请确保能连接至 GitHub</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="730"/>
+        <location filename="../../view/main_window.py" line="740"/>
         <source> (</source>
         <translation>（</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="730"/>
+        <location filename="../../view/main_window.py" line="740"/>
         <source>)</source>
         <translation>）</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="738"/>
+        <location filename="../../view/main_window.py" line="748"/>
         <source>, </source>
         <translation>，</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="507"/>
+        <location filename="../../view/main_window.py" line="517"/>
         <source>Get cmdline error</source>
         <translation>获取启动参数失败</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="507"/>
+        <location filename="../../view/main_window.py" line="517"/>
         <source>Try running Seraphine as an administrator</source>
         <translation>请尝试使用管理员身份启动 Seraphine</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="887"/>
+        <location filename="../../view/main_window.py" line="897"/>
         <source>Choose action for close button (you can modify it at any time in the settings page)</source>
         <translation>请选择点击关闭按钮的默认行为</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="219"/>
-        <source>抢英雄</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../view/main_window.py" line="219"/>
-        <source>海克斯/大乱斗抢英雄</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../view/main_window.py" line="391"/>
+        <location filename="../../view/main_window.py" line="401"/>
         <source>Client not connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="391"/>
+        <location filename="../../view/main_window.py" line="401"/>
         <source>League of Legends client is not running. Please start the client first.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="470"/>
+        <location filename="../../view/main_window.py" line="480"/>
         <source>Check Update</source>
         <translation>检查更新</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="470"/>
+        <location filename="../../view/main_window.py" line="480"/>
         <source>Already up to date</source>
         <translation>已经是最新版本</translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="732"/>
+        <location filename="../../view/main_window.py" line="742"/>
         <source> (offline)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="1703"/>
+        <location filename="../../view/main_window.py" line="1714"/>
         <source>提示</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="1687"/>
+        <location filename="../../view/main_window.py" line="1698"/>
         <source>英雄联盟客户端未运行</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../view/main_window.py" line="1703"/>
-        <source>当前不在大乱斗/海克斯大乱斗选人中</source>
-        <translation type="unfinished"></translation>
+        <location filename="../../view/main_window.py" line="219"/>
+        <source>换英雄</source>
+        <translation>换英雄</translation>
+    </message>
+    <message>
+        <location filename="../../view/main_window.py" line="219"/>
+        <source>大乱斗无CD换英雄</source>
+        <translation>大乱斗无CD换英雄</translation>
+    </message>
+    <message>
+        <location filename="../../view/main_window.py" line="239"/>
+        <source>秒退</source>
+        <translation>秒退</translation>
+    </message>
+    <message>
+        <location filename="../../view/main_window.py" line="1714"/>
+        <source>当前不在大乱斗选人中</source>
+        <translation>当前不在大乱斗选人中</translation>
+    </message>
+    <message>
+        <location filename="../../view/main_window.py" line="1779"/>
+        <source>已秒退</source>
+        <translation>已秒退</translation>
+    </message>
+    <message>
+        <location filename="../../view/main_window.py" line="1782"/>
+        <source>当前不在队列中</source>
+        <translation>当前不在队列中</translation>
     </message>
 </context>
 <context>
@@ -2879,9 +2919,9 @@ If champions set by lane are not available, default settings will be used.</sour
 <context>
     <name>RestartClientCard</name>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="744"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="34"/>
         <source>Restart</source>
-        <translation type="obsolete">重启</translation>
+        <translation type="unfinished">重启</translation>
     </message>
 </context>
 <context>
@@ -3534,34 +3574,34 @@ when they are used by Seraphine, which will cost more time</source>
 <context>
     <name>SpectateCard</name>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="859"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="169"/>
         <source>Spectate</source>
-        <translation type="obsolete">观战</translation>
+        <translation type="unfinished">观战</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="928"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="238"/>
         <source>Summoner not found</source>
-        <translation type="obsolete">召唤师未找到</translation>
+        <translation type="unfinished">召唤师未找到</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="928"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="238"/>
         <source>Please check the summoner&apos;s name and retry</source>
-        <translation type="obsolete">请检查召唤师名后重试</translation>
+        <translation type="unfinished">请检查召唤师名后重试</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="931"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="241"/>
         <source>Summoner isn&apos;t in game</source>
-        <translation type="obsolete">召唤师不在游戏中</translation>
+        <translation type="unfinished">召唤师不在游戏中</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="933"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="243"/>
         <source>Spectate successfully</source>
-        <translation type="obsolete">观战拉起成功</translation>
+        <translation type="unfinished">观战拉起成功</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="933"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="243"/>
         <source>Please wait</source>
-        <translation type="obsolete">请等待游戏观战启动</translation>
+        <translation type="unfinished">请等待游戏观战启动</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="812"/>
@@ -3569,24 +3609,24 @@ when they are used by Seraphine, which will cost more time</source>
         <translation type="obsolete">你想观战的同大区召唤师名及编号：</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="890"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="200"/>
         <source>Please input summoner&apos;s name</source>
-        <translation type="obsolete">请输入召唤师名</translation>
+        <translation type="unfinished">请输入召唤师名</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="850"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="160"/>
         <source>Summoner&apos;s name you want to spectate:</source>
-        <translation type="obsolete">你想观战的同大区召唤师名及编号：</translation>
+        <translation type="unfinished">你想观战的同大区召唤师名及编号：</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="854"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="164"/>
         <source>Method:</source>
-        <translation type="obsolete">观战拉起方式：</translation>
+        <translation type="unfinished">观战拉起方式：</translation>
     </message>
     <message>
-        <location filename="../../view/auxiliary_interface.py" line="899"/>
+        <location filename="../../view/auxiliary_cards/tool_cards.py" line="209"/>
         <source>CMD</source>
-        <translation type="obsolete">命令行</translation>
+        <translation type="unfinished">命令行</translation>
     </message>
 </context>
 <context>

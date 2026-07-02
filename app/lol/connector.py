@@ -1183,6 +1183,20 @@ class LolClientConnector(QObject):
         except Exception:
             return False
 
+    async def dodge(self) -> bool:
+        """秒退: 离开队列或退出英雄选择"""
+        try:
+            res = await self.__post("/lol-lobby/v2/lobby/matchmaking/search/leave")
+            if res.status == 204:
+                return True
+        except Exception:
+            pass
+        try:
+            res = await self.__post("/lol-champ-select/v1/session/actions")
+            return res.status in (200, 204)
+        except Exception:
+            return False
+
     async def getFriends(self) -> list:
         """获取好友列表, 用于 auto honor 识别可点赞好友.
 
