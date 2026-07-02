@@ -30,11 +30,12 @@ logger = logging.getLogger(__name__)
 
 # GitHub Pages 上的 tufup repo 地址. metadata 和 targets 分别托管.
 # gh-pages 分支结构: tufup/{metadata,targets}/
+# ponytail: 指向当前 fork 的 gh-pages, 改 fork 时同步修改
 DEFAULT_METADATA_BASE_URL = (
-    "https://zzaphkiel.github.io/Seraphine/tufup/metadata/"
+    "https://li-qifeng.github.io/Seraphine/tufup/metadata/"
 )
 DEFAULT_TARGET_BASE_URL = (
-    "https://zzaphkiel.github.io/Seraphine/tufup/targets/"
+    "https://li-qifeng.github.io/Seraphine/tufup/targets/"
 )
 
 APP_NAME = "Seraphine"
