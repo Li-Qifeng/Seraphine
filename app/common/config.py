@@ -251,7 +251,7 @@ AUTHOR = "Zzaphkiel"
 # 二次开发维护者信息 (fork 维护者署名, 与原作者 AUTHOR 区分)
 MAINTAINER = "Li-Qifeng"
 MAINTAINER_URL = "https://github.com/Li-Qifeng/Seraphine"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 BETA = None
 # 以下 URL 指向当前维护者的 fork 仓库 (接管 Release / Issue 反馈)
 FEEDBACK_URL = "https://github.com/Li-Qifeng/Seraphine/issues?q=is%3Aissue"

@@ -8,5 +8,5 @@ psutil==5.9.8
 qasync==0.27.1
 async-lru==2.0.4
 packaging>=23.0
-tufup>=0.10.0
+tufup>=0.9.0
 pytest>=8.0
