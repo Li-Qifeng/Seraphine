@@ -18,7 +18,8 @@ from PyQt5.QtWidgets import QApplication, QSystemTrayIcon
 
 from app.common.qfluentwidgets import (NavigationItemPosition, InfoBar, InfoBarPosition, Action,
                                        FluentWindow, SplashScreen, MessageBox, SmoothScrollArea,
-                                       ToolTipFilter, FluentIcon, ToolTipPosition, Flyout, FlyoutAnimationType)
+                                       ToolTipFilter, FluentIcon, ToolTipPosition, Flyout, FlyoutAnimationType,
+                                       DotInfoBadge, InfoBadgePosition)
 
 from app.view.start_interface import StartInterface
 from app.view.setting_interface import SettingInterface
@@ -96,6 +97,7 @@ class MainWindow(FluentWindow):
             target=self.checkUpdate, parent=self)
         self.checkNoticeThread = StoppableThread(
             target=lambda: self.checkNotice(False), parent=self)
+        self._updateDot = None
 
         logger.critical("Seraphine listerners started", TAG)
 
@@ -267,7 +269,7 @@ class MainWindow(FluentWindow):
             position=pos,
         )
 
-        self.addSubInterface(
+        self.settingNavItem = self.addSubInterface(
             self.settingInterface, FluentIcon.SETTING,
             self.tr("Settings"), pos,
         )
@@ -420,6 +422,7 @@ class MainWindow(FluentWindow):
 
         if releasesInfo:
             self.showUpdateMessageBox.emit(releasesInfo)
+            self._showUpdateDot()
         elif force:
             self.checkUpToDate.emit()
 
@@ -449,6 +452,19 @@ class MainWindow(FluentWindow):
             parent=self,
             position=InfoBarPosition.BOTTOM_RIGHT
         )
+
+    def _showUpdateDot(self):
+        if self._updateDot:
+            return
+        self._updateDot = DotInfoBadge.attension(
+            target=self.settingNavItem,
+            position=InfoBadgePosition.NAVIGATION_ITEM,
+        )
+
+    def _clearUpdateDot(self):
+        if self._updateDot:
+            self._updateDot.deleteLater()
+            self._updateDot = None
 
     def __onCheckUpToDate(self):
         InfoBar.success(
@@ -1783,6 +1799,8 @@ class MainWindow(FluentWindow):
     def __onCurrentStackedChanged(self, index):
         widget: SmoothScrollArea = self.stackedWidget.view.currentWidget()
         widget.delegate.vScrollBar.resetValue(0)
+        if widget is self.settingInterface:
+            self._clearUpdateDot()
 
     def eventFilter(self, obj, e: QEvent):
         # Fix #553, #560

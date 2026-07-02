@@ -43,6 +43,28 @@ class RestartClientCard(SettingCard):
     async def __onButtonClicked(self):
         await connector.restartClient()
 
+class LeaveQueueCard(SettingCard):
+
+    def __init__(self, title, content, parent):
+        super().__init__(Icon.CANCEL, title, content, parent)
+        self.pushButton = PushButton(self.tr("Leave"))
+        self.pushButton.setMinimumWidth(100)
+
+        self.hBoxLayout.addWidget(self.pushButton)
+        self.hBoxLayout.addSpacing(16)
+
+        self.pushButton.clicked.connect(self.__onButtonClicked)
+
+    @asyncSlot()
+    async def __onButtonClicked(self):
+        ok = await connector.leaveQueue()
+        if ok:
+            InfoBar.success("", self.tr("Left queue"), duration=2000,
+                            parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+        else:
+            InfoBar.warning("", self.tr("Not currently in queue"), duration=2000,
+                            parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+
 class CreatePracticeLobbyCard(ExpandGroupSettingCard):
 
     def __init__(self, title, content, parent):

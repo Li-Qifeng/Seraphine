@@ -15,6 +15,7 @@ from app.view.auxiliary_cards import (
     RemovePrestigeCrestCard,
     FixClientDpiCard,
     RestartClientCard,
+    LeaveQueueCard,
     CreatePracticeLobbyCard,
     SpectateCard,
     LockConfigCard,
@@ -89,6 +90,11 @@ class AuxiliaryInterface(SeraphineInterface):
         self.restartClientCard = RestartClientCard(
             self.tr("Restart client"),
             self.tr("Restart the LOL client without re queuing"),
+            self.toolsGroup
+        )
+        self.leaveQueueCard = LeaveQueueCard(
+            self.tr("Leave queue"),
+            self.tr("Leave the matchmaking queue"),
             self.toolsGroup
         )
 
@@ -309,6 +315,7 @@ class AuxiliaryInterface(SeraphineInterface):
         self.toolsGroup.addSettingCard(self.lockConfigCard)
         self.toolsGroup.addSettingCard(self.fixDpiCard)
         self.toolsGroup.addSettingCard(self.restartClientCard)
+        self.toolsGroup.addSettingCard(self.leaveQueueCard)
 
         # 游戏信息
         self.gameInfoGroup.addSettingCard(self.queueFilterCard)

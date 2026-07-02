@@ -1176,6 +1176,13 @@ class LolClientConnector(QObject):
 
         return await res.read()
 
+    async def leaveQueue(self) -> bool:
+        try:
+            res = await self.__post("/lol-lobby/v2/lobby/matchmaking/search/leave")
+            return res.status == 204
+        except Exception:
+            return False
+
     async def getFriends(self) -> list:
         """获取好友列表, 用于 auto honor 识别可点赞好友.
 

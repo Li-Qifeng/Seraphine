@@ -2,7 +2,7 @@ from app.view.auxiliary_cards.profile_cards import (
     OnlineStatusCard, ProfileBackgroundCard, ProfileTierCard, OnlineAvailabilityCard, RemoveTokensCard, RemovePrestigeCrestCard,
 )
 from app.view.auxiliary_cards.tool_cards import (
-    FixClientDpiCard, RestartClientCard, CreatePracticeLobbyCard, SpectateCard, LockConfigCard,
+    FixClientDpiCard, RestartClientCard, LeaveQueueCard, CreatePracticeLobbyCard, SpectateCard, LockConfigCard,
 )
 from app.view.auxiliary_cards.automation_cards import (
     AutoAcceptMatchingCard, AutoHonorCard, AutoAcceptSwapingCard, AutoSelectChampionCard, AutoBanChampionCard, AutoSetSummonerSpellCard,
@@ -20,6 +20,7 @@ __all__ = [
     "RemovePrestigeCrestCard",
     "FixClientDpiCard",
     "RestartClientCard",
+    "LeaveQueueCard",
     "CreatePracticeLobbyCard",
     "SpectateCard",
     "AutoAcceptMatchingCard",
