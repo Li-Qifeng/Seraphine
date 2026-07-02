@@ -144,7 +144,7 @@ jobs:
       uses: actions/download-artifact@v4
       if: env.UPDATED == 'true'
       with:
-        name: SeraphineSetup-${{ steps.detect.outputs.version }}
+        name: SeraphineSetup-${{ needs.build-installer.outputs.version }}
         path: ./
     - name: Generate SHA256 checksum (7z)
       if: env.UPDATED == 'true'
