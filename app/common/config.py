@@ -7,7 +7,8 @@ from PyQt5.QtCore import QLocale, QSize
 
 from .qfluentwidgets import (qconfig, QConfig, ConfigItem, BoolValidator,
                              OptionsConfigItem, OptionsValidator, ConfigSerializer,
-                             RangeConfigItem, RangeValidator, ColorConfigItem)
+                             RangeConfigItem, RangeValidator, ColorConfigItem,
+                             Theme, EnumSerializer)
 
 
 class Language(Enum):
@@ -38,6 +39,10 @@ def isWin11():
 
 
 class Config(QConfig):
+    themeMode = OptionsConfigItem(
+        "QFluentWidgets", "ThemeMode", Theme.AUTO,
+        OptionsValidator(Theme), EnumSerializer(Theme))
+
     lolFolder = ConfigItem("General", "LolPath", [])
     enableStartLolWithApp = ConfigItem("General", "EnableStartLolWithApp",
                                        False, BoolValidator())

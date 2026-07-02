@@ -65,6 +65,7 @@ class MainWindow(FluentWindow):
     showUpdateMessageBox = pyqtSignal(dict)
     showNoticeMessageBox = pyqtSignal(str)
     checkUpdateFailed = pyqtSignal()
+    checkUpToDate = pyqtSignal()
     fetchNoticeFailed = pyqtSignal()
 
     def __init__(self):
@@ -273,7 +274,7 @@ class MainWindow(FluentWindow):
 
         # set the maximum width
         self.navigationInterface.setExpandWidth(250)
-        self.navigationInterface.setMinimumExpandWidth(1321)
+        self.navigationInterface.panel.expand()
 
     def __conncetSignalToSlot(self):
         # From listener:
@@ -315,6 +316,7 @@ class MainWindow(FluentWindow):
             lambda: threading.Thread(target=self.checkUpdate, args=(True,), daemon=True).start())
         self.showNoticeMessageBox.connect(self.__onShowNoticeMessageBox)
         self.checkUpdateFailed.connect(self.__onCheckUpdateFailed)
+        self.checkUpToDate.connect(self.__onCheckUpToDate)
         self.fetchNoticeFailed.connect(self.__onFetchNoticeFailed)
         self.stackedWidget.currentChanged.connect(
             self.__onCurrentStackedChanged)
@@ -418,6 +420,8 @@ class MainWindow(FluentWindow):
 
         if releasesInfo:
             self.showUpdateMessageBox.emit(releasesInfo)
+        elif force:
+            self.checkUpToDate.emit()
 
     def checkNotice(self, triggerByUser):
         try:
@@ -442,6 +446,15 @@ class MainWindow(FluentWindow):
                 "Failed to check for updates, possibly unable to connect to Github."),
             duration=5000,
             orient=Qt.Vertical,
+            parent=self,
+            position=InfoBarPosition.BOTTOM_RIGHT
+        )
+
+    def __onCheckUpToDate(self):
+        InfoBar.success(
+            self.tr("Check Update"),
+            self.tr("Already up to date"),
+            duration=3000,
             parent=self,
             position=InfoBarPosition.BOTTOM_RIGHT
         )
