@@ -59,8 +59,47 @@ jobs:
           name: Seraphine-dist
           path: .\dist\Seraphine
 
-  release:
+  # 构建 Windows 安装包 (Inno Setup).
+  # 复用 build-seraphine 的 dist/Seraphine 产物，不做二次打包。
+  build-installer:
     needs: build-seraphine
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Download dist artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: Seraphine-dist
+        path: ./dist/Seraphine
+    - name: Install Inno Setup
+      run: choco install innosetup --no-progress --confirm
+    - name: Get version
+      id: ver
+      shell: pwsh
+      run: |
+        $v = Select-String -Path app/common/config.py -Pattern 'VERSION = "(.+)"' | ForEach-Object { $_.Matches.Groups[1].Value }
+        echo "version=$v" >> $env:GITHUB_OUTPUT
+    - name: Compile installer
+      run: |
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\installer\Seraphine.iss /DMyAppVersion=${{ steps.ver.outputs.version }} /Q
+        copy packaging\installer\SeraphineSetup-*.exe .
+    - name: Generate SHA256
+      run: |
+        sha256sum SeraphineSetup-*.exe > SeraphineSetup-${{ steps.ver.outputs.version }}.exe.sha256
+        cat SeraphineSetup-${{ steps.ver.outputs.version }}.exe.sha256
+    - name: Upload installer artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SeraphineSetup-${{ steps.ver.outputs.version }}
+        path: |
+          SeraphineSetup-*.exe
+          SeraphineSetup-*.exe.sha256
+
+  release:
+    needs: [build-seraphine, build-installer]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -94,13 +133,19 @@ jobs:
         echo "updated=$UPDATED" >> "$GITHUB_OUTPUT"
         echo "version=v$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
         echo "Detected VERSION=$CURRENT_VERSION, UPDATED=$UPDATED"
-    - name: Download artifact
+    - name: Download artifact (7z)
       uses: actions/download-artifact@v4
       if: env.UPDATED == 'true'
       with:
         name: Seraphine
         path: ./
-    - name: Generate SHA256 checksum
+    - name: Download artifact (installer)
+      uses: actions/download-artifact@v4
+      if: env.UPDATED == 'true'
+      with:
+        name: SeraphineSetup-${{ steps.detect.outputs.version }}
+        path: ./
+    - name: Generate SHA256 checksum (7z)
       if: env.UPDATED == 'true'
       run: |
         sha256sum Seraphine.7z > Seraphine.7z.sha256
@@ -118,6 +163,8 @@ jobs:
         artifacts: |
           Seraphine.7z
           Seraphine.7z.sha256
+          SeraphineSetup-*.exe
+          SeraphineSetup-*.exe.sha256
     - name: Sync to Gitee (domestic mirror)
       if: env.UPDATED == 'true' && env.GITEE_OWNER != ''
       env:

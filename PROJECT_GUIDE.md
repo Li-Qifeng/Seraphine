@@ -100,22 +100,25 @@ push 到 main 分支
         │     .\make.ps1 -keepDist   # → Seraphine.7z + 保留 dist/Seraphine
         │     upload-artifact (Seraphine.7z + Seraphine-dist)
         │
-        ├─ release job（ubuntu-latest, 依赖 build）
+        ├─ build-installer job（windows-latest, 依赖 build-seraphine）
+        │     choco install innosetup
+        │     ISCC Seraphine.iss → SeraphineSetup-{VERSION}.exe
+        │     upload-artifact (installer exe + sha256)
+        │
+        ├─ release job（ubuntu-latest, 依赖 build + installer）
         │     用 git diff HEAD~1 HEAD 检测 VERSION 行是否在本次提交被修改
         │     若 UPDATED == true:
-        │       download artifact → ncipollo/release-action
-        │       发布 tag v{VERSION} 的 GitHub Release（附件 Seraphine.7z + .sha256）
+        │       download artifacts → ncipollo/release-action
+        │       发布 tag v{VERSION} 的 GitHub Release
+        │       （附件: Seraphine.7z + .sha256 + SeraphineSetup-*.exe + .sha256）
         │     outputs: updated / version （供下游 publish-tufup 复用）
         │
         └─ publish-tufup job（ubuntu-latest, 依赖 build+release, 仅 VERSION 变更时运行）
               download Seraphine-dist artifact
               恢复 gh-pages 上既有 tufup 仓库 (metadata + targets, patch 链需要)
-              从 secret TUFUP_KEYS_B64 恢复 TUF 签名密钥（首次运行生成新密钥）
-              tufup_repo.py init / add-bundle:
-                将 dist/Seraphine 打包为 Seraphine-{version}.tar.gz (target)
-                与上一版生成 bsdiff .patch (增量补丁)
-                签名并刷新 metadata (root/targets/snapshot/timestamp)
-              peaceiris/actions-gh-pages 部署到 gh-pages/tufup/ (keep_files 保留旧 targets)
+              从 TUFUP_KEYS_B64 secret 还原签名密钥
+              add-bundle + 签名发布
+              deploy 到 gh-pages/tufup/
 ```
 
 - **Gitee 镜像**：`sync.py` 通过 Gitee OAuth 把 Release（含 `.7z` + `.sha256`）同步到 Gitee（国内访问），幂等可重入。
@@ -126,7 +129,12 @@ push 到 main 分支
   - **服务端脚本**：`tufup_repo.py`（仓库根）提供 `init`/`add-bundle`/`pack-keys`/`unpack-keys` 子命令，封装了 CI 非交互式运行所需的 `input()` 屏蔽逻辑（`Keys.create_key_pair` 与 `make_gztar_archive` 都会交互式询问覆盖）。
 - **版本 kill-switch**：`document/ver.json`（如 `{"0.12.3": {"forbidden": false}}`），应用启动时检查，可用于远程禁用有问题的版本。
 
-> **发包约定**：不要手敲 Release，只改 `VERSION` 让 CI 自动出包并发布 tufup 增量更新。`make.ps1` 产物结构：`Seraphine/Seraphine.exe` + `app/resource/`（源码目录已被 PyInstaller 冻结进 exe，仅保留资源；`tufup/metadata/root.json` 作为 loose 文件保留其中）。
+> **发包约定**：不要手敲 Release，只改 `VERSION` 让 CI 自动出包并发布 tufup 增量更新。每次发版产两件：`Seraphine.7z`（便携版，旧用户升级路径）和 `SeraphineSetup-{VERSION}.exe`（Inno Setup 安装包，新用户推荐）。
+>
+> **安装包设计要点**：
+> - 安装路径：`%LOCALAPPDATA%\Programs\Seraphine`（per-user，无需管理员权限，tufup 增量更新可正常写文件）
+> - CI 通过 `choco install innosetup` + `ISCC.exe /Q` 编译，产物自动上传到 Release
+> - 卸载时自动清理 tufup 缓存目录（`%LOCALAPPDATA%\Seraphine\tufup_targets`），避免新旧版本缓存混用
 
 ### 1.4 运行环境约束
 
@@ -681,6 +689,13 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 - `make.ps1` 会删除 dist 里的 `app/common`、`app/components`、`app/lol`、`app/view` 源码目录（已被 PyInstaller 冻结），勿误以为丢失；`-keepDist` 保留 `dist/Seraphine` 供 tufup 打 `tar.gz` 增量包。
 - PyInstaller 命令含 `--collect-submodules tufup --collect-submodules tuf`：tufup.client 为函数内延迟导入，tuf 内部有动态导入，需显式收集子模块否则 frozen 后运行时 ImportError。
 - **tufup 首次 bootstrap**：仓库无 `TUFUP_KEYS_B64` secret 时，publish-tufup job 会生成新密钥并输出到 step summary，需开发者（a）将密钥存为 secret `TUFUP_KEYS_B64`，（b）下载 `tufup-root-json` artifact 中的 `root.json` 提交到 `app/resource/tufup/metadata/root.json` 后重新发版，客户端方可校验更新。
+
+**安装包（Inno Setup）**：
+- 脚本：`packaging/installer/Seraphine.iss`，编译需 Inno Setup 6（CI 通过 `choco install innosetup` 安装）
+- 编译命令：`ISCC.exe packaging\installer\Seraphine.iss /DMyAppVersion={VERSION} /Q`
+- 安装路径：`%LOCALAPPDATA%\Programs\Seraphine`（per-user，无需管理员权限，tufup 可正常写文件）
+- CI 的 `build-installer` job 自动构建，产物 `SeraphineSetup-{VERSION}.exe` 随 Release 发布
+- 卸载时自动清理 `%LOCALAPPDATA%\Seraphine\tufup_targets` 缓存目录
 
 ---
 
