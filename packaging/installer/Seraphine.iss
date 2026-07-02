@@ -4,6 +4,7 @@
 #define MyAppName "Seraphine"
 #define MyAppPublisher "Li-Qifeng"
 #define MyAppURL "https://github.com/Li-Qifeng/Seraphine"
+#define MyAppIcon "..\..\app\resource\images\logo.ico"
 
 [Setup]
 AppName={#MyAppName}
@@ -13,6 +14,7 @@ AppPublisherURL={#MyAppURL}
 DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+SetupIconFile={#MyAppIcon}
 OutputDir=.
 OutputBaseFilename=SeraphineSetup-{#MyAppVersion}
 Compression=lzma2/max

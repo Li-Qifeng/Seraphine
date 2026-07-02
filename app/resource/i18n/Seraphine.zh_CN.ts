@@ -2973,6 +2973,11 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation>在 Seraphine 启动时自动检查更新</translation>
     </message>
     <message>
+        <location filename="../../view/setting_interface.py" line="222"/>
+        <source>Check now</source>
+        <translation>立即检查</translation>
+    </message>
+    <message>
         <location filename="../../view/setting_interface.py" line="47"/>
         <source>Number of games:</source>
         <translation>显示对局数量：</translation>

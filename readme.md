@@ -222,8 +222,6 @@ Seraphine is not endorsed by Riot Games and does not reflect the views or opinio
   </p>
 
 
-## 交流群
-- Seraphine 交流群（QQ）：[926719775](https://qm.qq.com/cgi-bin/qm/qr?k=ulYfeMNL-GrYzemJyjOq7K1y4YSasBPL&jump_from=webapi&authKey=6Nw8v3gCSswJ6HtoMlqTs2+/nS5llSOgVIs/Hh2Xm0yzNZ0yEIDjvYQqbdjF4wbb)（已满，随缘进群），入群口令：enihpareS
   
 
 ## 许可证 ⚖️
