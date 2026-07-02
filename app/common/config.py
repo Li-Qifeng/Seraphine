@@ -177,7 +177,7 @@ class Config(QConfig):
     )
 
     enableCheckUpdate = ConfigItem("General",
-                                   "EnableCheckUpdate", False,
+                                   "EnableCheckUpdate", True,
                                    BoolValidator())
 
     logLevel = OptionsConfigItem(

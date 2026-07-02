@@ -234,10 +234,11 @@ __init__
 `app/common/signals.py` 定义单一 `SignalBus(QObject)` 实例 `signalBus`，承载约 17 个 `pyqtSignal`，按来源分组：
 
 | 分组 | 信号 | 触发源 |
-|---|---|---|
+|---|---|---|---|
 | listener | `tasklistNotFound`, `lolClientStarted(int)`, `lolClientEnded`, `lolClientChanged(int)`, `terminateListeners` | `LolProcessExistenceListener`（QThread 轮询 tasklist） |
 | connector | `lcuApiExceptionRaised(str, BaseException)`, `currentSummonerProfileChanged(dict)`, `gameStatusChanged(str)`, `champSelectChanged(dict)`, `getCmdlineError` | LCU REST/WS 回调 |
 | 跨界面跳转 | `toCareerInterface(str)`, `toSearchInterface(str)`, `toOpggBuildInterface(int,str,str)`, `careerGameBarClicked(str)`, `gameTabClicked(QWidget)` | 各 view |
+| 更新检查 | `checkUpdateRequested` | 设置页"Check now"按钮 |
 | 样式 | `customColorChanged(str)` | `__ColorManager` |
 
 **接线全部集中在 `MainWindow.__conncetSignalToSlot`**，逐行 `connect`。这是解耦 listener / connector / views 的关键：模块间不持有引用，只通过 `signalBus` 通信。
@@ -838,18 +839,55 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 国服（Tencent SGP）部分数据走 SGP 端点，能力与全球 LCU 略有差异，开发前查 `connector.isInTencent()` 分支。
 
-### 6.3 新功能方向建议（由 TODO + enhancement issue 推导）
+### 6.3 同类项目功能矩阵（2026‑07）
 
-- **历史版本数据**：ARAM 等数据支持查历史版本（`aram.py:43` TODO，需服务端配合）。
-- **更多样式自定义**：team1/team2 预组队高亮色已开放；后续可考虑开放更多 QSS 颜色项（如 GameInfo 卡片背景、辅助色等）给用户。
-- **测试基础设施**：✅ connector 契约测试（`tests/test_connector_contract.py`，31 用例）、`JsonManager` 单测（`tests/test_json_manager.py`，41 用例）、`parseGameInfoByGameflowSession` 契约测试（`tests/test_parse_game_info.py`，21 用例）、**全队 5 档评级单测**（`tests/test_war_criminal.py` 33 用例 + `tests/test_team_rating.py` 28 用例）已建立；CI lint job 已从 advisory 收紧为强制阻断（`ruff check`，161 个历史错误已清零）。后续可补 `parseAllyGameInfo` 等带状态依赖的解析函数测试。
-- **类型化数据模型**：✅ connector 公共方法、`JsonManager`（约 20 个方法）、`opgg.py`（22 个方法）返回类型已标注；后续可补 `tools.py` 辅助函数与 `aram.py`/`champions.py`，并引入 `mypy`/`pyright` CI。
-- **AI 复盘扩展方向**（全队 5 档评级已落地，可继续深化的数据切片）：
-  - **最近 N 场趋势曲线**：生涯页加胜率/KDA 折线图（高频被提需求，数据已就绪，需图表组件）。
-  - **代练/小号预警**：查对手时算近期胜率+KDA 突变+段位差，标记"疑似小号"（秒退决策价值高）。
-  - **连胜/连败 momentum 提示**：结算后基于已有战绩列表算当前连胜/连败数，弹"已连败 N 场，建议休息"。
-  - **队友位置冲突预警**：BP 阶段已有队友数据，检测多人常玩同位置 → 提示"建议秒"。
-  - **对局中实时提醒**：打野计时/龙刷新/敌方消失（已有 `live_client.py` + `liveGameDataUpdated` 信号基建可复用，需事件规则引擎+通知 UI，成本较高）。
+| 功能 | Seraphine (本 fork) | LeagueAkari | KBotExt | league-tools | L9Lenny profile_tool |
+|---|---|---|---|---|---|
+| 技术栈 | PyQt5, Python | Electron, Vue 3, TS | C++, Win32 | Electron, TS | Tauri v2, React, Rust |
+| 活跃度 | ✅ 活跃 | ✅ 活跃 (v1.4.3) | ⚠️ 停滞 (2024‑05) | ✅ 活跃 | ✅ 活跃 |
+| 战绩查询 (队友/对手) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| 自动 B/P (选/禁/秒接) | ✅ | ✅ | ✅ | ❌ | ❌ |
+| OPGG 一键符文 | ✅ | ✅ | ✅ | ❌ | ❌ |
+| 海克斯/大乱斗抢人 | ✅ | ✅ | ❌ | ❌ | ❌ |
+| 个人资料修改 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 全队 5 档评级 | ✅ 独家 | ❌ | ❌ | ❌ | ❌ |
+| 战犯诊断 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 增量自更新 (tufup) | ✅ | ✅ | ✅ (内置) | ❌ | ✅ (签名) |
+| 安装包 (Inno Setup) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 好友管理 (批量删/加) | ❌ | ✅ | ✅ | ❌ | ✅ |
+| 大厅暴露召唤师名 | ❌ | ❌ | ✅ | ❌ | ❌ |
+| 自定义 LCU 请求发送 | ❌ | ❌ | ✅ | ❌ | ❌ |
+| 多开客户端 | ❌ | ❌ | ✅ | ❌ | ❌ |
+| 修客户端窗口 | ✅ | ✅ | ❌ | ❌ | ❌ |
+| 观战 | ✅ | ✅ | ❌ | ❌ | ❌ |
+| 跨平台 | ❌ (Win) | ❌ (Win) | ❌ (Win) | ✅ (Win/Linux) | ✅ (Tauri) |
+
+### 6.4 下一步规划（优先级排序）
+
+#### 📦 P0 — 基础设施完善（当前 sprint）
+- [x] CI 自动构建 7z + 安装包 + tufup 增量更新
+- [x] 默认开启自动检查更新
+- [x] 设置页"Check Now"手动检查按钮
+- [ ] **导航栏更新 badge**：检测到新版本时在 Settings 图标右上角显示小红点 + 主界面右下角 InfoBar 提示
+- [ ] **定时轮询检查**：启动后每 4h 用 QTimer 自动检查一次
+
+#### 🎯 P1 — 功能补齐（对标竞品缺失项）
+- [ ] **好友管理器**：批量删除好友、接受好友请求、查询好友最近对局
+- [ ] **大厅暴露召唤师名**：Ranked 选人阶段显示队友/对手 ID（KBotExt 热门功能）
+- [ ] **秒退不关客户端**：通过 `POST /lol-lobby/v2/leave-queue` 实现，省 30s 重开时间
+- [ ] **OPGG 代理设置**：已支持 HTTP 代理，可补充内置代理/缓存加速国内访问
+
+#### 📊 P2 — AI 复盘扩展
+- [ ] **最近 N 场趋势曲线**：生涯页胜率/KDA 折线图（数据已就绪，需图表组件）
+- [ ] **代练/小号预警**：查对手时算近期胜率+KDA 突变+段位差，标记"疑似小号"
+- [ ] **连胜/连败 momentum**：结算后弹"已连败 N 场，建议休息"
+- [ ] **队友位置冲突预警**：BP 阶段检测多人常玩同位置 → 提示"建议秒"
+
+#### 🔬 P3 — 探索性方向
+- [ ] **对局中实时提醒**：打野计时/龙刷新/敌方消失（已有 `live_client.py` + `liveGameDataUpdated` 信号）
+- [ ] **Replay 管理器**：浏览/重命名/分享 .rofl 文件
+- [ ] **赛季分析面板**：按英雄/角色/双排队友/时段的胜率统计
+- [ ] **皮肤/战利品通知**：检测宝箱资格、皮肤折扣、英雄碎片
 
 > 已完成方向：GameInfo 按队列模式筛选（`mode_filter_widget.py` 已接入 `GameInfoInterface`）；自定义模式 <5 人重载守卫（`main_window.py`）；rollAndSwapBack 删除（海克斯大乱斗无摇骰子）；team1/team2 预组队高亮色开放用户自定义（`TeamColorSettingCard`，cfg 项 `team1Color`/`team2Color`，经 `signalBus.customColorChanged` 触发刷新）；`getLoginSummonerByPid` 异步化改造；CI ruff lint 收紧为强制阻断 + 161 个历史错误清零；`JsonManager` + `opgg.py` 类型注解补全；`parseGameInfoByGameflowSession` 契约测试建立 + §5.1 FIXME（自定义模式名单泄露）修复；**结算后自动点赞**（`tools_pure.pickHonorTarget` 4 策略 + `connector.getEogStats/submitHonor`，cfg 项 `enableAutoHonor`/`autoHonorStrategy`/`autoHonorDelay`）；**全队 5 档评级**（`war_criminal.py` z-score 算法 + `grade_badge.py` UI + OPGG 胜率/海克斯强化基线，cfg 项 `enableTeamRating`/`teamRatingStyle`）。
 

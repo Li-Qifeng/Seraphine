@@ -18,6 +18,7 @@ from app.components.setting_cards import (LineEditSettingCard, GameTabColorSetti
                                           DeathsNumberColorSettingCard, ThemeColorSettingCard,
                                           TeamColorSettingCard)
 from app.components.message_box import MultiPathSettingMsgBox
+from app.common.signals import signalBus
 
 
 class SettingInterface(SeraphineInterface):
@@ -163,10 +164,16 @@ class SettingInterface(SeraphineInterface):
             parent=self.personalizationGroup)
 
         # --- 关于组卡片 ---
-        self.checkUpdateCard = SwitchSettingCard(
+        self.checkUpdateCard = PushSettingCard(
+            self.tr("Check now"),
             Icon.UPDATE, self.tr("Check for updates"),
             self.tr(
                 "Automatically check for updates when software starts"),
+            self.aboutGroup)
+
+        self.autoCheckUpdateCard = SwitchSettingCard(
+            Icon.SNOOZE, self.tr("Auto check on startup"),
+            self.tr("Check for updates automatically when Seraphine starts"),
             cfg.enableCheckUpdate,
             parent=self.aboutGroup)
 
@@ -240,6 +247,7 @@ class SettingInterface(SeraphineInterface):
 
         # 关于组
         self.aboutGroup.addSettingCard(self.checkUpdateCard)
+        self.aboutGroup.addSettingCard(self.autoCheckUpdateCard)
         self.aboutGroup.addSettingCard(self.httpProxyCard)
         self.aboutGroup.addSettingCard(self.logLevelCard)
         self.aboutGroup.addSettingCard(self.viewLogCard)
@@ -262,6 +270,8 @@ class SettingInterface(SeraphineInterface):
         cfg.appRestartSig.connect(self.__showRestartToolTip)
         self.careerGamesCount.pushButton.clicked.connect(
             self.__showUpdatedSuccessfullyToolTip)
+        self.checkUpdateCard.clicked.connect(
+            lambda: signalBus.checkUpdateRequested.emit())
         self.feedbackCard.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL)))
         self.deleteResourceCard.clicked.connect(self.__showFlyout)

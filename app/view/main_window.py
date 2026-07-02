@@ -311,6 +311,8 @@ class MainWindow(FluentWindow):
 
         # From main_window
         self.showUpdateMessageBox.connect(self.__onShowUpdateMessageBox)
+        signalBus.checkUpdateRequested.connect(
+            lambda: threading.Thread(target=self.checkUpdate, args=(True,), daemon=True).start())
         self.showNoticeMessageBox.connect(self.__onShowNoticeMessageBox)
         self.checkUpdateFailed.connect(self.__onCheckUpdateFailed)
         self.fetchNoticeFailed.connect(self.__onFetchNoticeFailed)
@@ -404,8 +406,8 @@ class MainWindow(FluentWindow):
             self.showNormal()
             self.activateWindow()
 
-    def checkUpdate(self):
-        if not cfg.get(cfg.enableCheckUpdate):
+    def checkUpdate(self, force=False):
+        if not force and not cfg.get(cfg.enableCheckUpdate):
             return
 
         try:
