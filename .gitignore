@@ -36,3 +36,9 @@ seraphine
 
 # 忽略 IDE 内部文件
 .trae/
+
+# tufup 工作目录（本地生成，不入仓库）
+tufup_keys/
+tufup_repo/
+tufup_keys.b64
+.tufup-repo-config
