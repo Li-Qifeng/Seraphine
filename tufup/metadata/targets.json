@@ -1,0 +1,28 @@
+{
+ "signatures": [
+  {
+   "keyid": "5614cb68f92ba685376dd1942c1599283e36c418f2ca7f424f0ce8ae02f9138a",
+   "sig": "1970d3b5da3f63b54b59baaefe4397b81c4127ae04140d857b37f3f3f841b4a8bfcd17ca75c5745e0e50ac935de0836a696228ed7a7c4ca2b8eb9ee3004da208"
+  }
+ ],
+ "signed": {
+  "_type": "targets",
+  "expires": "2026-07-09T10:50:35Z",
+  "spec_version": "1.0.31",
+  "targets": {
+   "Seraphine-1.2.0.tar.gz": {
+    "custom": {
+     "tufup": {
+      "required": false
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "81dd87c73e96666f62f4c507335fe9952bdac3e6419c341bcbfe3c6b8421f5be"
+    },
+    "length": 12527046
+   }
+  },
+  "version": 2
+ }
+}
