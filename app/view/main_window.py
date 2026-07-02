@@ -1085,16 +1085,25 @@ class MainWindow(FluentWindow):
         asyncio.create_task(reconnect())
 
     async def __autoHonor(self):
-        """EndOfGame 阶段自动给队友点赞.
+        """EndOfGame 阶段自动点赞 (参考 sona/lol-bot 实现).
 
-        使用 /lol-honor-v2/v1/ballot (GET) 获取可点赞队友候选,
-        按策略选一个后 POST /lol-honor-v2/v1/honor-player 提交.
-        v2 端点提交后客户端自动记录, 无需 seal ballot.
+        使用 /lol-honor-v2/v1/ballot (GET) 获取点赞候选面板:
+        - eligibleAllies: 可点赞的队友
+        - eligibleOpponents: 可点赞的对手
+        - votePool.votes: 可用票数 (取决于荣誉等级, 通常 1-2 票)
+        - gameId: 当前对局 ID
+
+        按策略选目标后, 逐个 POST /lol-honor-v2/v1/honor-player 提交.
+        每票随机选取 HEART/COOL/SHOTCALLER 类别, 避免模式化行为.
+        队友优先, 多余的票给对手.
+
         策略: friends_first (默认) / friends_only / best_score / random.
 
         ballot.eligibleAllies 可能因 LCU 时序问题为空 (尤其 ARAM Mayhem),
         最多重试 3 次, 每次间隔 2 秒.
         """
+        import random as _random
+
         if not cfg.get(cfg.enableAutoHonor):
             return
 
@@ -1103,9 +1112,8 @@ class MainWindow(FluentWindow):
 
             strategy = cfg.get(cfg.autoHonorStrategy)
 
-            # ballot.eligibleAllies 可能为空 (LCU 时序), 最多重试 3 次
+            # ballot 可能为空 (LCU 时序), 最多重试 3 次
             ballot = None
-            candidates = []
             for attempt in range(3):
                 ballot = await connector.getEogStats()
                 if not ballot:
@@ -1113,65 +1121,123 @@ class MainWindow(FluentWindow):
                         f"Auto honor: no ballot (attempt={attempt})", TAG)
                     await asyncio.sleep(2)
                     continue
-                candidates = ballot.get('eligibleAllies') or []
-                if candidates:
+                allies = ballot.get('eligibleAllies') or []
+                opponents = ballot.get('eligibleOpponents') or []
+                if allies or opponents:
                     break
                 logger.error(
-                    f"Auto honor: eligibleAllies empty, "
-                    f"retry in 2s (attempt={attempt})",
-                    TAG)
+                    f"Auto honor: eligibleAllies/Opponents empty, "
+                    f"retry in 2s (attempt={attempt})", TAG)
                 await asyncio.sleep(2)
 
-            if not candidates:
+            if not ballot:
                 logger.error(
-                    "Auto honor: no eligibleAllies in ballot after retries",
-                    TAG)
+                    "Auto honor: no ballot after retries", TAG)
                 return
 
-            # ballot.gameId 用于 v2 honor-player 端点
-            gameId = ballot.get("gameId")
+            allies = ballot.get('eligibleAllies') or []
+            opponents = ballot.get('eligibleOpponents') or []
+            votes = (ballot.get('votePool') or {}).get('votes') or 1
+            gameId = ballot.get('gameId')
+
+            logger.error(
+                f"Auto honor: ballot gameId={gameId} "
+                f"allies={len(allies)} opponents={len(opponents)} "
+                f"votes={votes}", TAG)
 
             # 拉好友列表
             friends = await connector.getFriends()
             friendsPuuid = {f.get("puuid") for f in friends
                             if isinstance(f, dict) and f.get("puuid")}
 
-            # 按策略选目标
-            target = self.__pickHonorFromEligible(
-                candidates, friendsPuuid, strategy)
-            if not target:
+            # 构建目标列表 (Fisher-Yates 打散 + 策略筛选)
+            targets = self.__buildHonorTargets(
+                allies, opponents, friendsPuuid, strategy, votes, _random)
+            if not targets:
                 logger.error(
-                    f"Auto honor: no valid target (strategy={strategy}, "
-                    f"candidates={len(candidates)}, friends={len(friendsPuuid)})",
-                    TAG)
+                    f"Auto honor: no valid targets "
+                    f"(strategy={strategy}, allies={len(allies)}, "
+                    f"opponents={len(opponents)}, "
+                    f"friends={len(friendsPuuid)})", TAG)
                 return
 
-            puuid = target.get("puuid")
-            if not puuid:
-                logger.error(f"Auto honor: target has no puuid: {target}", TAG)
-                return
-
-            # ballot.eligibleAllies 同时含 summonerId 和 puuid;
-            # v2 honor-player 端点需要 summonerId + gameId.
-            summonerId = target.get("summonerId")
+            _HONOR_CATEGORIES = ('HEART', 'COOL', 'SHOTCALLER')
+            total = len(targets)
+            success = 0
+            for i, target in enumerate(targets):
+                puuid = target.get("puuid")
+                summonerId = target.get("summonerId")
+                if not puuid:
+                    continue
+                category = _random.choice(_HONOR_CATEGORIES)
+                is_ally = any(
+                    a.get('puuid') == puuid for a in allies)
+                logger.error(
+                    f"Auto honor: vote {i+1}/{total} → "
+                    f"[{category}] {target.get('summonerName', puuid)} "
+                    f"{'队友' if is_ally else '对手'}", TAG)
+                ok = await connector.submitHonor(
+                    puuid, category,
+                    summonerId=summonerId, gameId=gameId)
+                if ok:
+                    success += 1
+                else:
+                    logger.error(
+                        f"Auto honor: vote {i+1}/{total} failed "
+                        f"(国服 LCU 可能无法联系 honor 服务器)", TAG)
 
             logger.error(
-                f"Auto honor: picked target={target} strategy={strategy}",
-                TAG)
-            ok = await connector.submitHonor(
-                puuid, "HEART", summonerId=summonerId, gameId=gameId)
-            name = target.get("summonerName") or puuid
-            if ok:
-                # submitHonor 内部已二次验证 honoredPlayers
-                logger.error(
-                    f"Auto honored: {name} (strategy={strategy}, verified)",
-                    TAG)
-            else:
-                logger.error(
-                    f"Auto honor failed: {name} "
-                    f"(国服 LCU 可能无法联系 honor 服务器)", TAG)
+                f"Auto honor: done {success}/{total} votes", TAG)
+
         except Exception as e:
             logger.error(f"Auto honor failed: {e}", TAG)
+
+    def __buildHonorTargets(self, allies, opponents, friendsPuuid,
+                            strategy, votes, random_module):
+        """根据策略构建点赞目标列表.
+
+        参考 sona/lol-bot 的 Fisher-Yates 打散 + 队友优先逻辑:
+        - 同一类 (好友/非好友队友/对手) 内部 Fisher-Yates 打散
+        - 顺序: 好友 → 非好友队友 → 对手
+        - 切片取前 votes 个
+
+        Args:
+            allies: eligibleAllies 列表
+            opponents: eligibleOpponents 列表
+            friendsPuuid: 好友 puuid 集合
+            strategy: 点赞策略
+            votes: 可用票数
+            random_module: random 模块实例
+
+        Returns:
+            list[dict], 点赞目标列表 (最多 votes 个)
+        """
+        def fisher_yates(arr):
+            """Fisher-Yates 洗牌算法 (同 sona/lol-bot)."""
+            a = list(arr)
+            for i in range(len(a) - 1, 0, -1):
+                j = random_module.randint(0, i)
+                a[i], a[j] = a[j], a[i]
+            return a
+
+        if strategy == 'friends_only':
+            friends = [a for a in allies
+                       if a.get('puuid') in friendsPuuid]
+            return fisher_yates(friends)[:votes]
+
+        if strategy == 'friends_first':
+            friends = [a for a in allies
+                       if a.get('puuid') in friendsPuuid]
+            non_friends = [a for a in allies
+                          if a.get('puuid') not in friendsPuuid]
+            ordered = (fisher_yates(friends)
+                       + fisher_yates(non_friends)
+                       + fisher_yates(opponents))
+            return ordered[:votes]
+
+        # random / best_score: 所有候选随机打散, 队友优先
+        ordered = fisher_yates(allies) + fisher_yates(opponents)
+        return ordered[:votes]
 
     async def __autoPlayAgain(self):
         """EndOfGame 阶段自动点击"再来一局".
@@ -1186,30 +1252,6 @@ class MainWindow(FluentWindow):
             logger.error("Auto play again: done", TAG)
         except Exception as e:
             logger.error(f"Auto play again failed: {e}", TAG)
-
-    def __pickHonorFromEligible(self, candidates: list, friendsPuuid: set,
-                                 strategy: str):
-        """从 ballot eligibleAllies 选 honor 目标.
-
-        candidates 字段: puuid/summonerId/summonerName/championId/championName 等.
-        用 puuid 判断好友.
-        """
-        import random as _random
-        if not candidates:
-            return None
-
-        friends = [c for c in candidates
-                   if isinstance(c, dict) and c.get('puuid')
-                   and c.get('puuid') in friendsPuuid]
-
-        if strategy == 'friends_only':
-            return friends[0] if friends else None
-        if strategy == 'friends_first':
-            return friends[0] if friends else candidates[0]
-        if strategy == 'random':
-            return _random.choice(candidates)
-        # best_score 或未知: 暂无评分数据, 退化为第一个候选
-        return candidates[0]
 
     def __scheduleAutoStartMatchmaking(self):
         if not cfg.get(cfg.enableAutoStartMatchmaking):
