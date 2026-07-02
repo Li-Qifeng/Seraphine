@@ -46,7 +46,7 @@ class RestartClientCard(SettingCard):
 class LeaveQueueCard(SettingCard):
 
     def __init__(self, title, content, parent):
-        super().__init__(Icon.CANCEL, title, content, parent)
+        super().__init__(Icon.EXIT, title, content, parent)
         self.pushButton = PushButton(self.tr("Leave"))
         self.pushButton.setMinimumWidth(100)
 
