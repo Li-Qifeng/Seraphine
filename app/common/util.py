@@ -98,7 +98,7 @@ class Github:
             self._ver_info = None
 
         # debug
-        logger.info(f"checkUpdate: tufup_check() start", TAG)
+        logger.info("checkUpdate: tufup_check() start", TAG)
         has_update, new_version = tufup_check()
         # debug
         logger.info(f"checkUpdate: tufup has_update={has_update} new_version={new_version}", TAG)
@@ -106,7 +106,7 @@ class Github:
             return self._make_update_info(new_version)
 
         # debug
-        logger.info(f"checkUpdate: tufup gave no update, falling back to GitHub API", TAG)
+        logger.info("checkUpdate: tufup gave no update, falling back to GitHub API", TAG)
         # GitHub Releases API 权威回退: tufup 漏检时由 GitHub API 兜底.
         # 这是修复生产环境更新不可见的根因 — 旧代码仅 dev mode 走此分支,
         # 生产模式 tufup 任何失败都会静默返回 None, 用户收不到更新通知.

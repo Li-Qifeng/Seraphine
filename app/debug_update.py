@@ -7,7 +7,6 @@ Usage:
     python -m app.debug_update
     $env:SERAPHINE_DEV_VERSION="0.0.1"; python -m app.debug_update
 """
-import json
 import logging
 import os
 import sys
