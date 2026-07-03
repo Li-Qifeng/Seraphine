@@ -37,6 +37,10 @@ seraphine
 # 忽略 IDE 内部文件
 .trae/
 
+# 临时测试输出
+tests/py_err.txt
+tests/py_out.txt
+
 # tufup 工作目录（本地生成，不入仓库）
 tufup_keys/
 tufup_repo/
