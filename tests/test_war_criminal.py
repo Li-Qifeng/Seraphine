@@ -16,7 +16,8 @@ from unittest.mock import patch, AsyncMock, MagicMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Stub PyQt5 (无法在非 Windows 环境直接 import)
-for _qt_mod in ("PyQt5", "PyQt5.QtCore", "PyQt5.QtWidgets", "PyQt5.QtGui"):
+for _qt_mod in ("PyQt5", "PyQt5.QtCore", "PyQt5.QtWidgets", "PyQt5.QtGui",
+                "PyQt5.QtXml", "PyQt5.QtSvg"):
     if _qt_mod not in sys.modules:
         sys.modules[_qt_mod] = MagicMock()
 
