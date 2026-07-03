@@ -10,8 +10,6 @@ from json import JSONDecodeError
 from typing import Optional
 
 from app.common.config import LOCAL_PATH
-from app.common.logger import logger
-
 TAG = "PersistentCache"
 DB_NAME = "seraphine_cache.db"
 SCHEMA_VERSION = 1
