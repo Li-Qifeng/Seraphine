@@ -116,24 +116,21 @@ jobs:
     - name: Setup environment variables
       id: detect
       run: |
-        # 旧实现用 git blame + 正则找 "修改 VERSION 行的 commit",
-        # 正则依赖 config.py 中 VERSION = "..." 的精确写法, 一旦加注释/改引号
-        # 就会静默失效. 改用 git diff 直接看本次 HEAD 是否动了 VERSION 行,
-        # 更鲁棒. 只看 VERSION 赋值行 (避免误命中注释里的 VERSION 字样).
-        # 取上一轮 release 之后的 VERSION 旧值, 与当前比对.
+        # ponytail: 比较 VERSION 与最新 git tag, 而非 git diff HEAD~1.
+        # git diff HEAD~1 HEAD 在 merge commit / 多 commit push 时漏检.
+        # 标签对比对所有提交结构都可靠.
         CURRENT_VERSION=$(grep -oP '(?<=VERSION = ")[^"]+' app/common/config.py)
-        # 检查本次提交 (HEAD vs HEAD~1) 的 diff 是否包含 VERSION 行变更
-        if git diff HEAD~1 HEAD -- app/common/config.py | grep -qE '^[+-]VERSION = "'; then
+        LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname 2>/dev/null | head -1)
+        if [ -z "$LATEST_TAG" ] || [ "v$CURRENT_VERSION" != "$LATEST_TAG" ]; then
           UPDATED='true'
         else
           UPDATED='false'
         fi
         echo "VERSION=v$CURRENT_VERSION" >> $GITHUB_ENV
         echo "UPDATED=$UPDATED" >> $GITHUB_ENV
-        # 同时写入 step output, 供下游 publish-tufup job 判断
         echo "updated=$UPDATED" >> "$GITHUB_OUTPUT"
         echo "version=v$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-        echo "Detected VERSION=$CURRENT_VERSION, UPDATED=$UPDATED"
+        echo "Detected VERSION=$CURRENT_VERSION, latest tag=$LATEST_TAG, UPDATED=$UPDATED"
     - name: Download artifact (7z)
       uses: actions/download-artifact@v4
       if: env.UPDATED == 'true'
@@ -186,7 +183,10 @@ jobs:
   # 上传, 需开发者下载并提交到 app/resource/tufup/metadata/ (见 tufup_repo.py).
   publish-tufup:
     needs: [build-seraphine, release]
-    if: needs.release.outputs.updated == 'true'
+    # ponytail: always run. add-bundle 对已存在的版本跳过, publish_changes 幂等,
+    # gh-pages deploy 无变更时不产生额外 commit. 确保 CI 失败重跑后 tufup targets
+    # 也能发布, 不受 git tag 状态影响.
+    if: always() && !cancelled() && needs.build-seraphine.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -239,11 +239,9 @@ jobs:
     - name: Init tufup repo
       run: python tufup_repo.py init -r tufup_repo -k keys
     - name: Add new bundle
-      env:
-        VERSION: ${{ needs.release.outputs.version }}
       run: |
-        # VERSION 形如 v1.2.0, tufup 用纯版本号 (不带 v 前缀)
-        VER="${VERSION#v}"
+        # ponytail: 从 config.py 直接读 VERSION, 不依赖 release job output
+        VER=$(grep -oP '(?<=VERSION = ")[^"]+' app/common/config.py)
         python tufup_repo.py add-bundle -v "$VER" -d dist/Seraphine -r tufup_repo -k keys
     - name: "Bootstrap: export keys for first-run secret"
       if: env.TUFUP_KEYS_B64 == ''

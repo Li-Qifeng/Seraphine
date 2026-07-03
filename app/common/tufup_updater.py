@@ -17,6 +17,7 @@ tufup 客户端封装: 基于 TUF 安全标准的增量更新.
 """
 import os
 import pathlib
+import socket
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 from app.common.config import VERSION, LOCAL_PATH
@@ -42,6 +43,22 @@ DEFAULT_TARGET_BASE_URL = (
 )
 
 APP_NAME = "Seraphine"
+
+# ponytail: lazily cached connectivity check, so import has no side effects
+_RAWGITHUB_REACHABLE = None
+
+
+def _is_rawgithub_reachable() -> bool:
+    global _RAWGITHUB_REACHABLE
+    if _RAWGITHUB_REACHABLE is not None:
+        return _RAWGITHUB_REACHABLE
+    try:
+        socket.create_connection(("raw.githubusercontent.com", 443), timeout=2)
+        _RAWGITHUB_REACHABLE = True
+    except OSError:
+        logger.info("raw.githubusercontent.com unreachable, tufup will be skipped")
+        _RAWGITHUB_REACHABLE = False
+    return _RAWGITHUB_REACHABLE
 
 # 下载缓存与解压临时目录, 放 %APPDATA%/Seraphine/ 下
 _TARGET_DIR = os.path.join(LOCAL_PATH, "tufup_targets")
@@ -120,6 +137,11 @@ def check_update() -> Tuple[bool, Optional[str]]:
     if not root_json.exists():
         logger.warning(
             f"root.json not found at {root_json}, tufup not initialized")
+        return False, None
+
+    # ponytail: raw.githubusercontent.com 国内常不可达, 提前退出让 caller 走
+    # GitHub API fallback, 避免 tufup 长超时后返回 False 再走 fallback.
+    if not _is_rawgithub_reachable():
         return False, None
 
     try:

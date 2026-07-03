@@ -54,12 +54,16 @@ class Github:
         """
         检查版本更新 (基于 tufup 增量更新框架).
 
-        新流程 (完全替换旧 7z 全量替换):
-        1. 调 tufup_updater.check_update() 从 GitHub Pages 拉取 tufup metadata,
-           判断是否有新版本 (tufup 内部做语义化版本比较 + patch/全量决策).
-        2. 若有更新, 拉 GitHub releases info (用于弹窗显示 release body)
-           和 ver.json (kill-switch). 这两步 best effort, 失败不阻塞更新.
-        3. 返回 info dict 供 UpdateMessageBox 显示.
+        流程:
+        1. tufup_updater.check_update() 从 GitHub Pages 拉取 tufup metadata,
+           做语义化版本比较 (有更新可走增量 patch 下载).
+        2. tufup 检测成功时直接返回; tufup 检测为无更新或失败时, **总是**回退到
+           GitHub Releases API 做权威判定.
+           背景: tufup metadata 可能滞后 (CI 发布失败), raw.githubusercontent 国内
+           不可达, root.json 过期等都会导致 tufup 漏检. GitHub Releases API 是
+           新版本发布的权威来源, 且 api.github.com 国内可达性更好. 不能让 tufup
+           失败静默吞掉更新通知.
+        3. GitHub API 回退也确认无更新 -> 返回 None.
 
         @return: 有更新 -> info dict (含 tag_name/body/forbidden/new_version),
                  无更新 / 失败 -> None
@@ -70,21 +74,22 @@ class Github:
         if has_update and new_version:
             return self._make_update_info(new_version)
 
-        # ponytail: dev mode (无 Seraphine.exe) 时 tufup 跳过, 回退 GitHub API
-        if not os.path.exists("Seraphine.exe"):
-            logger.info("dev mode: fallback to GitHub API", TAG)
-            try:
-                release_info = self.getReleasesInfo()
-                latest_tag = release_info.get("tag_name", "").lstrip('v')
-                if latest_tag and latest_tag != VERSION:
-                    from app.common.version_utils import coerce_version
-                    if coerce_version(latest_tag) > coerce_version(VERSION):
-                        logger.info(
-                            f"update available (dev fallback): "
-                            f"{VERSION} -> {latest_tag}", TAG)
-                        return self._make_update_info(latest_tag)
-            except Exception as e:
-                logger.warning(f"dev fallback update check failed: {e}", TAG)
+        # GitHub Releases API 权威回退: tufup 漏检时由 GitHub API 兜底.
+        # 这是修复生产环境更新不可见的根因 — 旧代码仅 dev mode 走此分支,
+        # 生产模式 tufup 任何失败都会静默返回 None, 用户收不到更新通知.
+        try:
+            release_info = self.getReleasesInfo()
+            latest_tag = release_info.get("tag_name", "").lstrip('v')
+            if latest_tag and latest_tag != VERSION:
+                from app.common.version_utils import coerce_version
+                if coerce_version(latest_tag) > coerce_version(VERSION):
+                    logger.info(
+                        f"update available (GitHub API fallback): "
+                        f"{VERSION} -> {latest_tag}", TAG)
+                    return self._make_update_info(latest_tag)
+        except Exception as e:
+            logger.warning(f"GitHub API fallback update check failed: {e}",
+                           TAG)
 
         logger.info("no update available", TAG)
         return None

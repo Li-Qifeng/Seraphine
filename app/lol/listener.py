@@ -69,4 +69,7 @@ class StoppableThread(QThread):
         super().__init__(parent)
 
     def run(self):
-        self.target()
+        try:
+            self.target()
+        except Exception as e:
+            logger.exception(f"StoppableThread target failed: {e}", TAG)
