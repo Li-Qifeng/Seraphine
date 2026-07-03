@@ -1,3 +1,7 @@
+class RateLimited(Exception):
+    """LCU/SGP returned 429. args = (retry_after_seconds,)."""
+
+
 class SummonerNotFound(Exception):
     pass
 

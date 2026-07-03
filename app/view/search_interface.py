@@ -1484,7 +1484,9 @@ class SearchInterface(SeraphineInterface):
 
         logger.debug(f"start load {puuid}", TAG)
         # 连续查多个人时, 将前面正在查的task给release掉
-        while self.puuid == puuid:
+        # ponytail: 最多后台拉 80 场 (8 批 × 10), 减少 LCU 限流风险
+        load_count = 0
+        while self.puuid == puuid and load_count < 8:
             # 为加载战绩详情让行
             while (
                 (self.detailViewLoadTask and not self.detailViewLoadTask.done())
@@ -1531,9 +1533,10 @@ class SearchInterface(SeraphineInterface):
 
             begIdx = endIdx + 1
             endIdx = begIdx + 9
+            load_count += 1
 
-            # 睡不睡都行
-            await asyncio.sleep(.1)
+            # ponytail: 背压 — 每批之间等 0.5s, 避免冲刷 LCU match-history 限流
+            await asyncio.sleep(.5)
 
     @asyncSlot(QWidget)
     async def __onGameTabClicked(self, tab: GameTab):

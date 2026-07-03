@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.lol.connector import connector
 from app.lol.exceptions import (
+    RateLimited,
     SummonerNotFound,
     SummonerGamesNotFound,
     SummonerRankInfoNotFound,
@@ -403,3 +404,51 @@ class TestStartMatchmaking:
                               "isCurrentlyInQueue": True})):
             result = _run(mock_lcu.startMatchmaking())
         assert result is True
+
+
+# ---------------------------------------------------------------------------
+# 契约: 429 RateLimited — __get 检测 429 并抛出 RateLimited, @retry 重试后最终向上抛
+# ---------------------------------------------------------------------------
+
+class Test429RateLimited:
+    def test_get_429_raises_ratelimited_after_retry_exhausted(self, mock_lcu):
+        """__get 返回 429 时抛出 RateLimited, @retry 用完重试次数后向上抛."""
+        mock_resp = MagicMock()
+        mock_resp.status = 429
+        mock_resp.headers = {'Retry-After': '0.1'}
+        connector.lcuSess.get = AsyncMock(return_value=mock_resp)
+
+        with pytest.raises(RateLimited):
+            _run(mock_lcu.getSummonerByPuuid("abc"))
+
+    def test_get_429_ratelimited_contained_in_retry(self, mock_lcu):
+        """@retry 捕获 RateLimited 后 sleep 重试, 最终成功时不抛异常."""
+        attempt_count = 0
+        mock_resp_429 = MagicMock()
+        mock_resp_429.status = 429
+        mock_resp_429.headers = {'Retry-After': '0.05'}
+
+        mock_resp_200 = MagicMock()
+        mock_resp_200.status = 200
+        mock_resp_200.json = AsyncMock(return_value={"puuid": "abc", "summonerId": 1})
+
+        async def side_effect(*args, **kwargs):
+            nonlocal attempt_count
+            attempt_count += 1
+            return mock_resp_429 if attempt_count < 3 else mock_resp_200
+
+        connector.lcuSess.get = AsyncMock(side_effect=side_effect)
+
+        result = _run(mock_lcu.getSummonerByPuuid("abc"))
+        assert result == {"puuid": "abc", "summonerId": 1}
+
+    def test_get_summoner_games_bubbles_429_to_outer_retry(self, mock_lcu):
+        """getSummonerGamesByPuuid 内层 except (ClientError, ...) 不捕获
+        RateLimited, 429 自然冒泡到 @retry 外层, 避免嵌套爆炸."""
+        mock_resp = MagicMock()
+        mock_resp.status = 429
+        mock_resp.headers = {'Retry-After': '0.1'}
+        connector.lcuSess.get = AsyncMock(return_value=mock_resp)
+
+        with pytest.raises(RateLimited):
+            _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 4))

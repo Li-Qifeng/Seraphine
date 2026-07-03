@@ -52,6 +52,16 @@ def needLcu():
     return decorator
 
 
+def _parse_retry_after(value):
+    if not value:
+        return 5
+    try:
+        v = int(value)
+        return max(1, min(v, 60))
+    except (ValueError, TypeError):
+        return 5
+
+
 def retry(count=5, retry_sep=0):
     def decorator(func):
         async def wrapper(*args, **kwargs):
@@ -98,8 +108,15 @@ def retry(count=5, retry_sep=0):
                     #   CancelledError 是 BaseException 的子类, 必须在 except Exception 之前单独 raise,
                     #   否则会被吞掉导致 cancel 无效
                     raise
+                except RateLimited as e:
+                    # LCU/SGP 429: sleep Retry-After 秒后重试, 不放大嵌套重试
+                    wait = e.args[0] if e.args else 5
+                    logger.warning(f"429 rate-limited, sleeping {wait}s", TAG)
+                    await asyncio.sleep(wait)
+                    exce = e
+                    continue
                 except Exception as e:
-                    time.sleep(retry_sep)
+                    await asyncio.sleep(retry_sep)
                     exce = e
 
                     # SummonerNotFound 再重试会报 429 (限流)
@@ -1373,24 +1390,44 @@ class LolClientConnector(QObject):
 
     @needLcu()
     async def __get(self, path, params=None) -> aiohttp.ClientResponse:
-        return await self.lcuSess.get(path, params=params, ssl=False)
+        res = await self.lcuSess.get(path, params=params, ssl=False)
+        if res.status == 429:
+            retry_after = _parse_retry_after(res.headers.get('Retry-After'))
+            raise RateLimited(retry_after)
+        return res
 
     @needLcu()
     async def __post(self, path, data=None) -> aiohttp.ClientResponse:
         headers = {"Content-type": "application/json"}
-        return await self.lcuSess.post(path, json=data, headers=headers, ssl=False)
+        res = await self.lcuSess.post(path, json=data, headers=headers, ssl=False)
+        if res.status == 429:
+            retry_after = _parse_retry_after(res.headers.get('Retry-After'))
+            raise RateLimited(retry_after)
+        return res
 
     @needLcu()
     async def __put(self, path, data=None) -> aiohttp.ClientResponse:
-        return await self.lcuSess.put(path, json=data, ssl=False)
+        res = await self.lcuSess.put(path, json=data, ssl=False)
+        if res.status == 429:
+            retry_after = _parse_retry_after(res.headers.get('Retry-After'))
+            raise RateLimited(retry_after)
+        return res
 
     @needLcu()
     async def __delete(self, path) -> aiohttp.ClientResponse:
-        return await self.lcuSess.delete(path, ssl=False)
+        res = await self.lcuSess.delete(path, ssl=False)
+        if res.status == 429:
+            retry_after = _parse_retry_after(res.headers.get('Retry-After'))
+            raise RateLimited(retry_after)
+        return res
 
     @needLcu()
     async def __patch(self, path, data=None) -> aiohttp.ClientResponse:
-        return await self.lcuSess.patch(path, json=data, ssl=False)
+        res = await self.lcuSess.patch(path, json=data, ssl=False)
+        if res.status == 429:
+            retry_after = _parse_retry_after(res.headers.get('Retry-After'))
+            raise RateLimited(retry_after)
+        return res
 
     async def __sgp__get(self, path, params=None) -> aiohttp.ClientResponse:
         assert self.inTencent
@@ -1399,7 +1436,11 @@ class LolClientConnector(QObject):
             "Authorization": f"Bearer {self.sgpToken}"
         }
 
-        return await self.sgpSess.get(path, params=params, ssl=False, headers=headers)
+        res = await self.sgpSess.get(path, params=params, ssl=False, headers=headers)
+        if res.status == 429:
+            retry_after = _parse_retry_after(res.headers.get('Retry-After'))
+            raise RateLimited(retry_after)
+        return res
 
     async def getLoginSummonerByPid(self, pid) -> dict:
         port, token, _ = getPortTokenServerByPid(pid)
