@@ -5,7 +5,7 @@ from app.view.auxiliary_cards.tool_cards import (
     FixClientDpiCard, RestartClientCard, LeaveQueueCard, CreatePracticeLobbyCard, SpectateCard, LockConfigCard,
 )
 from app.view.auxiliary_cards.automation_cards import (
-    AutoAcceptMatchingCard, AutoHonorCard, AutoAcceptSwapingCard, AutoSelectChampionCard, AutoBanChampionCard, AutoSetSummonerSpellCard,
+    AutoAcceptMatchingCard, AutoAcceptMsCard, AutoHonorCard, AutoAcceptSwapingCard, AutoSelectChampionCard, AutoBanChampionCard, AutoSetSummonerSpellCard,
 )
 from app.view.auxiliary_cards.hextech_cards import (
     ChampionsCard, HextechChampionCard,
@@ -24,6 +24,7 @@ __all__ = [
     "CreatePracticeLobbyCard",
     "SpectateCard",
     "AutoAcceptMatchingCard",
+    "AutoAcceptMsCard",
     "AutoHonorCard",
     "AutoAcceptSwapingCard",
     "LockConfigCard",
