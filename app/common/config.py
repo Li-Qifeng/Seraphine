@@ -107,8 +107,12 @@ class Config(QConfig):
                                      "EnableAutoPlayAgain", False,
                                      BoolValidator())
 
-    autoAcceptMatchingDelay = RangeConfigItem(
-        "Functions", "AutoAcceptMatchingDelay", 0, RangeValidator(0, 11))
+    autoAcceptDelayMinMs = RangeConfigItem(
+        "Functions", "AutoAcceptDelayMinMs", 2000, RangeValidator(0, 15000))
+    autoAcceptDelayMaxMs = RangeConfigItem(
+        "Functions", "AutoAcceptDelayMaxMs", 5000, RangeValidator(0, 15000))
+    autoAcceptDeclineEnabled = ConfigItem(
+        "Functions", "AutoAcceptDeclineEnabled", True, BoolValidator())
     autoStartMatchmakingDelay = RangeConfigItem(
         "Functions", "AutoStartMatchmakingDelay", 2, RangeValidator(0, 30))
 
@@ -120,7 +124,7 @@ class Config(QConfig):
         OptionsValidator(["friends_first", "friends_only",
                           "best_score", "random"]))
     autoHonorDelay = RangeConfigItem(
-        "Functions", "AutoHonorDelay", 1, RangeValidator(0, 5))
+        "Functions", "AutoHonorDelay", 0, RangeValidator(0, 5))
 
     # 全队 5 档评级 (胜方/败方各一套贴吧风标签, 或马系风通用标签)
     enableTeamRating = ConfigItem("Functions",

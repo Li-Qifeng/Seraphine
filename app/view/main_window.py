@@ -108,6 +108,9 @@ class MainWindow(FluentWindow):
         self.tasklistEnabled = True
         self.championSelection = ChampionSelection()
         self._autoStartTask = None
+        self._accept_task = None
+        self._accepted_this_ready_check = False
+        self._user_declined_this_session = False
 
         # 海克斯辅助: 游戏内 3 秒轮询 Live Client API 采集已选强化
         self.hextechAssistTimer = QTimer(self)
@@ -308,6 +311,8 @@ class MainWindow(FluentWindow):
         signalBus.lcuNotConnected.connect(self.__onLcuNotConnected)
         signalBus.getCmdlineError.connect(
             self.__showNeedAdminMessageBox)
+        signalBus.readyCheckChanged.connect(
+            self.__onReadyCheckChanged)
 
         # From career_interface
         signalBus.careerGameBarClicked.connect(self.__onCareerGameClicked)
@@ -551,16 +556,24 @@ class MainWindow(FluentWindow):
             lambda: showAndSwitch(self.gameInfoInterface))
         settingsAction.triggered.connect(
             lambda: showAndSwitch(self.settingInterface))
+        declineAction = Action(Icon.SQUARECROSS, self.tr("Decline Match"), self)
+        declineAction.triggered.connect(
+            lambda: asyncio.ensure_future(self.__declineMatchMaking()))
+
         quitAction.triggered.connect(quit)
 
         self.trayMenu = TmpSystemTrayMenu(self)
+        self.declineAction = declineAction
 
         self.trayMenu.addAction(careerAction)
         self.trayMenu.addAction(searchAction)
         self.trayMenu.addAction(gameInfoAction)
+        self.trayMenu.addAction(declineAction)
         self.trayMenu.addSeparator()
         self.trayMenu.addAction(settingsAction)
         self.trayMenu.addAction(quitAction)
+
+        declineAction.setVisible(False)
 
         self.trayIcon.setContextMenu(self.trayMenu)
         # 双击事件
@@ -954,6 +967,7 @@ class MainWindow(FluentWindow):
 
         if status == 'None':
             title = self.tr("Home")
+            self._user_declined_this_session = False
             await self.__onGameEnd()
         elif status == 'ChampSelect':
             title = self.tr("Selecting Champions")
@@ -983,16 +997,22 @@ class MainWindow(FluentWindow):
             if not self.isGaming:
                 await self.__onGameStart()
             isGaming = True
+        elif status == 'None':
+            title = self.tr("Idle")
+            self._user_declined_this_session = False
         elif status == 'WaitingForStatus':
             title = self.tr("Waiting for status")
-        elif status == 'EndOfGame':
+        elif status in ('PreEndOfGame', 'EndOfGame'):
             title = self.tr("End of game")
-            asyncio.create_task(self.__autoHonor())
+            # ponytail: PreEndOfGame 时 honor 才能被真正提交 (EndOfGame 会话已拆除)
+            if status == 'PreEndOfGame' and cfg.get(cfg.enableAutoHonor):
+                asyncio.create_task(self.__autoHonor())
             # 自动再来一局: EndOfGame 阶段调用 playAgain()
-            if cfg.get(cfg.enableAutoPlayAgain):
+            if status == 'EndOfGame' and cfg.get(cfg.enableAutoPlayAgain):
                 asyncio.create_task(self.__autoPlayAgain())
         elif status == 'Lobby':
             title = self.tr("Lobby")
+            self._user_declined_this_session = False
 
             # 预取 match-history: 一次请求, 战犯诊断/生涯/搜索页共享
             # 取三者的最大范围, 存到 connector 的 fast cache 中
@@ -1034,6 +1054,7 @@ class MainWindow(FluentWindow):
 
         elif status == 'ReadyCheck':
             title = self.tr("Ready check")
+            self._accepted_this_ready_check = False
             await self.__onMatchMade()
         elif status == 'Matchmaking':
             title = self.tr("Match making")
@@ -1044,6 +1065,13 @@ class MainWindow(FluentWindow):
 
         if status != 'Lobby':
             self.__cancelAutoStartMatchmaking()
+
+        if status != 'ReadyCheck':
+            self._accepted_this_ready_check = False
+            if self._accept_task and not self._accept_task.done():
+                self._accept_task.cancel()
+                self._accept_task = None
+            self.declineAction.setVisible(False)
 
         self.isGaming = isGaming
 
@@ -1057,20 +1085,57 @@ class MainWindow(FluentWindow):
     async def __onMatchMade(self):
         if not cfg.get(cfg.enableAutoAcceptMatching):
             return
+        if self._accepted_this_ready_check:
+            return
+        if self._user_declined_this_session:
+            return
 
-        async def accept():
-            import random
-            timeDelay = cfg.get(cfg.autoAcceptMatchingDelay) or random.uniform(2, 5)
-            await asyncio.sleep(timeDelay)
-            status = await connector.getReadyCheckStatus()
+        self._accepted_this_ready_check = True
+        self._accept_task = asyncio.create_task(self._do_accept())
 
-            if status.get("errorCode"):
-                return
+    async def _do_accept(self):
+        import random
+        min_ms = cfg.get(cfg.autoAcceptDelayMinMs)
+        max_ms = cfg.get(cfg.autoAcceptDelayMaxMs)
+        if max_ms <= min_ms:
+            delay_ms = min_ms
+        else:
+            delay_ms = random.randint(min_ms, max_ms)
 
-            if not status['playerResponse'] == 'Declined':
-                await connector.acceptMatchMaking()
+        await asyncio.sleep(delay_ms / 1000)
 
-        asyncio.create_task(accept())
+        if self._user_declined_this_session:
+            return
+
+        status = await connector.getReadyCheckStatus()
+        if status.get("errorCode"):
+            return
+        if status.get('playerResponse') == 'Declined':
+            self._user_declined_this_session = True
+            return
+
+        await connector.acceptMatchMaking()
+
+    @asyncSlot(dict)
+    async def __onReadyCheckChanged(self, data):
+        if data.get('playerResponse') == 'Declined':
+            self._user_declined_this_session = True
+            if self._accept_task and not self._accept_task.done():
+                self._accept_task.cancel()
+                self._accept_task = None
+        if data.get('state') == 'InProgress' and cfg.get(cfg.autoAcceptDeclineEnabled):
+            self.declineAction.setVisible(True)
+        else:
+            self.declineAction.setVisible(False)
+
+    async def __declineMatchMaking(self):
+        if not self._accepted_this_ready_check:
+            return
+        await connector.declineMatchMaking()
+        self._user_declined_this_session = True
+        if self._accept_task and not self._accept_task.done():
+            self._accept_task.cancel()
+            self._accept_task = None
 
     async def __onReconnect(self):
         if not cfg.get(cfg.enableAutoReconnect):
@@ -1087,20 +1152,11 @@ class MainWindow(FluentWindow):
     async def __autoHonor(self):
         """EndOfGame 阶段自动点赞 (参考 sona/lol-bot 实现).
 
-        使用 /lol-honor-v2/v1/ballot (GET) 获取点赞候选面板:
-        - eligibleAllies: 可点赞的队友
-        - eligibleOpponents: 可点赞的对手
-        - votePool.votes: 可用票数 (取决于荣誉等级, 通常 1-2 票)
-        - gameId: 当前对局 ID
+        使用 GET /lol-honor-v2/v1/ballot 获取点赞候选面板,
+        逐票 POST /lol-honor-v2/v1/honor-player 提交.
+        每票随机选取 HEART/COOL/SHOTCALLER 类别.
 
-        按策略选目标后, 逐个 POST /lol-honor-v2/v1/honor-player 提交.
-        每票随机选取 HEART/COOL/SHOTCALLER 类别, 避免模式化行为.
-        队友优先, 多余的票给对手.
-
-        策略: friends_first (默认) / friends_only / best_score / random.
-
-        ballot.eligibleAllies 可能因 LCU 时序问题为空 (尤其 ARAM Mayhem),
-        最多重试 3 次, 每次间隔 2 秒.
+        ballot 可能因 LCU 时序问题为空, 最多重试 3 次.
         """
         import random as _random
 
@@ -1110,9 +1166,6 @@ class MainWindow(FluentWindow):
         try:
             await asyncio.sleep(cfg.get(cfg.autoHonorDelay))
 
-            strategy = cfg.get(cfg.autoHonorStrategy)
-
-            # ballot 可能为空 (LCU 时序), 最多重试 3 次
             ballot = None
             for attempt in range(3):
                 ballot = await connector.getEogStats()
@@ -1121,8 +1174,8 @@ class MainWindow(FluentWindow):
                         f"Auto honor: no ballot (attempt={attempt})", TAG)
                     await asyncio.sleep(2)
                     continue
-                allies = ballot.get('eligibleAllies') or []
-                opponents = ballot.get('eligibleOpponents') or []
+                allies = (ballot.get('eligibleAllies') or [])
+                opponents = (ballot.get('eligibleOpponents') or [])
                 if allies or opponents:
                     break
                 logger.error(
@@ -1131,38 +1184,26 @@ class MainWindow(FluentWindow):
                 await asyncio.sleep(2)
 
             if not ballot:
-                logger.error(
-                    "Auto honor: no ballot after retries", TAG)
+                logger.error("Auto honor: no ballot after retries", TAG)
                 return
 
-            allies = ballot.get('eligibleAllies') or []
-            opponents = ballot.get('eligibleOpponents') or []
+            allies = list(ballot.get('eligibleAllies') or [])
+            opponents = list(ballot.get('eligibleOpponents') or [])
             votes = (ballot.get('votePool') or {}).get('votes') or 1
             gameId = ballot.get('gameId')
 
-            logger.error(
-                f"Auto honor: ballot gameId={gameId} "
-                f"allies={len(allies)} opponents={len(opponents)} "
-                f"votes={votes}", TAG)
+            # Fisher-Yates 打散 (同 sona)
+            for i in range(len(allies) - 1, 0, -1):
+                j = _random.randint(0, i)
+                allies[i], allies[j] = allies[j], allies[i]
+            for i in range(len(opponents) - 1, 0, -1):
+                j = _random.randint(0, i)
+                opponents[i], opponents[j] = opponents[j], opponents[i]
 
-            # 拉好友列表
-            friends = await connector.getFriends()
-            friendsPuuid = {f.get("puuid") for f in friends
-                            if isinstance(f, dict) and f.get("puuid")}
-
-            # 构建目标列表 (Fisher-Yates 打散 + 策略筛选)
-            targets = self.__buildHonorTargets(
-                allies, opponents, friendsPuuid, strategy, votes, _random)
-            if not targets:
-                logger.error(
-                    f"Auto honor: no valid targets "
-                    f"(strategy={strategy}, allies={len(allies)}, "
-                    f"opponents={len(opponents)}, "
-                    f"friends={len(friendsPuuid)})", TAG)
-                return
+            # 先队友, 多余给对手 (同 sona)
+            targets = (allies + opponents)[:votes]
 
             _HONOR_CATEGORIES = ('HEART', 'COOL', 'SHOTCALLER')
-            total = len(targets)
             success = 0
             for i, target in enumerate(targets):
                 puuid = target.get("puuid")
@@ -1170,74 +1211,23 @@ class MainWindow(FluentWindow):
                 if not puuid:
                     continue
                 category = _random.choice(_HONOR_CATEGORIES)
-                is_ally = any(
-                    a.get('puuid') == puuid for a in allies)
-                logger.error(
-                    f"Auto honor: vote {i+1}/{total} → "
-                    f"[{category}] {target.get('summonerName', puuid)} "
-                    f"{'队友' if is_ally else '对手'}", TAG)
+                is_ally = i < len(allies)
                 ok = await connector.submitHonor(
                     puuid, category,
                     summonerId=summonerId, gameId=gameId)
                 if ok:
                     success += 1
-                else:
-                    logger.error(
-                        f"Auto honor: vote {i+1}/{total} failed "
-                        f"(国服 LCU 可能无法联系 honor 服务器)", TAG)
+                logger.error(
+                    f"Auto honor: vote {i+1}/{len(targets)} → "
+                    f"[{category}] {target.get('championName', puuid)} "
+                    f"{'队友' if is_ally else '对手'} "
+                    f"{'✓' if ok else '✗'}", TAG)
 
             logger.error(
-                f"Auto honor: done {success}/{total} votes", TAG)
+                f"Auto honor: done {success}/{len(targets)} votes", TAG)
 
         except Exception as e:
             logger.error(f"Auto honor failed: {e}", TAG)
-
-    def __buildHonorTargets(self, allies, opponents, friendsPuuid,
-                            strategy, votes, random_module):
-        """根据策略构建点赞目标列表.
-
-        参考 sona/lol-bot 的 Fisher-Yates 打散 + 队友优先逻辑:
-        - 同一类 (好友/非好友队友/对手) 内部 Fisher-Yates 打散
-        - 顺序: 好友 → 非好友队友 → 对手
-        - 切片取前 votes 个
-
-        Args:
-            allies: eligibleAllies 列表
-            opponents: eligibleOpponents 列表
-            friendsPuuid: 好友 puuid 集合
-            strategy: 点赞策略
-            votes: 可用票数
-            random_module: random 模块实例
-
-        Returns:
-            list[dict], 点赞目标列表 (最多 votes 个)
-        """
-        def fisher_yates(arr):
-            """Fisher-Yates 洗牌算法 (同 sona/lol-bot)."""
-            a = list(arr)
-            for i in range(len(a) - 1, 0, -1):
-                j = random_module.randint(0, i)
-                a[i], a[j] = a[j], a[i]
-            return a
-
-        if strategy == 'friends_only':
-            friends = [a for a in allies
-                       if a.get('puuid') in friendsPuuid]
-            return fisher_yates(friends)[:votes]
-
-        if strategy == 'friends_first':
-            friends = [a for a in allies
-                       if a.get('puuid') in friendsPuuid]
-            non_friends = [a for a in allies
-                          if a.get('puuid') not in friendsPuuid]
-            ordered = (fisher_yates(friends)
-                       + fisher_yates(non_friends)
-                       + fisher_yates(opponents))
-            return ordered[:votes]
-
-        # random / best_score: 所有候选随机打散, 队友优先
-        ordered = fisher_yates(allies) + fisher_yates(opponents)
-        return ordered[:votes]
 
     async def __autoPlayAgain(self):
         """EndOfGame 阶段自动点击"再来一局".

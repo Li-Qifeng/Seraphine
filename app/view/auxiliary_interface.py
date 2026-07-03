@@ -19,7 +19,8 @@ from app.view.auxiliary_cards import (
     CreatePracticeLobbyCard,
     SpectateCard,
     LockConfigCard,
-    AutoAcceptMatchingCard,
+     AutoAcceptMatchingCard,
+     AutoAcceptMsCard,
     AutoHonorCard,
     AutoAcceptSwapingCard,
     AutoSelectChampionCard,
@@ -121,11 +122,12 @@ class AuxiliaryInterface(SeraphineInterface):
             self.toolsGroup
         )
 
-        self.autoAcceptMatchingCard = AutoAcceptMatchingCard(
+        self.autoAcceptMatchingCard = AutoAcceptMsCard(
             self.tr("Auto accept"),
-            self.tr(
-                "Accept match making automatically after the number of seconds you set"),
-            cfg.enableAutoAcceptMatching, cfg.autoAcceptMatchingDelay,
+            self.tr("Accept match making automatically after a random delay"),
+            cfg.enableAutoAcceptMatching,
+            cfg.autoAcceptDelayMinMs, cfg.autoAcceptDelayMaxMs,
+            cfg.autoAcceptDeclineEnabled,
             self.automationGroup)
         self.autoStartMatchmakingCard = AutoAcceptMatchingCard(
             self.tr("Auto start matchmaking"),

@@ -42,6 +42,9 @@ class SignalBus(QObject):
     hextechGrabbed = pyqtSignal(int)          # 抢到目标英雄 (championId)
     hextechSessionUpdated = pyqtSignal(dict)  # 会话刷新 (供窗口更新头像墙)
 
+    # matchmaking / ready-check
+    readyCheckChanged = pyqtSignal(dict)       # 对局确认状态变化
+
     # update check:
     checkUpdateRequested = pyqtSignal()
 
