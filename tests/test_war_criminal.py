@@ -86,10 +86,19 @@ class TestRoleOf:
         for cid in [1, 100, 9999]:
             assert _roleOf(cid, 2400) == 'dps'
 
-    def test_other_modes_by_id(self):
-        # 非 2400, 兜底按 id 奇偶分
-        assert _roleOf(2, 420) == 'dps'      # 偶数 -> dps
-        assert _roleOf(3, 420) == 'tank_support'  # 奇数 -> tank_support
+    def test_aram_always_dps(self):
+        # 大乱斗模式一律 dps
+        assert _roleOf(1, 450) == 'dps'
+        assert _roleOf(89, 450) == 'dps'  # 坦克 (Leona) 也走 dps
+
+    def test_sr_roles_from_json(self):
+        # 召唤师峡谷按 champion_roles.json 映射
+        assert _roleOf(1, 420) == 'dps'      # Annie -> mage -> dps
+        assert _roleOf(12, 420) == 'tank_support'  # Alistar -> tank -> tank_support
+        assert _roleOf(7, 420) == 'dps'      # LeBlanc -> assassin -> dps
+        assert _roleOf(89, 420) == 'tank_support'  # Leona -> tank -> tank_support
+        assert _roleOf(22, 420) == 'dps'     # Ashe -> marksman -> dps
+        assert _roleOf(32, 420) == 'tank_support'  # Amumu -> tank -> tank_support
 
 
 # ---------- rateEntireTeam 集成测试 ----------
@@ -97,7 +106,7 @@ class TestRoleOf:
 def _makeParticipant(puuid, championId, damage=25000, deaths=5, gold=10000,
                      cs=200, kills=5, assists=5, win=True, augmentIds=None,
                      damageTaken=15000, totalHeal=0, shieldOnTeammates=0,
-                     ccTime=0, visionScore=20):
+                     ccTime=0, visionScore=20, siegeDamage=0):
     return ParticipantStats(
         puuid=puuid, championId=championId,
         kills=kills, deaths=deaths, assists=assists,
@@ -105,6 +114,7 @@ def _makeParticipant(puuid, championId, damage=25000, deaths=5, gold=10000,
         totalHeal=totalHeal, shieldOnTeammates=shieldOnTeammates,
         ccTime=ccTime, gold=gold, cs=cs,
         visionScore=visionScore, win=win, augmentIds=augmentIds or [],
+        siegeDamage=siegeDamage,
     )
 
 

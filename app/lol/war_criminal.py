@@ -13,7 +13,9 @@
 - 马系: 上等马 / 中上等马 / 中等马 / 下等马 / 纯牛马
 """
 import asyncio
+import json
 import logging
+import pathlib
 from typing import Optional, TypedDict
 
 TAG = "WarCriminal"
@@ -21,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 # 海克斯大乱斗 queueId (国际/国服)
 HEXTECH_QUEUE_IDS = (2400,)
+# 嚎哭深渊 (ARAM)
+ARAM_QUEUE_IDS = (450,)
+# 有推塔/史诗野怪的模式 (召唤师峡谷)
+OBJECTIVE_MODES = (420, 440)
 
 # 海克斯强化影响预期伤害基线的强度: 0=不调, 1=强化分翻倍预期
 AUGMENT_BASELINE_WEIGHT = 0.3
@@ -28,13 +34,13 @@ AUGMENT_BASELINE_WEIGHT = 0.3
 # OPGG 胜率对最终评分的权重: 胜率高的英雄在躺赢/战犯判定时偏离放大
 CHAMPION_BASELINE_WEIGHT = 0.4
 
-# 各项指标权重 (按角色粗二分: 全输出/坦克辅助). 海克斯模式一律走"输出"分支
+# 各项指标权重 (按角色粗二分: 全输出/坦克辅助). 海克斯/大乱斗一律走"输出"分支
 # 数值越大表示该指标对"贡献"的正向权重越大
 ROLE_WEIGHTS = {
-    'dps': {  # 输出位 (法师/ADC/刺客/战士)
+    'dps': {  # 输出位 (法师/ADC/刺客)
         'damage': 0.30,
         'gold': 0.10,
-        'cs': 0.08,
+        'cs': 0.05,
         'kda': 0.15,
         'death': 0.12,
         'damage_taken': 0.0,
@@ -43,8 +49,9 @@ ROLE_WEIGHTS = {
         'vision': 0.0,
         'damage_efficiency': 0.10,   # 伤害/金币 (经济效率)
         'kill_participation': 0.15,  # 参团率 (团队参与度)
+        'siege_damage': 0.08,        # 推塔+史诗野怪 (仅召唤师峡谷)
     },
-    'tank_support': {  # 坦克/辅助
+    'tank_support': {  # 坦克/辅助/战士
         'damage_taken': 0.25,
         'cc': 0.18,
         'shield_heal': 0.17,
@@ -53,9 +60,10 @@ ROLE_WEIGHTS = {
         'death': 0.08,
         'gold': 0.0,
         'cs': 0.0,
-        'vision': 0.0,  # 海克斯不计视野, 其他模式默认也不算
+        'vision': 0.05,  # 仅召唤师峡谷计入
         'damage_efficiency': 0.0,
-        'kill_participation': 0.16,
+        'kill_participation': 0.11,
+        'siege_damage': 0.0,
     },
 }
 
@@ -77,6 +85,7 @@ class ParticipantStats(TypedDict, total=False):
     visionScore: float
     win: bool
     augmentIds: list         # 海克斯强化 id 列表 (空表示非海克斯)
+    siegeDamage: int         # damageToTurrets + damageToObjectives (仅召唤师峡谷)
 
 
 def _kda(stats: ParticipantStats) -> float:
@@ -112,14 +121,22 @@ def _zScore(values: list, value: float) -> float:
     return (value - _mean(values)) / s
 
 
+# 英雄角色映射缓存 (避免每次调用读 JSON)
+_CHAMPION_ROLES = None
+
+
 def _roleOf(championId: int, queueId: Optional[int]) -> str:
-    """英雄角色粗分类. 海克斯模式一律返回 dps (全输出阵容)."""
-    # 海克斯大乱斗没有明确位置且阵容偏输出, 统一按 dps 评分
-    if queueId in HEXTECH_QUEUE_IDS:
+    """英雄角色分类. 海克斯/大乱斗一律返回 dps (全输出阵容)."""
+    if queueId in HEXTECH_QUEUE_IDS or queueId in ARAM_QUEUE_IDS:
         return 'dps'
-    # 其他模式: 简单按英雄 id 模 2 划分 (后续可扩展为查表)
-    # 这里仅做兜底, 实际项目可引入 champion_roles.json
-    return 'dps' if championId % 2 == 0 else 'tank_support'
+    global _CHAMPION_ROLES
+    if _CHAMPION_ROLES is None:
+        _roles_path = pathlib.Path(__file__).parent / 'champion_roles.json'
+        if _roles_path.exists():
+            _CHAMPION_ROLES = json.loads(_roles_path.read_text(encoding='utf-8'))
+        else:
+            _CHAMPION_ROLES = {}
+    return _CHAMPION_ROLES.get(str(championId), 'dps')
 
 
 def _shieldHeal(stats: ParticipantStats) -> float:
@@ -169,7 +186,9 @@ def _computeContribution(stats: ParticipantStats,
                          team: list,
                          role: str,
                          baselineMultiplier: float,
-                         isHextech: bool) -> tuple:
+                         isHextech: bool,
+                         isAram: bool,
+                         hasObjectives: bool) -> tuple:
     """计算单个玩家的"贡献 z-score".
 
     z-score 基线使用全队而非同 role: 避免 2 人同 role 时 z 被限制在 ±1,
@@ -190,8 +209,10 @@ def _computeContribution(stats: ParticipantStats,
     dmgTaken = [p.get('damageTaken') or 0 for p in team]
     shieldHeals = [_shieldHeal(p) for p in team]
     ccs = [p.get('ccTime') or 0 for p in team]
-    # 海克斯模式视野分不计入
-    visions = [] if isHextech else [p.get('visionScore') or 0 for p in team]
+    # 海克斯/大乱斗不计视野
+    visions = [] if (isHextech or isAram) else [p.get('visionScore') or 0 for p in team]
+    # 推塔+史诗野怪 (仅召唤师峡谷)
+    sieges = [] if not hasObjectives else [p.get('siegeDamage') or 0 for p in team]
 
     # 参团率: (kills+assists) / team_total_kills
     teamTotalKills = sum(p.get('kills', 0) or 0 for p in team)
@@ -206,7 +227,7 @@ def _computeContribution(stats: ParticipantStats,
         for p in team
     ]
 
-    # 该玩家实际值 (会被 baseline 调整预期)
+    # 该玩家实际值
     myDmg = stats.get('damage') or 0
     myGold = stats.get('gold') or 0
     myCs = stats.get('cs') or 0
@@ -216,6 +237,7 @@ def _computeContribution(stats: ParticipantStats,
     myShieldHeal = _shieldHeal(stats)
     myCc = stats.get('ccTime') or 0
     myVision = stats.get('visionScore') or 0
+    mySiege = stats.get('siegeDamage') or 0
     myKills = stats.get('kills', 0) or 0
     myAssists = stats.get('assists', 0) or 0
     myKp = (myKills + myAssists) / max(teamTotalKills, 1)
@@ -231,19 +253,21 @@ def _computeContribution(stats: ParticipantStats,
     z_sh = _zScore(shieldHeals, myShieldHeal)
     z_cc = _zScore(ccs, myCc)
     z_vis = _zScore(visions, myVision) if visions else 0.0
+    z_siege = _zScore(sieges, mySiege) if sieges else 0.0
     z_kp = _zScore(killParticipations, myKp)
     z_eff = _zScore(damageEfficiencies, myEff)
 
-    # 海克斯模式视野权重强制归零
-    if isHextech:
-        w = {**w, 'vision': 0.0}
+    # 模式特定: 海克斯/大乱斗视野/推塔权重归零
+    if isHextech or isAram:
+        w = {**w, 'vision': 0.0, 'siege_damage': 0.0}
+    if not hasObjectives:
+        w = {**w, 'siege_damage': 0.0}
 
-    # 加权贡献 (正值=贡献高, 负值=贡献低)
-    # baseline 放大伤害贡献: 强英雄/强组合玩家 (baselineMultiplier>1) 时,
-    # 伤害 z 被乘以倍率 — z<0 (低于平均) 被进一步扣分, z>0 (高于平均) 被进一步加分.
+    # baseline 倍率作用到全部分数: 强英雄/强组合玩家 (baselineMultiplier>1) 时,
+    # 贡献分被放大 — 表现差 (负分) 被进一步扣分, 表现好 (正分) 被进一步加分.
     # 这样 OPGG 胜率高的英雄在胜局更易被判躺赢狗, 在负局更易被判战犯.
     contribution = (
-        w.get('damage', 0) * z_dmg * baselineMultiplier +
+        w.get('damage', 0) * z_dmg +
         w.get('gold', 0) * z_gold +
         w.get('cs', 0) * z_cs +
         w.get('kda', 0) * z_kda +
@@ -252,10 +276,11 @@ def _computeContribution(stats: ParticipantStats,
         w.get('cc', 0) * z_cc +
         w.get('vision', 0) * z_vis +
         w.get('damage_efficiency', 0) * z_eff +
-        w.get('kill_participation', 0) * z_kp
+        w.get('kill_participation', 0) * z_kp +
+        w.get('siege_damage', 0) * z_siege
     )
-    # 死亡越多越扣分 (z_death 正值表示比队友死更多)
     contribution -= w.get('death', 0) * z_death
+    contribution *= baselineMultiplier
 
     # 证据列表
     evidence = _buildEvidence(
@@ -267,7 +292,8 @@ def _computeContribution(stats: ParticipantStats,
         myShieldHeal, _mean(shieldHeals), z_sh,
         myCc, _mean(ccs), z_cc,
         myVision, _mean(visions), z_vis,
-        isHextech,
+        isHextech, isAram,
+        mySiege, _mean(sieges), z_siege,
         myKp, _mean(killParticipations), z_kp,
         myEff, _mean(damageEfficiencies), z_eff,
     )
@@ -283,7 +309,8 @@ def _buildEvidence(myDmg, avgDmg, zDmg,
                    mySh, avgSh, zSh,
                    myCc, avgCc, zCc,
                    myVis, avgVis, zVis,
-                   isHextech,
+                   isHextech, isAram,
+                   mySiege, avgSiege, zSiege,
                    myKp, avgKp, zKp,
                    myEff, avgEff, zEff) -> list:
     def sev(z):
@@ -319,9 +346,12 @@ def _buildEvidence(myDmg, avgDmg, zDmg,
          'teamAvg': round(avgEff, 2), 'zScore': round(zEff, 2),
          'severity': sev(zEff)},
     ]
-    if not isHextech:
+    if not isHextech and not isAram:
         items.append({'metric': 'vision', 'value': myVis, 'teamAvg': avgVis,
                       'zScore': round(zVis, 2), 'severity': sev(zVis)})
+        items.append({'metric': 'siege_damage', 'value': mySiege,
+                      'teamAvg': round(avgSiege, 2), 'zScore': round(zSiege, 2),
+                      'severity': sev(zSiege)})
     return items
 
 
@@ -331,7 +361,7 @@ async def _computeTeamScores(team: list,
 
     Args:
         team: list[ParticipantStats], 同队玩家
-        queueId: 队列 id (用于判断海克斯模式)
+        queueId: 队列 id (用于判断海克斯/大乱斗/召唤师峡谷)
 
     Returns:
         list[dict], 每项 {puuid, championId, score, evidence}, 按 score 降序.
@@ -341,6 +371,8 @@ async def _computeTeamScores(team: list,
         return []
 
     isHextech = queueId in HEXTECH_QUEUE_IDS
+    isAram = queueId in ARAM_QUEUE_IDS
+    hasObjectives = queueId in OBJECTIVE_MODES
 
     # 计算每个玩家的 baseline (异步并发)
     baselines = await asyncio.gather(
@@ -351,7 +383,7 @@ async def _computeTeamScores(team: list,
     for i, p in enumerate(team):
         role = _roleOf(p.get('championId'), queueId)
         contribution, evidence = _computeContribution(
-            p, team, role, baselines[i], isHextech)
+            p, team, role, baselines[i], isHextech, isAram, hasObjectives)
         scored.append({
             'puuid': p.get('puuid'),
             'championId': p.get('championId', 0) or 0,
@@ -536,7 +568,7 @@ async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
                     kills=s.get('kills', 0) or 0,
                     deaths=s.get('deaths', 0) or 0,
                     assists=s.get('assists', 0) or 0,
-                    damage=s.get('demage', 0) or 0,
+                    damage=s.get('damage', 0) or 0,
                     damageTaken=s.get('damageTaken', 0) or 0,
                     totalHeal=s.get('totalHeal', 0) or 0,
                     shieldOnTeammates=s.get('shieldOnTeammates', 0) or 0,
@@ -546,6 +578,8 @@ async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
                     visionScore=s.get('visionScore', 0) or 0,
                     win=teamWin,
                     augmentIds=s.get('augmentIds') or [],
+                    siegeDamage=(s.get('damageToTurrets', 0) or 0) +
+                               (s.get('damageToObjectives', 0) or 0),
                 ))
 
             # 全队 5 档评级 (一次计算 baseline + z-score, 然后分级)

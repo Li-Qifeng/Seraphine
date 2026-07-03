@@ -487,7 +487,7 @@ async def parseGameDetailData(puuid, game) -> GameDetail:
                     'gold': gold,
                     'runeIcon': runeIcon,
                     'champLevel': stats['champLevel'],
-                    'demage': stats['totalDamageDealtToChampions'],
+                    'damage': stats['totalDamageDealtToChampions'],
                     'subteamPlacement': subteamPlacement,
                     'isPublic': isPublic,
                     'augmentIds': augmentIds,
