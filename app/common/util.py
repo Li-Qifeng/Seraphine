@@ -28,6 +28,8 @@ class Github:
         self.user = user
         self.repositories = repositories
         self.sess = requests.session()
+        self._release_info = None
+        self._ver_info = None
 
     def __proxy(self):
         """
@@ -44,11 +46,21 @@ class Github:
         return {'User-Agent': f'Seraphine/{VERSION}'}
 
     def getReleasesInfo(self):
+        if self._release_info is not None:
+            return self._release_info
         url = f"{self.githubApi}/repos/{self.user}/{self.repositories}/releases/latest"
-
-        return self.sess.get(url, proxies=self.__proxy(),
+        resp = self.sess.get(url, proxies=self.__proxy(),
                              headers=self.__headers(),
-                             timeout=15).json()
+                             timeout=15)
+        data = resp.json()
+        # ponytail: 无认证 GitHub API 60 req/h 限流, 检测到限流 response 时
+        # log warning 并返回空 dict, 避免静默按"无更新"处理.
+        if isinstance(data, dict) and "message" in data and "rate limit" in data["message"].lower():
+            logger.warning(f"GitHub API rate limited: {data['message']}", TAG)
+            self._release_info = {}
+            return {}
+        self._release_info = data
+        return data
 
     def checkUpdate(self):
         """
@@ -121,16 +133,16 @@ class Github:
         return info
 
     def __get_ver_info(self):
+        if self._ver_info is not None:
+            return self._ver_info.get(VERSION, {})
         url = f'{self.githubApi}/repos/{self.user}/{self.repositories}/contents/document/ver.json'
-
         res = self.sess.get(url, proxies=self.__proxy(),
                             headers=self.__headers(),
                             timeout=15).json()
-
-        json_data = json.loads(
+        raw = json.loads(
             str(base64.b64decode(res['content']), encoding='utf-8'))
-
-        return json_data.get(VERSION, {})
+        self._ver_info = raw
+        return raw.get(VERSION, {})
 
     def getNotice(self):
         url = f'{self.githubApi}/repos/{self.user}/{self.repositories}/contents/document/notice.md'
