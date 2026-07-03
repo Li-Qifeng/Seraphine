@@ -14,12 +14,11 @@ from aiohttp.client_exceptions import ClientConnectorError
 from qasync import asyncClose, asyncSlot
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QTimer
 from PyQt5.QtGui import QIcon, QImage, QColor
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon
+from PyQt5.QtWidgets import QApplication, QLabel, QSystemTrayIcon
 
 from app.common.qfluentwidgets import (NavigationItemPosition, InfoBar, InfoBarPosition, Action,
                                        FluentWindow, SplashScreen, MessageBox, SmoothScrollArea,
-                                       ToolTipFilter, FluentIcon, ToolTipPosition, Flyout, FlyoutAnimationType,
-                                       DotInfoBadge, InfoBadgePosition)
+                                       ToolTipFilter, FluentIcon, ToolTipPosition, Flyout, FlyoutAnimationType)
 
 from app.view.start_interface import StartInterface
 from app.view.setting_interface import SettingInterface
@@ -68,6 +67,7 @@ class MainWindow(FluentWindow):
     checkUpdateFailed = pyqtSignal()
     checkUpToDate = pyqtSignal()
     fetchNoticeFailed = pyqtSignal()
+    showUpdateDot = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -335,6 +335,7 @@ class MainWindow(FluentWindow):
         self.checkUpdateFailed.connect(self.__onCheckUpdateFailed)
         self.checkUpToDate.connect(self.__onCheckUpToDate)
         self.fetchNoticeFailed.connect(self.__onFetchNoticeFailed)
+        self.showUpdateDot.connect(self._showUpdateDot)
         self.stackedWidget.currentChanged.connect(
             self.__onCurrentStackedChanged)
         self.mainWindowHide.connect(self.__onWindowHide)
@@ -432,16 +433,18 @@ class MainWindow(FluentWindow):
         logger.info(f"checkUpdate started (force={force})", TAG)
 
         try:
-            releasesInfo = github.checkUpdate()
+            releasesInfo = github.checkUpdate(force_refresh=force)
         except Exception as e:
             logger.warning(f"checkUpdate failed: {e}", TAG)
             self.checkUpdateFailed.emit()
             return
 
+        # debug
+        logger.info(f"checkUpdate: github.checkUpdate() returns type={type(releasesInfo).__name__} keys={list(releasesInfo.keys()) if isinstance(releasesInfo, dict) else 'N/A'}", TAG)
         if releasesInfo:
             logger.info(f"update available: {releasesInfo['new_version']}", TAG)
             self.showUpdateMessageBox.emit(releasesInfo)
-            self._showUpdateDot()
+            self.showUpdateDot.emit()
         elif force:
             logger.info("no update available", TAG)
             self.checkUpToDate.emit()
@@ -476,10 +479,15 @@ class MainWindow(FluentWindow):
     def _showUpdateDot(self):
         if self._updateDot:
             return
-        self._updateDot = DotInfoBadge.attension(
-            target=self.settingNavItem,
-            position=InfoBadgePosition.NAVIGATION_ITEM,
-        )
+        # ponytail: 用 QLabel 子控件替代 DotInfoBadge, 避免创建顶层 4x4 窗口
+        # (qfluentwidgets 无 NAVIGATION_ITEM position 管理器, 传 parent=None
+        # 导致 DotInfoBadge 成为顶层窗口, Windows 标题栏与 4x4 max size 冲突)
+        dot = QLabel(self.settingNavItem)
+        dot.setFixedSize(8, 8)
+        dot.setStyleSheet("background-color: red; border-radius: 4px;")
+        dot.move(self.settingNavItem.width() - 10, 3)
+        dot.show()
+        self._updateDot = dot
 
     def _clearUpdateDot(self):
         if self._updateDot:

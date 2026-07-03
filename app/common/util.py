@@ -49,20 +49,29 @@ class Github:
         if self._release_info is not None:
             return self._release_info
         url = f"{self.githubApi}/repos/{self.user}/{self.repositories}/releases/latest"
+        # debug
+        logger.info(f"getReleasesInfo: GET {url}", TAG)
         resp = self.sess.get(url, proxies=self.__proxy(),
                              headers=self.__headers(),
                              timeout=15)
+        # debug
+        logger.info(f"getReleasesInfo: status={resp.status_code} url={resp.url}", TAG)
         data = resp.json()
         # ponytail: 无认证 GitHub API 60 req/h 限流, 检测到限流 response 时
         # log warning 并返回空 dict, 避免静默按"无更新"处理.
+        # 不缓存失败响应 — 否则首次限流后所有后续 checkUpdate 都命中缓存 {}
+        # 永远返回"已是最新", 用户手动点检查也看不到更新.
         if isinstance(data, dict) and "message" in data and "rate limit" in data["message"].lower():
             logger.warning(f"GitHub API rate limited: {data['message']}", TAG)
-            self._release_info = {}
             return {}
-        self._release_info = data
+        # debug
+        logger.info(f"getReleasesInfo: result_type={type(data).__name__} keys={list(data.keys()) if isinstance(data, dict) else 'not-dict'}", TAG)
+        # 只缓存有效 release 数据 (含 tag_name), 避免错误响应被缓存
+        if isinstance(data, dict) and "tag_name" in data:
+            self._release_info = data
         return data
 
-    def checkUpdate(self):
+    def checkUpdate(self, force_refresh=False):
         """
         检查版本更新 (基于 tufup 增量更新框架).
 
@@ -77,24 +86,44 @@ class Github:
            失败静默吞掉更新通知.
         3. GitHub API 回退也确认无更新 -> 返回 None.
 
+        @param force_refresh: True 时清除 release/ver 缓存, 强制重新拉取.
+            手动点击检查更新时应传 True, 避免启动时限流缓存的空 dict 毒化后续结果.
         @return: 有更新 -> info dict (含 tag_name/body/forbidden/new_version),
                  无更新 / 失败 -> None
         """
         from app.common.tufup_updater import check_update as tufup_check
 
+        if force_refresh:
+            self._release_info = None
+            self._ver_info = None
+
+        # debug
+        logger.info(f"checkUpdate: tufup_check() start", TAG)
         has_update, new_version = tufup_check()
+        # debug
+        logger.info(f"checkUpdate: tufup has_update={has_update} new_version={new_version}", TAG)
         if has_update and new_version:
             return self._make_update_info(new_version)
 
+        # debug
+        logger.info(f"checkUpdate: tufup gave no update, falling back to GitHub API", TAG)
         # GitHub Releases API 权威回退: tufup 漏检时由 GitHub API 兜底.
         # 这是修复生产环境更新不可见的根因 — 旧代码仅 dev mode 走此分支,
         # 生产模式 tufup 任何失败都会静默返回 None, 用户收不到更新通知.
         try:
             release_info = self.getReleasesInfo()
+            # debug
+            logger.info(f"checkUpdate: release_info keys={list(release_info.keys()) if isinstance(release_info, dict) else 'not-dict'}", TAG)
             latest_tag = release_info.get("tag_name", "").lstrip('v')
+            # debug
+            logger.info(f"checkUpdate: latest_tag='{latest_tag}' VERSION='{VERSION}'", TAG)
             if latest_tag and latest_tag != VERSION:
                 from app.common.version_utils import coerce_version
-                if coerce_version(latest_tag) > coerce_version(VERSION):
+                c1 = coerce_version(latest_tag)
+                c2 = coerce_version(VERSION)
+                # debug
+                logger.info(f"checkUpdate: coerce {latest_tag} -> {c1}, {VERSION} -> {c2}, {c1} > {c2} = {c1 > c2}", TAG)
+                if c1 > c2:
                     logger.info(
                         f"update available (GitHub API fallback): "
                         f"{VERSION} -> {latest_tag}", TAG)
@@ -108,6 +137,8 @@ class Github:
 
     def _make_update_info(self, new_version: str) -> dict:
         """构建 info dict 供 UpdateMessageBox 显示."""
+        # debug
+        logger.info(f"_make_update_info: new_version={new_version}", TAG)
         info = {
             "tag_name": f"v{new_version}",
             "new_version": new_version,
@@ -117,7 +148,10 @@ class Github:
 
         try:
             release_info = self.getReleasesInfo()
-            if release_info.get("tag_name", "").lstrip('v') == new_version:
+            matched = release_info.get("tag_name", "").lstrip('v') == new_version
+            # debug
+            logger.info(f"_make_update_info: matched_tag={matched} body_len={len(release_info.get('body', ''))} has_assets={'assets' in release_info}", TAG)
+            if matched:
                 info["body"] = release_info.get("body", "")
                 if "assets" in release_info:
                     info["assets"] = release_info["assets"]
@@ -127,6 +161,8 @@ class Github:
         try:
             ver_info = self.__get_ver_info()
             info["forbidden"] = ver_info.get("forbidden", False)
+            # debug
+            logger.info(f"_make_update_info: forbidden={info['forbidden']}", TAG)
         except Exception as e:
             logger.warning(f"failed to fetch ver.json kill-switch: {e}", TAG)
 
@@ -136,9 +172,13 @@ class Github:
         if self._ver_info is not None:
             return self._ver_info.get(VERSION, {})
         url = f'{self.githubApi}/repos/{self.user}/{self.repositories}/contents/document/ver.json'
+        # debug
+        logger.info(f"__get_ver_info: GET {url}", TAG)
         res = self.sess.get(url, proxies=self.__proxy(),
                             headers=self.__headers(),
                             timeout=15).json()
+        # debug
+        logger.info(f"__get_ver_info: response_keys={list(res.keys()) if isinstance(res, dict) else 'not-dict'}", TAG)
         raw = json.loads(
             str(base64.b64decode(res['content']), encoding='utf-8'))
         self._ver_info = raw

@@ -55,6 +55,7 @@ def _is_rawgithub_reachable() -> bool:
     try:
         socket.create_connection(("raw.githubusercontent.com", 443), timeout=2)
         _RAWGITHUB_REACHABLE = True
+        logger.info("raw.githubusercontent.com reachable")
     except OSError:
         logger.info("raw.githubusercontent.com unreachable, tufup will be skipped")
         _RAWGITHUB_REACHABLE = False

@@ -81,7 +81,7 @@ jobs:
       id: ver
       shell: pwsh
       run: |
-        $v = Select-String -Path app/common/config.py -Pattern 'VERSION = "(.+)"' | ForEach-Object { $_.Matches.Groups[1].Value }
+        $v = Select-String -Path app/common/config.py -Pattern '^VERSION.*"(\d+\.\d+\.\d+)"' | ForEach-Object { $_.Matches.Groups[1].Value } | Select-Object -Last 1
         echo "version=$v" >> $env:GITHUB_OUTPUT
     - name: Compile installer
       run: |
@@ -119,7 +119,7 @@ jobs:
         # ponytail: 比较 VERSION 与最新 git tag, 而非 git diff HEAD~1.
         # git diff HEAD~1 HEAD 在 merge commit / 多 commit push 时漏检.
         # 标签对比对所有提交结构都可靠.
-        CURRENT_VERSION=$(grep -oP '(?<=VERSION = ")[^"]+' app/common/config.py)
+        CURRENT_VERSION=$(grep '^VERSION' app/common/config.py | grep -oP '"\K\d+\.\d+\.\d+' | tail -1)
         LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname 2>/dev/null | head -1)
         if [ -z "$LATEST_TAG" ] || [ "v$CURRENT_VERSION" != "$LATEST_TAG" ]; then
           UPDATED='true'
@@ -241,7 +241,7 @@ jobs:
     - name: Add new bundle
       run: |
         # ponytail: 从 config.py 直接读 VERSION, 不依赖 release job output
-        VER=$(grep -oP '(?<=VERSION = ")[^"]+' app/common/config.py)
+        VER=$(grep '^VERSION' app/common/config.py | grep -oP '"\K\d+\.\d+\.\d+' | tail -1)
         python tufup_repo.py add-bundle -v "$VER" -d dist/Seraphine -r tufup_repo -k keys
     - name: "Bootstrap: export keys for first-run secret"
       if: env.TUFUP_KEYS_B64 == ''
