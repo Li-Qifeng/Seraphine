@@ -28,14 +28,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# GitHub Pages 上的 tufup repo 地址. metadata 和 targets 分别托管.
+# tufup repo 地址 (gh-pages 分支). metadata 和 targets 分别托管.
 # gh-pages 分支结构: tufup/{metadata,targets}/
-# ponytail: 指向当前 fork 的 gh-pages, 改 fork 时同步修改
+#
+# metadata (JSON, 小文件) → jsDelivr CDN: 全球 CDN 加速, 国内可达
+# targets (tar.gz/patch, ~58MB) → raw.githubusercontent.com: 无文件大小限制
+# 注意: 不可统一用 jsDelivr, 因为 tar.gz 超过其 20MB 限制会返回 403.
+# ponytail: 改 fork 时同步修改 owner/repo
 DEFAULT_METADATA_BASE_URL = (
-    "https://li-qifeng.github.io/Seraphine/tufup/metadata/"
+    "https://cdn.jsdelivr.net/gh/Li-Qifeng/Seraphine@gh-pages/tufup/metadata/"
 )
 DEFAULT_TARGET_BASE_URL = (
-    "https://li-qifeng.github.io/Seraphine/tufup/targets/"
+    "https://raw.githubusercontent.com/Li-Qifeng/Seraphine/gh-pages/tufup/targets/"
 )
 
 APP_NAME = "Seraphine"
