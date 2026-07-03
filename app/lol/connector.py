@@ -1274,10 +1274,9 @@ class LolClientConnector(QObject):
                           gameId: int = None) -> bool:
         """提交本局队友点赞 (参考 sona/lol-bot 实现).
 
+        ponytail: verified working — 纯 v2 端点 + res.ok 判断
         使用 POST /lol-honor-v2/v1/honor-player 端点.
         v2 body: {puuid, summonerId, gameId, honorCategory}
-
-        HTTP 200 视为成功 (sona 已验证国服可用).
         """
         try:
             puuid = str(recipientPuuid)

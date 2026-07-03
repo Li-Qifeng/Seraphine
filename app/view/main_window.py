@@ -1192,7 +1192,7 @@ class MainWindow(FluentWindow):
             votes = (ballot.get('votePool') or {}).get('votes') or 1
             gameId = ballot.get('gameId')
 
-            # Fisher-Yates 打散 (同 sona)
+            # ponytail: Fisher-Yates 打散 (同 sona) — verified working
             for i in range(len(allies) - 1, 0, -1):
                 j = _random.randint(0, i)
                 allies[i], allies[j] = allies[j], allies[i]
@@ -1200,7 +1200,30 @@ class MainWindow(FluentWindow):
                 j = _random.randint(0, i)
                 opponents[i], opponents[j] = opponents[j], opponents[i]
 
-            # 先队友, 多余给对手 (同 sona)
+            # ponytail: strategy 只重排 allies, 不改变 submission loop 逻辑
+            strategy = cfg.get(cfg.autoHonorStrategy)
+            if strategy in ('friends_first', 'friends_only') and allies:
+                try:
+                    friends = await connector.getFriends()
+                    friends_puuid = {f.get('puuid') for f in friends
+                                    if isinstance(f, dict) and f.get('puuid')}
+                    friend_allies = [a for a in allies
+                                    if a.get('puuid') in friends_puuid]
+                    if strategy == 'friends_only':
+                        if not friend_allies:
+                            logger.error(
+                                "Auto honor: friends_only no friends", TAG)
+                            return
+                        allies = friend_allies
+                    else:  # friends_first
+                        non_friends = [a for a in allies
+                                      if a.get('puuid') not in friends_puuid]
+                        allies = friend_allies + non_friends  # 好友在前
+                except Exception as e:
+                    logger.error(
+                        f"Auto honor: strategy failed, fallback: {e}", TAG)
+
+            # ponytail: 先队友, 多余给对手 (同 sona) — verified working
             targets = (allies + opponents)[:votes]
 
             _HONOR_CATEGORIES = ('HEART', 'COOL', 'SHOTCALLER')
