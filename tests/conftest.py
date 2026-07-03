@@ -69,5 +69,5 @@ if 'qframelesswindow' not in sys.modules:
 
 # Pre-import app.common.config with stubs, then patch cfg.get() so that
 # logger.py (imported by connector) doesn't crash on MagicMock return value.
-import app.common.config as _cfg_mod
+import app.common.config as _cfg_mod  # noqa: E402
 _cfg_mod.cfg.get = MagicMock(return_value=logging.INFO)
