@@ -1488,11 +1488,12 @@ class MainWindow(FluentWindow):
             logger.info("TeamRating: diagnose triggered (game end)", TAG)
             lastGameParsed = await self.__diagnoseLastGame()
 
+        # ponytail: game analysis temporarily disabled
         # 自动弹出对局分析 (评级完成后)
-        if lastGameParsed:
-            from app.components.game_analysis_dialog import GameAnalysisDialog
-            dialog = GameAnalysisDialog(lastGameParsed, parent=self)
-            dialog.exec()
+        # if lastGameParsed:
+        #     from app.components.game_analysis_dialog import GameAnalysisDialog
+        #     dialog = GameAnalysisDialog(lastGameParsed, parent=self)
+        #     dialog.exec()
 
     async def __diagnoseLastGame(self):
         """诊断上一局, 把 verdict 写入 war_criminal_cache.

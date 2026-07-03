@@ -1083,7 +1083,8 @@ class GameTitleBar(QFrame, ColorChangeable):
             + self.tr("Game ID: ") + f"{self.gameId}")
 
         self.copyGameIdButton.setVisible(True)
-        self.analysisButton.setVisible(True)
+        # ponytail: game analysis temporarily disabled
+        self.analysisButton.setVisible(False)
 
     def setColor(self, c1: QColor, c2, c3, c4):
         self.setStyleSheet(f"""
