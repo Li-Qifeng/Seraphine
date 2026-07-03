@@ -9,7 +9,7 @@ from app.common.qfluentwidgets import (MessageBoxBase, SmoothScrollArea,
                                        BodyLabel, TextEdit, TitleLabel,
                                        ProgressBar, PrimaryPushButton, ComboBox)
 
-from app.common.config import VERSION, cfg, BETA
+from app.common.config import VERSION, cfg, BETA, GITHUB_URL
 from app.common.util import getLolClientPidSlowly
 from app.common.signals import signalBus
 from app.common.tufup_updater import download_and_install as tufup_install
@@ -160,10 +160,9 @@ class UpdateMessageBox(MessageBoxBase):
             url: str = assets[0]['browser_download_url']
             # Gitee 镜像加速 (国内用户)
             url = url.replace("github", "gitee")
-            url = url.replace("Zzaphkiel/Seraphine", "Zzaphkiel/seraphine")
         else:
             # 无 assets 信息, 打开 GitHub releases 页面
-            url = "https://github.com/Zzaphkiel/Seraphine/releases/latest"
+            url = f"{GITHUB_URL}/releases/latest"
 
         webbrowser.open(url)
 

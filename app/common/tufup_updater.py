@@ -30,12 +30,12 @@ from app.common.logger import logger
 # tufup repo 地址 (gh-pages 分支). metadata 和 targets 分别托管.
 # gh-pages 分支结构: tufup/{metadata,targets}/
 #
-# metadata (JSON, 小文件) → jsDelivr CDN: 全球 CDN 加速, 国内可达
-# targets (tar.gz/patch, ~58MB) → raw.githubusercontent.com: 无文件大小限制
-# 注意: 不可统一用 jsDelivr, 因为 tar.gz 超过其 20MB 限制会返回 403.
+# metadata / targets 统一用 raw.githubusercontent.com.
+# jsDelivr CDN 因缓存策略时常提供过期 metadata, 且 targets 超过其 20MB 限制,
+# 故全部走 GitHub raw 直连.
 # ponytail: 改 fork 时同步修改 owner/repo
 DEFAULT_METADATA_BASE_URL = (
-    "https://cdn.jsdelivr.net/gh/Li-Qifeng/Seraphine@gh-pages/tufup/metadata/"
+    "https://raw.githubusercontent.com/Li-Qifeng/Seraphine/gh-pages/tufup/metadata/"
 )
 DEFAULT_TARGET_BASE_URL = (
     "https://raw.githubusercontent.com/Li-Qifeng/Seraphine/gh-pages/tufup/targets/"
