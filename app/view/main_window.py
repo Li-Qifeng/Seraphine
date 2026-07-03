@@ -429,16 +429,21 @@ class MainWindow(FluentWindow):
         if not force and not cfg.get(cfg.enableCheckUpdate):
             return
 
+        logger.info(f"checkUpdate started (force={force})", TAG)
+
         try:
             releasesInfo = github.checkUpdate()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"checkUpdate failed: {e}", TAG)
             self.checkUpdateFailed.emit()
             return
 
         if releasesInfo:
+            logger.info(f"update available: {releasesInfo['new_version']}", TAG)
             self.showUpdateMessageBox.emit(releasesInfo)
             self._showUpdateDot()
         elif force:
+            logger.info("no update available", TAG)
             self.checkUpToDate.emit()
 
     def checkNotice(self, triggerByUser):
@@ -1478,9 +1483,16 @@ class MainWindow(FluentWindow):
 
         # 全队 5 档评级: EndOfGame→Lobby 阶段评分并写缓存.
         # 必须 await 完成, 否则紧接着的生涯刷新拿不到评级缓存, 徽章不显示
+        lastGameParsed = None
         if cfg.get(cfg.enableTeamRating):
             logger.info("TeamRating: diagnose triggered (game end)", TAG)
-            await self.__diagnoseLastGame()
+            lastGameParsed = await self.__diagnoseLastGame()
+
+        # 自动弹出对局分析 (评级完成后)
+        if lastGameParsed:
+            from app.components.game_analysis_dialog import GameAnalysisDialog
+            dialog = GameAnalysisDialog(lastGameParsed, parent=self)
+            dialog.exec()
 
     async def __diagnoseLastGame(self):
         """诊断上一局, 把 verdict 写入 war_criminal_cache.
@@ -1561,6 +1573,7 @@ class MainWindow(FluentWindow):
             ratingStyle = cfg.get(cfg.teamRatingStyle)
             await diagnoseGameFromParsed(parsed, currentPuuid, gameId,
                                           ratingStyle=ratingStyle)
+            return parsed
         except Exception as e:
             logger.error(f"WarCriminal diagnose failed: {e}", TAG)
 

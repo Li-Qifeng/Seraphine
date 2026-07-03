@@ -61,20 +61,36 @@ class Github:
            和 ver.json (kill-switch). 这两步 best effort, 失败不阻塞更新.
         3. 返回 info dict 供 UpdateMessageBox 显示.
 
-        旧实现直接拉 GitHub releases/latest 做字符串相等比较, 已废弃.
-        _coerce_version 仍保留供其他场景使用.
-
         @return: 有更新 -> info dict (含 tag_name/body/forbidden/new_version),
                  无更新 / 失败 -> None
         """
-        # 延迟 import 避免 tufup 未安装时 util 模块加载失败
         from app.common.tufup_updater import check_update as tufup_check
 
         has_update, new_version = tufup_check()
-        if not has_update or not new_version:
-            return None
+        if has_update and new_version:
+            return self._make_update_info(new_version)
 
-        # 有更新: best effort 拉 release body 和 kill-switch
+        # ponytail: dev mode (无 Seraphine.exe) 时 tufup 跳过, 回退 GitHub API
+        if not os.path.exists("Seraphine.exe"):
+            logger.info("dev mode: fallback to GitHub API", TAG)
+            try:
+                release_info = self.getReleasesInfo()
+                latest_tag = release_info.get("tag_name", "").lstrip('v')
+                if latest_tag and latest_tag != VERSION:
+                    from app.common.version_utils import coerce_version
+                    if coerce_version(latest_tag) > coerce_version(VERSION):
+                        logger.info(
+                            f"update available (dev fallback): "
+                            f"{VERSION} -> {latest_tag}", TAG)
+                        return self._make_update_info(latest_tag)
+            except Exception as e:
+                logger.warning(f"dev fallback update check failed: {e}", TAG)
+
+        logger.info("no update available", TAG)
+        return None
+
+    def _make_update_info(self, new_version: str) -> dict:
+        """构建 info dict 供 UpdateMessageBox 显示."""
         info = {
             "tag_name": f"v{new_version}",
             "new_version": new_version,
@@ -84,11 +100,8 @@ class Github:
 
         try:
             release_info = self.getReleasesInfo()
-            # tag_name 匹配才用其 body, 避免 tufup 与 GitHub release 不同步时
-            # 显示错误的 release notes
             if release_info.get("tag_name", "").lstrip('v') == new_version:
                 info["body"] = release_info.get("body", "")
-                # 保留 assets 供 "Manually Download" 按钮使用
                 if "assets" in release_info:
                     info["assets"] = release_info["assets"]
         except Exception as e:

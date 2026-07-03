@@ -15,7 +15,6 @@ tufup 客户端封装: 基于 TUF 安全标准的增量更新.
   root, 其他 metadata 从远端拉
 - target_dir / extract_dir 放 %APPDATA%/Seraphine/, 避免污染安装目录
 """
-import logging
 import os
 import pathlib
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
@@ -26,7 +25,7 @@ if TYPE_CHECKING:
     # 仅类型注解用, 运行时延迟 import 避免未安装时模块加载失败
     from tufup.client import Client
 
-logger = logging.getLogger(__name__)
+from app.common.logger import logger
 
 # tufup repo 地址 (gh-pages 分支). metadata 和 targets 分别托管.
 # gh-pages 分支结构: tufup/{metadata,targets}/
@@ -184,7 +183,7 @@ def download_and_install(
         )
         return True
     except Exception as e:
-        logger.exception(f"download_and_install failed: {e}")
+        logger.exception("download_and_install failed", e)
         return False
 
 

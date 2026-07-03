@@ -18,6 +18,12 @@ _mock_config.LOCAL_PATH = "/tmp/mock_seraphine"
 _mock_config.cfg = MagicMock()
 sys.modules["app.common.config"] = _mock_config
 
+# mock app.common.logger (tufup_updater 改用 logger.py, 依赖 PyQt5)
+_mock_logger = MagicMock()
+_logger_module = types.ModuleType("app.common.logger")
+_logger_module.logger = _mock_logger
+sys.modules["app.common.logger"] = _logger_module
+
 
 from app.common import tufup_updater  # noqa: E402
 
