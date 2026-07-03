@@ -19,6 +19,7 @@ from app.common.logger import logger
 from app.common.signals import signalBus
 from app.common.util import getPortTokenServerByPid, getTasklistPath, getLolClientPid
 from app.lol.exceptions import *
+from app.lol.persistent_cache import cache as sqlite_cache
 
 TAG = "Connector"
 
@@ -790,6 +791,16 @@ class LolClientConnector(QObject):
         res = await self.__get(f"/lol-match-history/v1/games/{gameId}")
 
         return await res.json()
+
+    async def getGameDetailCached(self, gameId) -> Optional[dict]:
+        """Get game detail from SQLite cache (offline fallback)."""
+        return await asyncio.get_running_loop().run_in_executor(
+            None, sqlite_cache.get_game_detail, gameId)
+
+    async def getSummonerGamesCached(self, puuid: str, limit: int = 20, offset: int = 0) -> Optional[list]:
+        """Get parsed GameSummary list from SQLite cache (offline fallback)."""
+        return await asyncio.get_running_loop().run_in_executor(
+            None, sqlite_cache.get_games, puuid, limit, offset)
 
     @retry()
     async def getRankedStatsByPuuid(self, puuid) -> dict:

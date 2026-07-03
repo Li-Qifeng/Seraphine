@@ -30,6 +30,7 @@ from .tools_pure import (
     TeamParticipant,
     TeamGameInfo,
 )
+from .persistent_cache import cache as sqlite_cache
 
 
 SERVERS_NAME = {
@@ -516,7 +517,7 @@ async def parseGameDetailData(puuid, game) -> GameDetail:
     if win is None:
         return None
 
-    return {
+    result = {
         'gameId': game['gameId'],
         'mapIcon': mapIcon,
         'gameCreation': timeStampToStr(game['gameCreation']),
@@ -529,6 +530,9 @@ async def parseGameDetailData(puuid, game) -> GameDetail:
         'remake': remake,
         'teams': teams,
     }
+    asyncio.get_running_loop().run_in_executor(
+        None, sqlite_cache.set_game_detail, game['gameId'], result)
+    return result
 
 
 def getTeammates(game, targetPuuid):
@@ -866,9 +870,12 @@ def getTeamColor(session, currentSummonerId):
     return makeTeam(ally), makeTeam(enemy)
 
 
-async def parseGamesDataConcurrently(games):
-    tasks = [parseGameData(game) for game in games]
-    return await asyncio.gather(*tasks)
+async def parseGamesDataConcurrently(games, puuid: str = ""):
+    results = await asyncio.gather(*[parseGameData(game) for game in games])
+    if puuid:
+        asyncio.get_running_loop().run_in_executor(
+            None, sqlite_cache.set_games, puuid, results)
+    return results
 
 
 async def parseSummonerGameInfo(item, queueId, currentSummonerId) -> Optional[TeamParticipant]:

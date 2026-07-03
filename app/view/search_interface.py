@@ -260,10 +260,12 @@ class GameDetailView(QFrame):
         super().__init__(parent)
         self.hBoxLayout = QHBoxLayout(self)
         self.stackedWidget = QStackedWidget()
+        self._game = None
 
         self.infoPage = QWidget()
         self.vBoxLayout = QVBoxLayout(self.infoPage)
         self.titleBar = GameTitleBar()
+        self.titleBar.analysisRequested.connect(self._showAnalysis)
 
         self.scrollWidget = QWidget()
         self.scrollArea = SmoothScrollArea()
@@ -370,6 +372,7 @@ class GameDetailView(QFrame):
 
             return
 
+        self._game = game
         isCherry = game["queueId"] == 1700
         isMayhem = game["queueId"] == 2400
         self.titleBar.updateTitleBar(game)
@@ -459,6 +462,14 @@ class GameDetailView(QFrame):
             return getTeamRating(gameId, isWin)
         except Exception:
             return None
+
+    def _showAnalysis(self):
+        if not self._game:
+            return
+        from app.components.game_analysis_dialog import GameAnalysisDialog
+        w = self.window()
+        dialog = GameAnalysisDialog(self._game, parent=w)
+        dialog.exec()
 
 
 class TeamView(QFrame, ColorChangeable):
@@ -974,6 +985,8 @@ class SummonerInfoBar(QFrame):
 
 
 class GameTitleBar(QFrame, ColorChangeable):
+    analysisRequested = pyqtSignal()
+
     def __init__(self, type: str = None, parent=None):
         QFrame.__init__(self, parent=parent)
         ColorChangeable.__init__(self, type)
@@ -987,6 +1000,7 @@ class GameTitleBar(QFrame, ColorChangeable):
         self.infoLabel = QLabel()
         self.copyGameIdButton = ToolButton(Icon.COPY)
         self.gameId = None
+        self.analysisButton = PushButton(self.tr("Game Analysis"))
 
         self.remake = None
         self.win = None
@@ -1003,6 +1017,8 @@ class GameTitleBar(QFrame, ColorChangeable):
         self.copyGameIdButton.setToolTip(self.tr("Copy game ID"))
         self.copyGameIdButton.installEventFilter(ToolTipFilter(
             self.copyGameIdButton, 500, ToolTipPosition.LEFT))
+        self.analysisButton.setVisible(False)
+        self.analysisButton.setFixedHeight(30)
 
     def __initLayout(self):
         self.infoLayout.setSpacing(0)
@@ -1018,6 +1034,8 @@ class GameTitleBar(QFrame, ColorChangeable):
         self.titleBarLayout.addSpacerItem(QSpacerItem(
             1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
         self.titleBarLayout.addWidget(self.copyGameIdButton)
+        self.titleBarLayout.addSpacing(6)
+        self.titleBarLayout.addWidget(self.analysisButton)
         self.titleBarLayout.addSpacing(10)
 
     def updateTitleBar(self, game):
@@ -1065,6 +1083,7 @@ class GameTitleBar(QFrame, ColorChangeable):
             + self.tr("Game ID: ") + f"{self.gameId}")
 
         self.copyGameIdButton.setVisible(True)
+        self.analysisButton.setVisible(True)
 
     def setColor(self, c1: QColor, c2, c3, c4):
         self.setStyleSheet(f"""
@@ -1076,6 +1095,8 @@ class GameTitleBar(QFrame, ColorChangeable):
     def __connectSignalToSlot(self):
         self.copyGameIdButton.clicked.connect(
             lambda: pyperclip.copy(self.gameId))
+        self.analysisButton.clicked.connect(
+            self.analysisRequested.emit)
 
 
 class GamesView(QFrame):
@@ -1359,9 +1380,17 @@ class SearchInterface(SeraphineInterface):
                 else:
                     # LCU 未就绪时 @retry 返回 None (统一提示已发射)
                     if games is None:
+                        cached = await connector.getSummonerGamesCached(self.puuid, 20, 0)
+                        if cached:
+                            games = cached
+                            self.gamesView.gamesTab.updateQueueIdMap(games)
+                            self.gameLoadingTask = asyncio.create_task(
+                                self.__loadGames(self.puuid))
+                            self.gamesView.gamesTab.showTheFirstPage()
+                            return True
                         self.gamesView.setLoadingPageEnable(False)
                         return False
-                    games = await parseGamesDataConcurrently(games['games'])
+                    games = await parseGamesDataConcurrently(games['games'], self.puuid)
 
                 if len(games) == 0:
                     self.gamesView.gamesTab.nextButton.setVisible(False)
@@ -1483,7 +1512,7 @@ class SearchInterface(SeraphineInterface):
                 return
 
             # 处理数据，交给 gamesTab，更新其 games 成员以及 queueIdMap
-            games = await parseGamesDataConcurrently(games['games'])
+            games = await parseGamesDataConcurrently(games['games'], puuid)
 
             if self.puuid != puuid:
                 return
@@ -1539,6 +1568,14 @@ class SearchInterface(SeraphineInterface):
         # LCU 未就绪时 @retry 统一拦截 ReferenceError 并返回 None
         # (已通过 signalBus.lcuNotConnected 发射统一提示)
         if game is None:
+            # 尝试从缓存读取
+            cached = await connector.getGameDetailCached(gameId)
+            if cached:
+                game = cached
+                self.gamesView.gameDetailView.setLoadingPageEnabled(False)
+                # 直接从缓存显示
+                self.gamesView.gameDetailView.updateGame(cached)
+                return
             if True:
                 self.gamesView.gameDetailView.setLoadingPageEnabled(False)
             return
