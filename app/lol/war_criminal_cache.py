@@ -87,3 +87,4 @@ def getTeamRating(gameId, isWinner: bool) -> Optional[list]:
 def clear():
     """清空缓存 (测试用)."""
     _cache.clear()
+    sqlite_cache.clear_all()

@@ -255,6 +255,16 @@ class PersistentCache:
             return None
         return dict(row)
 
+    def clear_all(self):
+        with self._lock:
+            c = self._get_conn().cursor()
+            c.execute("DELETE FROM games")
+            c.execute("DELETE FROM game_details")
+            c.execute("DELETE FROM verdicts")
+            c.execute("DELETE FROM summoners")
+            self._get_conn().commit()
+            c.close()
+
     # ---- close ----
 
     def close(self):
