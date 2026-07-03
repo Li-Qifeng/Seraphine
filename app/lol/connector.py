@@ -1195,16 +1195,12 @@ class LolClientConnector(QObject):
             return False
 
     async def dodge(self) -> bool:
-        """秒退: 离开队列或退出英雄选择"""
+        """秒退英雄选择 (同 sona: DELETE /lol-lobby/v2/lobby)."""
         try:
-            res = await self.__post("/lol-lobby/v2/lobby/matchmaking/search/leave")
-            if res.status == 204:
-                return True
-        except Exception:
-            pass
-        try:
-            res = await self.__post("/lol-champ-select/v1/session/actions")
-            return res.status in (200, 204)
+            res = await self.__delete("/lol-lobby/v2/lobby")
+            return res.ok
+        except aiohttp.ClientResponseError as e:
+            return e.status == 404  # 幂等: 已不在房间视为成功
         except Exception:
             return False
 
