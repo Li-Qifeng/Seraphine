@@ -1,12 +1,16 @@
+# DEPRECATED — use app.view.analysis_page.AnalysisPage instead
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QFrame, QWidget, QSizePolicy, QSpacerItem,
-                             QScrollArea, QProgressBar)
-from app.common.qfluentwidgets import MessageBoxBase, TitleLabel, isDarkTheme
+                             QProgressBar)
+from app.common.qfluentwidgets import (MessageBoxBase, TitleLabel,
+                                       isDarkTheme, SmoothScrollArea)
 
 from app.lol.war_criminal_cache import getVerdict
 from app.lol.war_criminal_ui import GRADE_ACCENT, METRIC_NAMES
+from app.components.grade_badge import GradeBadge
 
 SEV_DOT = {
     'high_pos': '<b style="color: #27ae60;">◆</b>',
@@ -79,6 +83,8 @@ class GameAnalysisDialog(MessageBoxBase):
         closeBtn.clicked.connect(self.accept)
         self.buttonLayout.addWidget(closeBtn)
 
+        self.widget.setMinimumWidth(720)
+        self.widget.setMaximumWidth(880)
         self._buildContent(gameData)
 
     def _buildContent(self, gameData: dict):
@@ -104,17 +110,17 @@ class GameAnalysisDialog(MessageBoxBase):
         mapName = gameData.get('mapName', '')
         duration = gameData.get('gameDuration', '')
 
-        self.viewLayout.setContentsMargins(24, 16, 24, 16)
+        font = "'Segoe UI', 'Microsoft YaHei'"
+
+        self.viewLayout.setContentsMargins(24, 20, 24, 16)
         self.viewLayout.setSpacing(12)
-        font_family = "'Microsoft YaHei', 'Segoe UI', sans-serif"
 
         header = QHBoxLayout()
         title = TitleLabel(self.tr("Game Analysis"))
-        title.setStyleSheet(f"font-family: {font_family};")
-        info = QLabel(f"{mapName}  ·  {modeName}  ·  {duration}")
         info_color = '#aaaaaa' if dark else '#666666'
+        info = QLabel(f"{mapName}  ·  {modeName}  ·  {duration}")
         info.setStyleSheet(
-            f"font-family: {font_family}; font-size: 13px; color: {info_color};")
+            f"font-family: {font}; font-size: 13px; color: {info_color};")
         header.addWidget(title)
         header.addSpacerItem(QSpacerItem(
             1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
@@ -123,141 +129,141 @@ class GameAnalysisDialog(MessageBoxBase):
 
         divider = QFrame()
         divider.setFixedHeight(1)
-        divider_color = 'rgba(255,255,255,0.08)' if dark else 'rgba(0,0,0,0.08)'
-        divider.setStyleSheet(f"background: {divider_color}; border: none;")
+        c = 'rgba(255,255,255,0.08)' if dark else 'rgba(0,0,0,0.08)'
+        divider.setStyleSheet(f"background: {c}; border: none;")
         self.viewLayout.addWidget(divider)
 
-        scrollArea = QScrollArea()
-        scrollArea.setWidgetResizable(True)
-        scrollArea.setStyleSheet(
-            "QScrollArea { border: none; background: transparent; }"
-            "QWidget#viewport { background: transparent; }")
-        scrollWidget = QWidget()
-        scrollWidget.setStyleSheet("background: transparent;")
-        teamsLayout = QHBoxLayout(scrollWidget)
-        teamsLayout.setSpacing(12)
-        teamsLayout.setContentsMargins(0, 4, 0, 4)
+        teamsRow = QHBoxLayout()
+        teamsRow.setSpacing(12)
+        teamsRow.setContentsMargins(0, 0, 0, 0)
 
-        teamsLayout.addWidget(self._makeTeamColumn(
+        teamsRow.addWidget(_TeamColumn(
             "Blue Team" if win100 else "Red Team",
             "🏆 Win", winSummoners, isWin=True))
-        teamsLayout.addWidget(self._makeTeamColumn(
+        teamsRow.addWidget(_TeamColumn(
             "Red Team" if win100 else "Blue Team",
             "💀 Lose", loseSummoners, isWin=False))
 
-        scrollArea.setWidget(scrollWidget)
-        self.viewLayout.addWidget(scrollArea, 1)
+        self.viewLayout.addLayout(teamsRow, 1)
 
-    def _makeTeamColumn(self, teamName: str, resultLabel: str,
-                        players: list, isWin: bool = True) -> QFrame:
+
+class _TeamColumn(QFrame):
+    def __init__(self, teamName: str, resultLabel: str,
+                 players: list, isWin: bool = True, parent=None):
+        super().__init__(parent)
         dark = isDarkTheme()
-        frame = QFrame()
         if isWin:
             border = 'rgba(0,200,83,0.3)' if dark else 'rgba(0,200,83,0.4)'
             bg = 'rgba(0,200,83,0.06)' if dark else 'rgba(0,200,83,0.04)'
         else:
             border = 'rgba(255,65,54,0.3)' if dark else 'rgba(255,65,54,0.4)'
             bg = 'rgba(255,65,54,0.06)' if dark else 'rgba(255,65,54,0.04)'
-        frame.setStyleSheet(f"""
-            QFrame {{
+        self.setStyleSheet(f"""
+            _TeamColumn {{
                 border: 1px solid {border};
-                border-radius: 10px;
+                border-radius: 8px;
                 background: {bg};
             }}
         """)
 
-        layout = QVBoxLayout(frame)
+        layout = QVBoxLayout(self)
         layout.setSpacing(4)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setContentsMargins(10, 10, 10, 10)
 
-        header_color = '#f0f0f0' if dark else '#222222'
+        font = "'Segoe UI', 'Microsoft YaHei'"
+        hc = '#f0f0f0' if dark else '#222222'
         header = QLabel(f"{teamName}    {resultLabel}")
         header.setStyleSheet(
-            f"font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;"
-            f"font-size: 14px; font-weight: bold; padding: 2px 0;"
-            f"color: {header_color};")
+            f"font-family: {font}; font-size: 13px; font-weight: bold; "
+            f"color: {hc}; padding: 2px 0;")
         layout.addWidget(header)
 
-        maxAbsScore = 0.01
+        scroll = SmoothScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(min(len(players) * 44 + 10, 320))
+        scroll.setStyleSheet(
+            "QScrollArea { border: none; background: transparent; }")
+        sp = QWidget()
+        sp.setStyleSheet("background: transparent;")
+        sl = QVBoxLayout(sp)
+        sl.setSpacing(2)
+        sl.setContentsMargins(0, 2, 0, 2)
+
         if players:
             avgScore = sum(p['score'] for p in players) / len(players)
-            maxAbsScore = max(abs(p['score']) for p in players)
-            maxAbsScore = max(maxAbsScore, 0.01)
-            avg_color = '#999999' if dark else '#888888'
-            avgLabel = QLabel(
-                self.tr("Avg contribution: ") + f"{avgScore:+.2f}")
-            avgLabel.setStyleSheet(
-                f"font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;"
-                f"font-size: 11px; color: {avg_color}; padding-bottom: 6px;")
-            layout.addWidget(avgLabel)
+            font = "'Segoe UI', 'Microsoft YaHei'"
+            ac = '#999999' if dark else '#888888'
+            avg = QLabel("Avg: " + f"{avgScore:+.2f}")
+            avg.setStyleSheet(
+                f"font-family: {font}; font-size: 11px; color: {ac}; "
+                f"padding-bottom: 4px;")
+            sl.addWidget(avg)
 
+            maxAbs = max(abs(p['score']) for p in players)
+            maxAbs = max(maxAbs, 0.01)
             for p in players:
-                layout.addWidget(_PlayerRow(p, maxAbsScore))
+                sl.addWidget(_PlayerRow(p, maxAbs))
 
-        layout.addSpacerItem(QSpacerItem(
+        sl.addSpacerItem(QSpacerItem(
             1, 1, QSizePolicy.Minimum, QSizePolicy.Expanding))
-        return frame
+        scroll.setWidget(sp)
+        layout.addWidget(scroll, 1)
 
 
 class _PlayerRow(QFrame):
     def __init__(self, data: dict, maxAbsScore: float = 1.0, parent=None):
         super().__init__(parent)
         dark = isDarkTheme()
-        self.setFixedHeight(48)
+        self.setFixedHeight(40)
 
-        hover_bg = 'rgba(255,255,255,0.05)' if dark else 'rgba(0,0,0,0.04)'
+        hover = 'rgba(255,255,255,0.04)' if dark else 'rgba(0,0,0,0.03)'
         self.setStyleSheet(
-            f"_PlayerRow {{ background: transparent; }}"
-            f"_PlayerRow:hover {{ background: {hover_bg}; border-radius: 6px; }}")
+            "_PlayerRow { background: transparent; }"
+            f"_PlayerRow:hover {{ background: {hover}; border-radius: 4px; }}")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 3, 6, 3)
-        layout.setSpacing(8)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(6)
 
         grade = data.get('grade', 3)
-        grade_color = GRADE_ACCENT.get(grade, '#888')
-        font_family = "'Microsoft YaHei', 'Segoe UI', sans-serif"
+        gc = GRADE_ACCENT.get(grade, '#888')
+        font = "'Segoe UI', 'Microsoft YaHei'"
 
-        # 档位色指示条
         indicator = QFrame()
-        indicator.setFixedSize(3, 32)
-        indicator.setStyleSheet(
-            f"background: {grade_color}; border-radius: 1px;")
+        indicator.setFixedSize(3, 28)
+        indicator.setStyleSheet(f"background: {gc}; border-radius: 1px;")
         layout.addWidget(indicator)
 
-        # 英雄头像 (32x32) + 段位角标 (右下角叠加)
-        iconContainer = QWidget()
-        iconContainer.setFixedSize(32, 32)
-        champIcon = QLabel(iconContainer)
-        champIcon.setFixedSize(32, 32)
-        champIcon.move(0, 0)
-        pixmap = QPixmap(data.get('championIcon', ''))
-        if not pixmap.isNull():
-            champIcon.setPixmap(pixmap.scaled(
-                32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        champIcon.setStyleSheet("border-radius: 4px;")
+        iconC = QWidget()
+        iconC.setFixedSize(28, 28)
+        ci = QLabel(iconC)
+        ci.setFixedSize(28, 28)
+        ci.move(0, 0)
+        pix = QPixmap(data.get('championIcon', ''))
+        if not pix.isNull():
+            ci.setPixmap(pix.scaled(28, 28, Qt.KeepAspectRatio,
+                                     Qt.SmoothTransformation))
+        ci.setStyleSheet("border-radius: 3px;")
+        ri = data.get('rankIcon', '')
+        if ri:
+            rp = QPixmap(ri)
+            if not rp.isNull():
+                rb = QLabel(iconC)
+                rb.setFixedSize(11, 11)
+                rb.move(15, 15)
+                rb.setPixmap(rp.scaled(11, 11, Qt.KeepAspectRatio,
+                                        Qt.SmoothTransformation))
+                rb.setStyleSheet(
+                    "background: rgba(0,0,0,0.65); border-radius: 2px;")
+        layout.addWidget(iconC)
 
-        rankIconPath = data.get('rankIcon', '')
-        if rankIconPath:
-            rankPixmap = QPixmap(rankIconPath)
-            if not rankPixmap.isNull():
-                rankBadge = QLabel(iconContainer)
-                rankBadge.setFixedSize(14, 14)
-                rankBadge.move(18, 18)
-                rankBadge.setPixmap(rankPixmap.scaled(
-                    14, 14, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                rankBadge.setStyleSheet(
-                    "background: rgba(0,0,0,0.65); border-radius: 3px; padding: 1px;")
-        layout.addWidget(iconContainer)
-
-        # 召唤师名 + 统计 (KDA · CS · 经济 · 段位)
         info = QVBoxLayout()
         info.setSpacing(0)
-        name_color = '#f0f0f0' if dark else '#222222'
+        nc = '#f0f0f0' if dark else '#222222'
         name = QLabel(data.get('summonerName', '?'))
         name.setStyleSheet(
-            f"font-family: {font_family}; font-size: 11px; font-weight: bold;"
-            f"color: {name_color};")
+            f"font-family: {font}; font-size: 10px; font-weight: bold; "
+            f"color: {nc};")
 
         k = data.get('kills', 0)
         d = data.get('deaths', 0)
@@ -265,18 +271,14 @@ class _PlayerRow(QFrame):
         cs = data.get('cs', 0)
         gold = _formatGold(data.get('gold', 0))
         tier = data.get('tier', '')
-        division = data.get('division', '')
-
-        stats_parts = [f"{k}/{d}/{a}", f"{cs} CS", f"{gold}"]
+        div = data.get('division', '')
+        sparts = [f"{k}/{d}/{a}", f"{cs} CS", f"{gold}"]
         if tier:
-            tier_text = f"{tier} {division}".strip()
-            stats_parts.append(tier_text)
-        stats_text = "    ·    ".join(stats_parts)
-
-        stats_color = '#a8a8a8' if dark else '#888888'
-        kda = QLabel(stats_text)
+            sparts.append(f"{tier} {div}".strip())
+        sc = '#a8a8a8' if dark else '#888888'
+        kda = QLabel("  ".join(sparts))
         kda.setStyleSheet(
-            f"font-family: {font_family}; font-size: 10px; color: {stats_color};")
+            f"font-family: {font}; font-size: 9px; color: {sc};")
 
         info.addWidget(name)
         info.addWidget(kda)
@@ -285,50 +287,39 @@ class _PlayerRow(QFrame):
         layout.addSpacerItem(QSpacerItem(
             1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
 
-        # 评分可视化 (色条 + 评级+数字)
         score = data.get('score', 0)
         label = data.get('label', '')
 
-        scoreViz = QVBoxLayout()
-        scoreViz.setSpacing(2)
-        scoreViz.setContentsMargins(0, 0, 0, 0)
+        badge = GradeBadge(grade, label, isCurrent=False)
+        layout.addWidget(badge)
 
-        score_text = QLabel(f"{label}  {score:+.2f}")
-        score_text.setFixedWidth(64)
-        score_text.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        score_text.setStyleSheet(
-            f"font-family: {font_family}; font-size: 11px; font-weight: bold;"
-            f"color: {grade_color};")
-        scoreViz.addWidget(score_text)
-
-        score_bar = QProgressBar()
-        score_bar.setFixedWidth(64)
-        score_bar.setFixedHeight(4)
-        score_bar.setRange(0, 100)
-        score_bar.setTextVisible(False)
+        bar = QProgressBar()
+        bar.setFixedWidth(50)
+        bar.setFixedHeight(4)
+        bar.setRange(0, 100)
+        bar.setTextVisible(False)
         pct = int((score / maxAbsScore + 1) / 2 * 100) if maxAbsScore > 0 else 50
         pct = max(0, min(100, pct))
-        score_bar.setValue(pct)
-        bar_bg = 'rgba(255,255,255,0.10)' if dark else 'rgba(0,0,0,0.06)'
-        score_bar.setStyleSheet(f"""
+        bar.setValue(pct)
+        bb = 'rgba(255,255,255,0.10)' if dark else 'rgba(0,0,0,0.06)'
+        bar.setStyleSheet(f"""
             QProgressBar {{
-                background: {bar_bg}; border: none; border-radius: 2px;
+                background: {bb}; border: none; border-radius: 2px;
             }}
             QProgressBar::chunk {{
-                background: {grade_color}; border-radius: 2px;
+                background: {gc}; border-radius: 2px;
             }}
         """)
-        scoreViz.addWidget(score_bar)
-        layout.addLayout(scoreViz)
+        layout.addWidget(bar)
 
         ev = data.get('evidence', [])
         if ev:
             btn = QPushButton("📊")
-            btn.setFixedSize(24, 24)
+            btn.setFixedSize(20, 20)
             btn.setStyleSheet(
-                "QPushButton { border: none; font-size: 12px; }"
-                "QPushButton:hover { background: rgba(255,255,255,0.12); border-radius: 4px; }"
-            )
+                "QPushButton { border: none; font-size: 11px; }"
+                "QPushButton:hover { background: rgba(255,255,255,0.1); "
+                "border-radius: 3px; }")
             html = _formatEvidence(ev)
             btn.setToolTip(html)
             layout.addWidget(btn)

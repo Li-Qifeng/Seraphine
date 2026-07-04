@@ -31,6 +31,7 @@ from app.lol.connector import connector
 from app.lol.exceptions import SummonerGamesNotFound
 from app.lol.tools import parseGameDetailData, parseGamesDataConcurrently
 from ..components.seraphine_interface import SeraphineInterface
+from .analysis_page import AnalysisPage
 
 
 TAG = "SearchInterface"
@@ -260,6 +261,7 @@ class GameDetailView(QFrame):
         super().__init__(parent)
         self.hBoxLayout = QHBoxLayout(self)
         self.stackedWidget = QStackedWidget()
+        self.outerStack = QStackedWidget()
         self._game = None
 
         self.infoPage = QWidget()
@@ -287,6 +289,20 @@ class GameDetailView(QFrame):
 
         self.__initLayout()
 
+        self.stackedWidget.addWidget(self.loadingPage)
+        self.stackedWidget.addWidget(self.infoPage)
+        self.stackedWidget.setCurrentIndex(1)
+
+        self.analysisPage = AnalysisPage()
+        self.analysisPage.backRequested.connect(self.__showGameInfo)
+
+        self.outerStack.addWidget(self.stackedWidget)   # index 0
+        self.outerStack.addWidget(self.analysisPage)     # index 1
+        self.outerStack.setCurrentIndex(0)
+
+        self.hBoxLayout.setContentsMargins(0, 0, 0, 0)
+        self.hBoxLayout.addWidget(self.outerStack)
+
     def clear(self):
         for i in reversed(range(self.vBoxLayout.count())):
             item = self.vBoxLayout.itemAt(i)
@@ -296,6 +312,7 @@ class GameDetailView(QFrame):
                 item.widget().deleteLater()
 
         self.titleBar = GameTitleBar()
+        self.titleBar.analysisRequested.connect(self._showAnalysis)
 
         self.scrollWidget = QWidget()
         self.scrollArea = SmoothScrollArea()
@@ -315,8 +332,6 @@ class GameDetailView(QFrame):
 
     def __initLayout(self):
         self.scrollArea.setObjectName("gameScrollArea")
-        # self.scrollArea.setVerticalScrollBarPolicy(
-        #     Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scrollWidget.setObjectName("scrollWidget")
 
         self.scrollWidget.setLayout(self.scrollLayout)
@@ -346,16 +361,6 @@ class GameDetailView(QFrame):
         self.extraTeamView4.setVisible(False)
         self.extraTeamView5.setVisible(False)
         self.extraTeamView6.setVisible(False)
-
-        self.stackedWidget.addWidget(self.loadingPage)
-        self.stackedWidget.addWidget(self.infoPage)
-        self.stackedWidget.setCurrentIndex(1)
-
-        self.hBoxLayout.setContentsMargins(0, 0, 0, 0)
-        self.hBoxLayout.addWidget(self.stackedWidget)
-
-        # self.vBoxLayout.addSpacerItem(
-        #     QSpacerItem(1, 1, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
     def setLoadingPageEnabled(self, enable: bool):
         index = 0 if enable else 1
@@ -464,12 +469,20 @@ class GameDetailView(QFrame):
             return None
 
     def _showAnalysis(self):
+        logger.info("GameAnalysis: _showAnalysis called, _game=%s" % (self._game is not None), TAG)
         if not self._game:
+            logger.warning("GameAnalysis: self._game is None", TAG)
             return
-        from app.components.game_analysis_dialog import GameAnalysisDialog
-        w = self.window()
-        dialog = GameAnalysisDialog(self._game, parent=w)
-        dialog.exec()
+        try:
+            self.analysisPage.loadGame(self._game)
+            self.outerStack.setCurrentIndex(1)
+        except Exception as e:
+            logger.error(f"GameAnalysis: page failed: {e}", TAG)
+            import traceback
+            logger.error(traceback.format_exc(), TAG)
+
+    def __showGameInfo(self):
+        self.outerStack.setCurrentIndex(0)
 
 
 class TeamView(QFrame, ColorChangeable):
@@ -931,7 +944,7 @@ class SummonerInfoBar(QFrame):
         self.goldLabel.setAlignment(Qt.AlignCenter)
         self.goldLabel.setFixedWidth(60)
 
-        self.demageLabel.setText(str(summoner["demage"]))
+        self.demageLabel.setText(str(summoner["damage"]))
         self.demageLabel.setAlignment(Qt.AlignCenter)
         self.demageLabel.setFixedWidth(70)
 
@@ -1017,7 +1030,6 @@ class GameTitleBar(QFrame, ColorChangeable):
         self.copyGameIdButton.setToolTip(self.tr("Copy game ID"))
         self.copyGameIdButton.installEventFilter(ToolTipFilter(
             self.copyGameIdButton, 500, ToolTipPosition.LEFT))
-        self.analysisButton.setVisible(False)
         self.analysisButton.setFixedHeight(30)
 
     def __initLayout(self):
@@ -1083,8 +1095,7 @@ class GameTitleBar(QFrame, ColorChangeable):
             + self.tr("Game ID: ") + f"{self.gameId}")
 
         self.copyGameIdButton.setVisible(True)
-        # ponytail: game analysis temporarily disabled
-        self.analysisButton.setVisible(False)
+        self.analysisButton.setVisible(True)
 
     def setColor(self, c1: QColor, c2, c3, c4):
         self.setStyleSheet(f"""

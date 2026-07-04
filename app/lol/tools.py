@@ -395,6 +395,9 @@ async def parseGameDetailData(puuid, game) -> GameDetail:
 
                 championId = summoner['championId']
                 championIcon = await connector.getChampionIcon(championId)
+                tl = summoner.get('timeline', {})
+                lane = tl.get('lane', '')
+                role = tl.get('role', '')
 
                 spell1Id = summoner['spell1Id']
                 spell1Icon = await connector.getSummonerSpellIcon(spell1Id)
@@ -491,6 +494,8 @@ async def parseGameDetailData(puuid, game) -> GameDetail:
                     'subteamPlacement': subteamPlacement,
                     'isPublic': isPublic,
                     'augmentIds': augmentIds,
+                    'lane': lane,
+                    'role': role,
                     # 战犯/躺赢狗诊断字段 (v4 stats 全量, OPGG 战犯算法使用)
                     'damageTaken': stats.get('totalDamageTaken', 0),
                     'magicDamage': stats.get('magicDamageDealtToChampions', 0),
