@@ -141,6 +141,32 @@ def _teamRadarVals(players: list) -> list:
 
 _TEAM_RADAR_LABELS = ['输出', '承伤', '经济', '控制', '视野', '参团']
 
+# ── Tab Utilities ──────────────────────────────────────────
+
+_TAB_NAMES = ['总览', '数据', '经济', '符文', '装备', '时间线']
+
+def _tabStyle(dark: bool, active: bool) -> str:
+    font = "'Segoe UI', 'Microsoft YaHei'"
+    color = '#2EA7FF' if active else ('#8B95A5' if dark else '#888')
+    bg = 'rgba(46, 167, 255, 0.12)' if (active and dark) else \
+         'rgba(46, 167, 255, 0.10)' if active else 'transparent'
+    return (
+        f"font-family: {font}; font-size: 12px; font-weight: bold; "
+        f"color: {color}; background: {bg}; "
+        f"border-radius: 4px; padding: 2px 10px;")
+
+
+def _smallIcon(path: str, size: int = 18) -> QLabel:
+    """Create a small icon QLabel from an image path."""
+    lbl = QLabel()
+    lbl.setFixedSize(size, size)
+    if path:
+        p = QPixmap(path)
+        if not p.isNull():
+            lbl.setPixmap(p.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+    lbl.setStyleSheet("border-radius: 2px;")
+    return lbl
+
 # ── HexagonScore ───────────────────────────────────────────
 
 class HexagonScore(QWidget):
@@ -251,16 +277,6 @@ class PlayerCard(QFrame):
         srRow = QHBoxLayout()
         srRow.setSpacing(2)
         srRow.setAlignment(Qt.AlignCenter)
-
-        def _smallIcon(path, size=18):
-            lbl = QLabel()
-            lbl.setFixedSize(size, size)
-            if path:
-                p = QPixmap(path)
-                if not p.isNull():
-                    lbl.setPixmap(p.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            lbl.setStyleSheet("border-radius: 2px;")
-            return lbl
 
         srRow.addWidget(_smallIcon(data.get('spell1Icon', '')))
         srRow.addWidget(_smallIcon(data.get('spell2Icon', '')))
@@ -505,6 +521,9 @@ class CenterCompare(QFrame):
         ]
         resLabel = QLabel('  '.join(
             f"{name} {b}/{r}" for name, b, r in resources if b or r))
+        hasResources = any(b or r for _, b, r in resources)
+        if not hasResources:
+            resLabel.hide()
         resLabel.setWordWrap(True)
         resLabel.setAlignment(Qt.AlignCenter)
         rl_color = _TEXTS if dark else '#777'
@@ -598,21 +617,12 @@ class AnalysisPage(QFrame):
         tabBar = QHBoxLayout()
         tabBar.setSpacing(2)
         tabBar.setAlignment(Qt.AlignCenter)
-        tabNames = ['总览', '数据', '经济', '符文', '装备', '时间线']
-        tabColor = '#8B95A5' if dark else '#888'
-        tabActive = _BLUE
-        tabBg = 'transparent'
-        tabActiveBg = 'rgba(46, 167, 255, 0.12)' if dark else 'rgba(46, 167, 255, 0.10)'
-        for i, name in enumerate(tabNames):
+        for i, name in enumerate(_TAB_NAMES):
             tab = QLabel(name)
             tab.setCursor(Qt.PointingHandCursor)
             tab.setFixedHeight(28)
             tab.setAlignment(Qt.AlignCenter)
-            style = (f"font-family: {font}; font-size: 12px; font-weight: bold; "
-                     f"color: {tabActive if i == 0 else tabColor}; "
-                     f"background: {tabActiveBg if i == 0 else tabBg}; "
-                     f"border-radius: 4px; padding: 2px 10px;")
-            tab.setStyleSheet(style)
+            tab.setStyleSheet(_tabStyle(dark, i == 0))
             tab.mousePressEvent = lambda e, idx=i: self._switchTab(idx)
             tabBar.addWidget(tab)
             self._tabLabels.append(tab)
@@ -645,18 +655,8 @@ class AnalysisPage(QFrame):
         if idx == self._activeTab:
             return
         dark = isDarkTheme()
-        tabColor = '#8B95A5' if dark else '#888'
-        tabActive = _BLUE
-        tabBg = 'transparent'
-        tabActiveBg = 'rgba(46, 167, 255, 0.12)' if dark else 'rgba(46, 167, 255, 0.10)'
-        font = "'Segoe UI', 'Microsoft YaHei'"
         for i, tab in enumerate(self._tabLabels):
-            active = (i == idx)
-            tab.setStyleSheet(
-                f"font-family: {font}; font-size: 12px; font-weight: bold; "
-                f"color: {tabActive if active else tabColor}; "
-                f"background: {tabActiveBg if active else tabBg}; "
-                f"border-radius: 4px; padding: 2px 10px;")
+            tab.setStyleSheet(_tabStyle(dark, i == idx))
         self._activeTab = idx
         # TODO: switch content view per tab when data/economy/rune/item/timeline views are implemented
 
@@ -707,7 +707,7 @@ class AnalysisPage(QFrame):
 
         row.addWidget(TeamPanel(
             "蓝队" if win100 else "红队",
-            bluePlayers, win100 if win100 else False, blueTotals), 8)
+            bluePlayers, win100, blueTotals), 8)
 
         row.addWidget(CenterCompare(
             bluePlayers, redPlayers, win100,
