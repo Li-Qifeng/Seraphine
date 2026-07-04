@@ -10,6 +10,9 @@ from app.view.auxiliary_cards.automation_cards import (
 from app.view.auxiliary_cards.hextech_cards import (
     ChampionsCard, HextechChampionCard,
 )
+from app.view.auxiliary_cards.death_switch_cards import (
+    DeathSwitchCard,
+)
 
 __all__ = [
     "OnlineStatusCard",
@@ -33,4 +36,5 @@ __all__ = [
     "ChampionsCard",
     "HextechChampionCard",
     "AutoSetSummonerSpellCard",
+    "DeathSwitchCard",
 ]

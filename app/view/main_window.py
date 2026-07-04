@@ -29,7 +29,9 @@ from app.view.auxiliary_interface import AuxiliaryInterface
 from app.view.opgg_window import OpggWindow
 from app.view.hextech_window import HextechWindow, HextechGrabFlyout
 from app.common.util import (github, getLolClientPid, getTasklistPath,
-                             getLolClientPidSlowly, getLoLPathByRegistry)
+                             getLolClientPidSlowly, getLoLPathByRegistry,
+                             findGameWindowHwnd, findProcessWindowHwnd,
+                             forceForegroundWindow, sendMediaPlayPause)
 from app.components.avatar_widget import NavigationAvatarWidget
 from app.components.temp_system_tray_menu import TmpSystemTrayMenu
 from app.common.icons import Icon
@@ -117,6 +119,27 @@ class MainWindow(FluentWindow):
         self.hextechAssistTimer.setInterval(3000)
         self.hextechAssistTimer.timeout.connect(
             lambda: asyncio.ensure_future(self.__onHextechAssistTick()))
+
+        # 死亡自动切窗: 游戏内 2 秒轮询死亡状态
+        self.deathSwitchTimer = QTimer(self)
+        self.deathSwitchTimer.setInterval(2000)
+        self.deathSwitchTimer.timeout.connect(
+            lambda: asyncio.ensure_future(self.__onDeathSwitchTick()))
+        self._deathPrevAlive = True
+        self._deathRespawnTask = None
+        self._deathBrowserHwnd = 0
+        self._deathCountdownEnd = 0.0
+        self.deathCountdownLabel = QLabel(self)
+        self.deathCountdownLabel.setAlignment(Qt.AlignCenter)
+        self.deathCountdownLabel.setStyleSheet(
+            "QLabel { background: rgba(0,0,0,180); color: #ff4444; "
+            "font-size: 28px; font-weight: bold; padding: 8px 24px; "
+            "border-radius: 8px; }")
+        self.deathCountdownLabel.raise_()
+        self.deathCountdownLabel.hide()
+        self.deathCountdownTimer = QTimer(self)
+        self.deathCountdownTimer.setInterval(1000)
+        self.deathCountdownTimer.timeout.connect(self.__onDeathCountdownTick)
 
         self.lastTipsTime = time.time()
         self.lastTipsType = None
@@ -1481,7 +1504,27 @@ class MainWindow(FluentWindow):
                 except Exception as e:
                     logger.error(f"Hextech assist auto show failed: {e}", TAG)
 
+        # 死亡自动切窗: 非排除模式且启用时启动轮询
+        if cfg.get(cfg.enableDeathSwitch):
+            excluded = cfg.get(cfg.deathSwitchExcludedModes)
+            if isinstance(excluded, list) and queueId not in excluded:
+                logger.error(
+                    f"DeathSwitch: starting timer for queueId={queueId}", TAG)
+                self._deathPrevAlive = True
+                self._deathRespawnTask = None
+                self._deathBrowserHwnd = 0
+                self.deathSwitchTimer.start()
+
     async def __onGameEnd(self):
+        # 停止死亡自动切窗轮询
+        self.deathSwitchTimer.stop()
+        self.__hideDeathCountdown()
+        self._deathPrevAlive = True
+        self._deathBrowserHwnd = 0
+        if self._deathRespawnTask and not self._deathRespawnTask.done():
+            self._deathRespawnTask.cancel()
+            self._deathRespawnTask = None
+
         # 停止海克斯辅助轮询
         self.hextechAssistTimer.stop()
         self.opggWindow.hextechAssistInterface.clearState()
@@ -1496,12 +1539,16 @@ class MainWindow(FluentWindow):
             logger.info("TeamRating: diagnose triggered (game end)", TAG)
             lastGameParsed = await self.__diagnoseLastGame()
 
-        # ponytail: game analysis temporarily disabled
-        # 自动弹出对局分析 (评级完成后)
+        # ponytail: auto-popup disabled — exec() in async path blocks career refresh
         # if lastGameParsed:
-        #     from app.components.game_analysis_dialog import GameAnalysisDialog
-        #     dialog = GameAnalysisDialog(lastGameParsed, parent=self)
-        #     dialog.exec()
+        #     try:
+        #         from app.components.game_analysis_dialog import GameAnalysisDialog
+        #         dialog = GameAnalysisDialog(lastGameParsed, parent=self)
+        #         dialog.exec()
+        #     except Exception as e:
+        #         logger.error(f"GameAnalysis: auto-popup failed: {e}", TAG)
+        #         import traceback
+        #         logger.error(traceback.format_exc(), TAG)
 
     async def __diagnoseLastGame(self):
         """诊断上一局, 把 verdict 写入 war_criminal_cache.
@@ -1597,6 +1644,100 @@ class MainWindow(FluentWindow):
         except Exception as e:
             logger.error(f"Hextech assist tick failed: {e}", TAG)
 
+    async def __onDeathSwitchTick(self):
+        """死亡自动切窗: 检查死亡状态并切换窗口"""
+        if not cfg.get(cfg.enableDeathSwitch):
+            return
+        # 已有复活等待任务, 由 __onRespawnWaiter 处理, 不再重复判断
+        if self._deathRespawnTask and not self._deathRespawnTask.done():
+            return
+        try:
+            info = await liveClient.getActivePlayerDeathInfoFromAll()
+            if info is None:
+                # 游戏已结束或 Live Client 不可用, 重置状态
+                self._deathPrevAlive = True
+                return
+            is_dead = info.get('isDead', False)
+            if is_dead and self._deathPrevAlive:
+                logger.info(f"DeathSwitch: detected death, respawnTimer={info.get('respawnTimer')}", TAG)
+                remaining = info.get('respawnTimer', 30.0)
+                self._deathCountdownEnd = time.time() + remaining
+                self.deathCountdownLabel.setText(
+                    self.tr("复活倒计时: {:.0f}s").format(remaining))
+                self.__positionCountdownLabel()
+                self.deathCountdownLabel.show()
+                self.deathCountdownTimer.start()
+                hwnd = findProcessWindowHwnd(cfg.get(cfg.deathSwitchTargetExe))
+                if hwnd:
+                    logger.info(f"DeathSwitch: switching to hwnd={hwnd}", TAG)
+                    self._deathBrowserHwnd = hwnd
+                    forceForegroundWindow(hwnd)
+                    sendMediaPlayPause(hwnd)
+                else:
+                    logger.warning(f"DeathSwitch: no visible window for target exe '{cfg.get(cfg.deathSwitchTargetExe)}'", TAG)
+                self._deathPrevAlive = False
+                self._deathRespawnTask = asyncio.create_task(
+                    self.__onRespawnWaiter(remaining))
+            elif not is_dead and not self._deathPrevAlive:
+                logger.info("DeathSwitch: respawn detected by poll", TAG)
+                self.__hideDeathCountdown()
+                hwnd = findGameWindowHwnd()
+                if hwnd:
+                    forceForegroundWindow(hwnd)
+                if self._deathBrowserHwnd:
+                    sendMediaPlayPause(self._deathBrowserHwnd)
+                self._deathPrevAlive = True
+        except Exception as e:
+            logger.warning(f"DeathSwitch tick failed: {e}", TAG)
+
+    def __onDeathCountdownTick(self):
+        now = time.time()
+        remaining = self._deathCountdownEnd - now
+        if remaining > 0:
+            self.deathCountdownLabel.setText(
+                self.tr("复活倒计时: {:.0f}s").format(remaining))
+        else:
+            self.deathCountdownLabel.hide()
+            self.deathCountdownTimer.stop()
+
+    def __positionCountdownLabel(self):
+        g = self.stackedWidget.geometry()
+        self.deathCountdownLabel.adjustSize()
+        lbl_w = self.deathCountdownLabel.width()
+        cx = g.x() + g.width() // 2 if g.width() > 0 else self.width() // 2
+        self.deathCountdownLabel.move(max(0, cx - lbl_w // 2), g.y() + 5 if g.height() > 0 else 48)
+
+    def __hideDeathCountdown(self):
+        self.deathCountdownLabel.hide()
+        self.deathCountdownTimer.stop()
+
+    async def __onRespawnWaiter(self, respawn_timer: float):
+        """等待复活后自动切回游戏窗口"""
+        try:
+            await asyncio.sleep(respawn_timer + 0.5)
+            for _ in range(5):
+                info = await liveClient.getActivePlayerDeathInfoFromAll()
+                if info and not info.get('isDead', True):
+                    self.__hideDeathCountdown()
+                    hwnd = findGameWindowHwnd()
+                    if hwnd:
+                        forceForegroundWindow(hwnd)
+                    if self._deathBrowserHwnd:
+                        sendMediaPlayPause(self._deathBrowserHwnd)
+                    self._deathPrevAlive = True
+                    self._deathRespawnTask = None
+                    logger.info("DeathSwitch: switched back to game window", TAG)
+                    return
+                await asyncio.sleep(1)
+            logger.info("DeathSwitch: respawn timer expired but still dead, giving up", TAG)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.warning(f"DeathSwitch respawn waiter failed: {e}", TAG)
+        finally:
+            if self._deathRespawnTask and self._deathRespawnTask.done():
+                self._deathRespawnTask = None
+
     def __checkWindowSize(self):
         if (dpi := self.devicePixelRatioF()) == 1.0:
             return
@@ -1615,6 +1756,11 @@ class MainWindow(FluentWindow):
         self.splashScreen.finish()
         msg = ChangeDpiMessageBox(self.window())
         msg.exec()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if hasattr(self, 'deathCountdownLabel') and self.deathCountdownLabel.isVisible():
+            self.__positionCountdownLabel()
 
     @asyncSlot(str)
     async def __onCareerGameClicked(self, gameId):
