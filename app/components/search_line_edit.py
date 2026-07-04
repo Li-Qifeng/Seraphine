@@ -24,7 +24,12 @@ class MyCompleterMenu(CompleterMenu):
         historyList = cfg.get(cfg.searchHistory).split(",")
         historyList.remove(action.text())
         self.close()
-        cfg.set(cfg.searchHistory, ",".join(historyList))
+        cfg.set(cfg.searchHistory, ",".join(historyList), save=False)
+        if not hasattr(self, '_historySaveTimer'):
+            self._historySaveTimer = QTimer()
+            self._historySaveTimer.setSingleShot(True)
+            self._historySaveTimer.timeout.connect(lambda: cfg.save())
+        self._historySaveTimer.start(500)
         self.lineEdit.refreshCompleter()
 
     def addAction(self, action: QAction):
