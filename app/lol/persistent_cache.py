@@ -10,6 +10,7 @@ from json import JSONDecodeError
 from typing import Optional
 
 from app.common.config import LOCAL_PATH
+from app.common.logger import logger
 TAG = "PersistentCache"
 DB_NAME = "seraphine_cache.db"
 SCHEMA_VERSION = 1
@@ -93,7 +94,7 @@ class PersistentCache:
                 game_name TEXT, tag_line TEXT,
                 profile_icon TEXT, level INTEGER,
                 updated_at REAL NOT NULL DEFAULT (julianday('now'))
-            );
+            );  -- ponytail: summoners table unused, no write-through from connector
         """)
         self._conn.commit()
         c.close()
@@ -107,6 +108,7 @@ class PersistentCache:
     # ---- games (match history) ----
 
     def set_games(self, puuid: str, games: list) -> int:
+        logger.debug("set_games puuid=%s n=%d" % (puuid, len(games)), TAG)
         count = 0
         with self._lock:
             conn = self._get_conn()
@@ -164,6 +166,7 @@ class PersistentCache:
     # ---- game details ----
 
     def set_game_detail(self, game_id: int, detail: dict):
+        logger.debug("set_game_detail gid=%s" % game_id, TAG)
         with self._lock:
             conn = self._get_conn()
             c = conn.cursor()
@@ -203,6 +206,7 @@ class PersistentCache:
     # ---- verdicts ----
 
     def set_verdict(self, game_id: int, winner_rating: list, loser_rating: list):
+        logger.debug("set_verdict gid=%s" % game_id, TAG)
         with self._lock:
             self._get_conn().execute("""
                 INSERT OR REPLACE INTO verdicts
@@ -234,6 +238,7 @@ class PersistentCache:
 
     # ---- summoners ----
 
+    # ponytail: dead, no caller — connector.getSummonerByPuuid never writes through
     def set_summoner(self, puuid: str, name: str = "", tag_line: str = "",
                      profile_icon: str = "", level: int = 0):
         with self._lock:
@@ -244,6 +249,7 @@ class PersistentCache:
             """, (puuid, name, tag_line, profile_icon, level))
             self._get_conn().commit()
 
+    # ponytail: dead, no caller — no LCU-offline summoner fallback yet
     def get_summoner(self, puuid: str) -> Optional[dict]:
         with self._lock:
             c = self._get_conn().cursor()
@@ -266,7 +272,7 @@ class PersistentCache:
             c.close()
 
     # ---- close ----
-
+    # ponytail: dead, connector.close() only closes aiohttp sessions; SQLite conn leaks until process exit
     def close(self):
         with self._lock:
             if self._conn:
@@ -274,7 +280,7 @@ class PersistentCache:
                 self._conn = None
 
     # ---- stats ----
-
+    # ponytail: dead, stats never surfaced in UI
     def get_stats(self) -> dict:
         with self._lock:
             c = self._get_conn().cursor()

@@ -1652,5 +1652,11 @@ class SearchInterface(SeraphineInterface):
             history.remove(name)
 
         history.insert(0, name)
-        cfg.set(cfg.searchHistory, ",".join(
-            [t for t in history if t][:10]), True)
+        val = ",".join([t for t in history if t][:10])
+        cfg.set(cfg.searchHistory, val, save=False)
+        if not hasattr(self, '_historySaveTimer'):
+            from PyQt5.QtCore import QTimer
+            self._historySaveTimer = QTimer()
+            self._historySaveTimer.setSingleShot(True)
+            self._historySaveTimer.timeout.connect(lambda: cfg.save())
+        self._historySaveTimer.start(500)
