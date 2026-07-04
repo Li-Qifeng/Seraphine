@@ -1,7 +1,9 @@
+from typing import Optional
+
 import math
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QPixmap, QPainter, QPainterPath, QColor, QFont
+from PyQt5.QtGui import QPixmap, QPainter, QPainterPath, QColor, QFont, QPen
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QFrame,
                              QWidget, QSizePolicy, QSpacerItem)
 
@@ -42,6 +44,10 @@ def _mergeTeam(summoners: list, ratingList: list) -> list:
             'puuid': puuid,
             'summonerName': s.get('summonerName', '?'),
             'championIcon': s.get('championIcon', ''),
+            'spell1Icon': s.get('spell1Icon', ''),
+            'spell2Icon': s.get('spell2Icon', ''),
+            'runeIcon': s.get('runeIcon', ''),
+            'itemIcons': s.get('itemIcons', []),
             'kills': s.get('kills', 0), 'deaths': s.get('deaths', 0),
             'assists': s.get('assists', 0),
             'cs': s.get('cs', 0), 'gold': s.get('gold', 0),
@@ -139,7 +145,7 @@ _TEAM_RADAR_LABELS = ['输出', '承伤', '经济', '控制', '视野', '参团'
 
 class HexagonScore(QWidget):
     """Compact score badge: colored hexagon with score number in center."""
-    def __init__(self, score: float, size=44, parent=None):
+    def __init__(self, score: float, size=76, parent=None):
         super().__init__(parent)
         self._score = score
         self._color_str = _scoreColor(score)
@@ -198,7 +204,7 @@ class HexagonScore(QWidget):
 # ── PlayerCard ─────────────────────────────────────────────
 
 class PlayerCard(QFrame):
-    """Player card for three-column layout."""
+    """Player card with spells, rune, items, and score hexagon."""
     def __init__(self, data: dict, teamTotals: dict, parent=None):
         super().__init__(parent)
         dark = isDarkTheme()
@@ -216,28 +222,58 @@ class PlayerCard(QFrame):
         hl.setContentsMargins(6, 4, 6, 4)
         hl.setSpacing(6)
 
+        # ── Champion icon + level + spells + rune ──
+        iconCol = QVBoxLayout()
+        iconCol.setSpacing(2)
+        iconCol.setAlignment(Qt.AlignCenter)
+
+        # Champion icon with level overlay
         iconC = QWidget()
-        iconC.setFixedSize(44, 44)
+        iconC.setFixedSize(48, 48)
         ci = QLabel(iconC)
-        ci.setFixedSize(44, 44)
+        ci.setFixedSize(48, 48)
         ci.move(0, 0)
         pix = QPixmap(data.get('championIcon', ''))
         if not pix.isNull():
-            ci.setPixmap(pix.scaled(44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            ci.setPixmap(pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         ci.setStyleSheet("border-radius: 4px;")
 
         lv = QLabel(str(data.get('champLevel', 1)))
-        lv.setFixedSize(16, 14)
-        lv.move(0, 30)
+        lv.setFixedSize(18, 15)
+        lv.move(0, 33)
         lv.setAlignment(Qt.AlignCenter)
         lv.setStyleSheet(
-            "background: rgba(0,0,0,0.7); color: #fff;"
+            "background: rgba(0,0,0,0.75); color: #fff;"
             "font-size: 9px; font-weight: bold; border-radius: 2px;")
-        hl.addWidget(iconC)
+        iconCol.addWidget(iconC)
 
+        # Spell + rune row
+        srRow = QHBoxLayout()
+        srRow.setSpacing(2)
+        srRow.setAlignment(Qt.AlignCenter)
+
+        def _smallIcon(path, size=18):
+            lbl = QLabel()
+            lbl.setFixedSize(size, size)
+            if path:
+                p = QPixmap(path)
+                if not p.isNull():
+                    lbl.setPixmap(p.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            lbl.setStyleSheet("border-radius: 2px;")
+            return lbl
+
+        srRow.addWidget(_smallIcon(data.get('spell1Icon', '')))
+        srRow.addWidget(_smallIcon(data.get('spell2Icon', '')))
+        srRow.addWidget(_smallIcon(data.get('runeIcon', '')))
+        iconCol.addLayout(srRow)
+
+        hl.addLayout(iconCol)
+
+        # ── Middle info column ──
         vi = QVBoxLayout()
         vi.setSpacing(1)
 
+        # Name
         nameLabel = QLabel(data.get('summonerName', '?'))
         nl_color = _TEXTP if dark else '#222'
         nameLabel.setStyleSheet(
@@ -245,14 +281,19 @@ class PlayerCard(QFrame):
             f"color: {nl_color}; background: transparent;")
         vi.addWidget(nameLabel)
 
-        k = data.get('kills', 0); d = data.get('deaths', 0); a = data.get('assists', 0)
-        cs = data.get('cs', 0); gold = _formatGold(data.get('gold', 0))
+        # KDA + CS + Gold
+        k = data.get('kills', 0)
+        d = data.get('deaths', 0)
+        a = data.get('assists', 0)
+        cs = data.get('cs', 0)
+        gold = _formatGold(data.get('gold', 0))
         stats_color = _TEXTS if dark else '#777'
         stats = QLabel(f"{k}/{d}/{a}  {cs}CS  {gold}")
         stats.setStyleSheet(
             f"font-family: {font}; font-size: 10px; color: {stats_color}; background: transparent;")
         vi.addWidget(stats)
 
+        # Damage%, Gold%, KP%, Vision
         dmg = _pct(data.get('damage', 0), teamTotals.get('totalDamage', 0))
         gld = _pct(data.get('gold', 0), teamTotals.get('totalGold', 0))
         kp_val = None
@@ -267,10 +308,27 @@ class PlayerCard(QFrame):
             f"font-family: {font}; font-size: 9px; color: {pct_color}; background: transparent;")
         vi.addWidget(pctLabel)
 
+        # Items row
+        items = data.get('itemIcons', [])
+        itemsRow = QHBoxLayout()
+        itemsRow.setSpacing(2)
+        itemsRow.setAlignment(Qt.AlignLeft)
+        for itemPath in items[:7]:
+            il = QLabel()
+            il.setFixedSize(20, 20)
+            if itemPath:
+                p = QPixmap(itemPath)
+                if not p.isNull():
+                    il.setPixmap(p.scaled(20, 20, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            il.setStyleSheet("border-radius: 2px; background: rgba(0,0,0,0.2);")
+            itemsRow.addWidget(il)
+        vi.addLayout(itemsRow)
+
         hl.addLayout(vi, 1)
 
+        # ── HexagonScore ──
         score = data.get('score', 0)
-        hs = HexagonScore(score, size=44)
+        hs = HexagonScore(score, size=76)
         hl.addWidget(hs)
 
 
@@ -349,8 +407,8 @@ class TeamRadar(QWidget):
         p.setPen(QColor('#8B95A5'))
         font = QFont('Segoe UI', 9)
         p.setFont(font)
-        p.drawText(4, 14, f"● 蓝队")
-        p.drawText(self.width() - 50, 14, f"● 红队")
+        p.drawText(4, 14, "● 蓝队")
+        p.drawText(self.width() - 50, 14, "● 红队")
 
         p.end()
 
@@ -388,7 +446,8 @@ class InsightsSummary(QFrame):
 
 class CenterCompare(QFrame):
     def __init__(self, bluePlayers: list, redPlayers: list,
-                 blueWin: bool, parent=None):
+                 blueWin: bool, blueTeam: Optional[dict] = None,
+                 redTeam: Optional[dict] = None, parent=None):
         super().__init__(parent)
         dark = isDarkTheme()
         font = "'Segoe UI', 'Microsoft YaHei'"
@@ -432,6 +491,26 @@ class CenterCompare(QFrame):
         statsText.setStyleSheet(
             f"font-family: {font}; font-size: 10px; color: {ts_color}; background: transparent;")
         layout.addWidget(statsText)
+
+        # ── Resource Control ──
+        bt = blueTeam or {}
+        rt = redTeam or {}
+        resources = [
+            ('🔫 防御塔', bt.get('towerKills', 0), rt.get('towerKills', 0)),
+            ('🐉 巨龙', bt.get('dragonKills', 0), rt.get('dragonKills', 0)),
+            ('👹 先锋', bt.get('riftHeraldKills', 0), rt.get('riftHeraldKills', 0)),
+            ('🐛 虚空虫', bt.get('hordeKills', 0), rt.get('hordeKills', 0)),
+            ('👑 男爵', bt.get('baronKills', 0), rt.get('baronKills', 0)),
+            ('🏛️ 水晶', bt.get('inhibitorKills', 0), rt.get('inhibitorKills', 0)),
+        ]
+        resLabel = QLabel('  '.join(
+            f"{name} {b}/{r}" for name, b, r in resources if b or r))
+        resLabel.setWordWrap(True)
+        resLabel.setAlignment(Qt.AlignCenter)
+        rl_color = _TEXTS if dark else '#777'
+        resLabel.setStyleSheet(
+            f"font-family: {font}; font-size: 9px; color: {rl_color}; background: transparent;")
+        layout.addWidget(resLabel)
 
         insights = _buildInsights(bluePlayers, redPlayers)
         if insights:
@@ -484,6 +563,8 @@ class AnalysisPage(QFrame):
         super().__init__(parent)
         self._game = None
         self._teamContainer = None
+        self._activeTab = 0
+        self._tabLabels = []
         font = "'Segoe UI', 'Microsoft YaHei'"
         dark = isDarkTheme()
 
@@ -493,31 +574,56 @@ class AnalysisPage(QFrame):
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(0)
 
+        # ── Header ──
         self.headerWidget = QWidget()
-        self.headerWidget.setFixedHeight(56)
+        self.headerWidget.setFixedHeight(80)
         hb = _PANEL_BG if dark else '#FFFFFF'
         hborder = _BORDER if dark else 'rgba(0,0,0,0.08)'
         self.headerWidget.setStyleSheet(
             f"background: {hb}; border-bottom: 1px solid {hborder};")
-        hl = QHBoxLayout(self.headerWidget)
-        hl.setContentsMargins(16, 8, 16, 8)
-        hl.setSpacing(12)
 
+        headerRow = QHBoxLayout(self.headerWidget)
+        headerRow.setContentsMargins(16, 6, 16, 6)
+        headerRow.setSpacing(12)
+
+        # Back button
         self.backBtn = QLabel("←  赛后复盘")
         self.backBtn.setCursor(Qt.PointingHandCursor)
-        bnc = _BLUE
         self.backBtn.setStyleSheet(
             f"font-family: {font}; font-size: 15px; font-weight: bold; "
-            f"color: {bnc}; background: transparent;")
-        hl.addWidget(self.backBtn)
+            f"color: {_BLUE}; background: transparent;")
+        headerRow.addWidget(self.backBtn)
 
-        hl.addSpacerItem(QSpacerItem(1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        # Tab bar
+        tabBar = QHBoxLayout()
+        tabBar.setSpacing(2)
+        tabBar.setAlignment(Qt.AlignCenter)
+        tabNames = ['总览', '数据', '经济', '符文', '装备', '时间线']
+        tabColor = '#8B95A5' if dark else '#888'
+        tabActive = _BLUE
+        tabBg = 'transparent'
+        tabActiveBg = 'rgba(46, 167, 255, 0.12)' if dark else 'rgba(46, 167, 255, 0.10)'
+        for i, name in enumerate(tabNames):
+            tab = QLabel(name)
+            tab.setCursor(Qt.PointingHandCursor)
+            tab.setFixedHeight(28)
+            tab.setAlignment(Qt.AlignCenter)
+            style = (f"font-family: {font}; font-size: 12px; font-weight: bold; "
+                     f"color: {tabActive if i == 0 else tabColor}; "
+                     f"background: {tabActiveBg if i == 0 else tabBg}; "
+                     f"border-radius: 4px; padding: 2px 10px;")
+            tab.setStyleSheet(style)
+            tab.mousePressEvent = lambda e, idx=i: self._switchTab(idx)
+            tabBar.addWidget(tab)
+            self._tabLabels.append(tab)
+        headerRow.addLayout(tabBar, 1)
 
+        # Game info
         self.infoLabel = QLabel("")
         ic = _TEXTS if dark else '#888'
         self.infoLabel.setStyleSheet(
             f"font-family: {font}; font-size: 13px; color: {ic}; background: transparent;")
-        hl.addWidget(self.infoLabel)
+        headerRow.addWidget(self.infoLabel)
 
         self._layout.addWidget(self.headerWidget)
 
@@ -534,6 +640,25 @@ class AnalysisPage(QFrame):
         self._layout.addWidget(self.scrollArea, 1)
 
         self.backBtn.mousePressEvent = lambda e: self.backRequested.emit()
+
+    def _switchTab(self, idx: int):
+        if idx == self._activeTab:
+            return
+        dark = isDarkTheme()
+        tabColor = '#8B95A5' if dark else '#888'
+        tabActive = _BLUE
+        tabBg = 'transparent'
+        tabActiveBg = 'rgba(46, 167, 255, 0.12)' if dark else 'rgba(46, 167, 255, 0.10)'
+        font = "'Segoe UI', 'Microsoft YaHei'"
+        for i, tab in enumerate(self._tabLabels):
+            active = (i == idx)
+            tab.setStyleSheet(
+                f"font-family: {font}; font-size: 12px; font-weight: bold; "
+                f"color: {tabActive if active else tabColor}; "
+                f"background: {tabActiveBg if active else tabBg}; "
+                f"border-radius: 4px; padding: 2px 10px;")
+        self._activeTab = idx
+        # TODO: switch content view per tab when data/economy/rune/item/timeline views are implemented
 
     def loadGame(self, gameData: dict):
         self._game = gameData
@@ -585,7 +710,9 @@ class AnalysisPage(QFrame):
             bluePlayers, win100 if win100 else False, blueTotals), 8)
 
         row.addWidget(CenterCompare(
-            bluePlayers, redPlayers, win100), 9)
+            bluePlayers, redPlayers, win100,
+            blueTeam=team100 if win100 else team200,
+            redTeam=team200 if win100 else team100), 9)
 
         row.addWidget(TeamPanel(
             "红队" if win100 else "蓝队",

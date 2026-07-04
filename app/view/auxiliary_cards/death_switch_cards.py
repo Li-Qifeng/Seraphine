@@ -1,22 +1,16 @@
-import ctypes
 import psutil
 import win32gui
 import win32process
 
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QWidget, QLabel, QHBoxLayout, QGridLayout,
                              QListWidget, QListWidgetItem, QVBoxLayout,
-                             QDialog, QFrame, QApplication)
+                             QDialog, QFrame)
 
 from app.common.qfluentwidgets import (PushButton, SwitchButton, ConfigItem,
                                        qconfig, IndicatorPosition,
-                                       ExpandGroupSettingCard,
-                                       ToolTipFilter, ToolTipPosition)
+                                       ExpandGroupSettingCard)
 from app.common.icons import Icon
-from app.common.config import cfg
-from app.common.util import (findGameWindowHwnd, findProcessWindowHwnd,
-                              forceForegroundWindow)
 
 TAG = 'DeathSwitchCard'
 
