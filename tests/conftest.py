@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 # util.py imports Windows-only modules (winreg/win32api/win32gui); stub them
 # so connector (and its util dependency) can be imported on non-Windows CI.
-for _win_mod in ("winreg", "win32api", "win32gui"):
+for _win_mod in ("winreg", "win32api", "win32gui", "win32con", "win32process"):
     if _win_mod not in sys.modules:
         sys.modules[_win_mod] = MagicMock()
 
@@ -66,6 +66,36 @@ if 'qframelesswindow' not in sys.modules:
     _qfw2 = types.ModuleType('qframelesswindow')
     _qfw2.SvgTitleBarButton = MagicMock()
     sys.modules['qframelesswindow'] = _qfw2
+
+# PyQt5 stub (app.common.config imports PyQt5.QtCore directly)
+if 'PyQt5' not in sys.modules:
+    _pyqt5 = types.ModuleType('PyQt5')
+    _pyqt5.QtCore = types.ModuleType('PyQt5.QtCore')
+    _pyqt5.QtCore.QLocale = MagicMock()
+    _pyqt5.QtCore.QSize = MagicMock()
+    _pyqt5.QtCore.Qt = MagicMock()
+    _pyqt5.QtCore.QObject = MagicMock()
+    _pyqt5.QtCore.pyqtSignal = MagicMock()
+    _pyqt5.QtCore.QRectF = MagicMock()
+    _pyqt5.QtGui = types.ModuleType('PyQt5.QtGui')
+    _pyqt5.QtGui.QPixmap = MagicMock()
+    _pyqt5.QtGui.QPainter = MagicMock()
+    _pyqt5.QtGui.QPainterPath = MagicMock()
+    _pyqt5.QtGui.QColor = MagicMock()
+    _pyqt5.QtGui.QFont = MagicMock()
+    _pyqt5.QtGui.QPen = MagicMock()
+    _pyqt5.QtWidgets = types.ModuleType('PyQt5.QtWidgets')
+    _pyqt5.QtWidgets.QVBoxLayout = MagicMock()
+    _pyqt5.QtWidgets.QHBoxLayout = MagicMock()
+    _pyqt5.QtWidgets.QLabel = MagicMock()
+    _pyqt5.QtWidgets.QFrame = MagicMock()
+    _pyqt5.QtWidgets.QWidget = MagicMock()
+    _pyqt5.QtWidgets.QSizePolicy = MagicMock()
+    _pyqt5.QtWidgets.QSpacerItem = MagicMock()
+    sys.modules['PyQt5'] = _pyqt5
+    sys.modules['PyQt5.QtCore'] = _pyqt5.QtCore
+    sys.modules['PyQt5.QtGui'] = _pyqt5.QtGui
+    sys.modules['PyQt5.QtWidgets'] = _pyqt5.QtWidgets
 
 # Pre-import app.common.config with stubs, then patch cfg.get() so that
 # logger.py (imported by connector) doesn't crash on MagicMock return value.

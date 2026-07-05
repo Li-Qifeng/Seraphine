@@ -27,6 +27,7 @@ from app.view.auxiliary_cards import (
     AutoBanChampionCard,
     AutoSetSummonerSpellCard,
     HextechChampionCard,
+    DeathSwitchCard,
 )
 
 
@@ -185,6 +186,13 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.autoSetSummonerSpellSup,
             self.automationGroup
         )
+        self.deathSwitchCard = DeathSwitchCard(
+            self.tr("死亡自动切窗"),
+            self.tr("死亡时自动切换到指定窗口/应用, 复活后自动切回游戏窗口"),
+            cfg.enableDeathSwitch,
+            cfg.deathSwitchTargetExe,
+            self.automationGroup)
+
         self.hextechChampionCard = HextechChampionCard(
             self.tr("自动换英雄"),
             self.tr("在大乱斗中自动从备选席换英雄（无CD强刷）"),
@@ -297,6 +305,7 @@ class AuxiliaryInterface(SeraphineInterface):
         self.automationGroup.addSettingCard(self.autoSetSpellCard)
         self.automationGroup.addSettingCard(self.autoReconnectCard)
         self.automationGroup.addSettingCard(self.autoHonorCard)
+        self.automationGroup.addSettingCard(self.deathSwitchCard)
 
         # 海克斯
         self.hextechGroup.addSettingCard(self.hextechChampionCard)

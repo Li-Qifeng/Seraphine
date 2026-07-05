@@ -9,7 +9,7 @@ class RoundIcon(QFrame):
     def __init__(self, icon=None, diameter=None, overscaled=0,
                  borderWidth=1, drawBackground=False, enabled=True, parent=None) -> None:
         super().__init__(parent)
-        self.image = QPixmap(icon)
+        self.image = QPixmap(icon) if icon else QPixmap()
 
         self.overscaled = overscaled
         self.borderWidth = borderWidth
@@ -67,7 +67,7 @@ class RoundIcon(QFrame):
         return super().paintEvent(event)
 
     def setIcon(self, icon):
-        new_image = QPixmap(icon)
+        new_image = QPixmap(icon) if icon else QPixmap()
         if new_image.isNull():
             self.havePic = False
             self.image = QPixmap()
@@ -89,7 +89,7 @@ class RoundIconButton(QFrame):
     def __init__(self, icon, diameter, overscaled, borderWidth, championName, championId, parent=None) -> None:
         super().__init__(parent)
 
-        self.image = QPixmap(icon)
+        self.image = QPixmap(icon) if icon else QPixmap()
         self.havePic = not self.image.isNull()
 
         self.borderWidth = borderWidth
@@ -217,7 +217,7 @@ class RoundIconButton(QFrame):
 class TopRoundedLabel(QLabel):
     def __init__(self, imagePath=None, radius=4.0, parent=None):
         super().__init__(parent)
-        pixmap = QPixmap(imagePath)
+        pixmap = QPixmap(imagePath) if imagePath else QPixmap()
         self.setPixmap(pixmap)
 
         self.havePic = imagePath is not None and not pixmap.isNull()
@@ -264,7 +264,7 @@ class TopRoundedLabel(QLabel):
         painter.drawPixmap(self.rect(), pixmap)
 
     def setPicture(self, imagePath):
-        pm = QPixmap(imagePath)
+        pm = QPixmap(imagePath) if imagePath else QPixmap()
         if pm.isNull():
             self.havePic = False
         else:
@@ -332,7 +332,7 @@ class RoundedLabel(QLabel):
                 QRectF(self.rect()), self.radius, self.radius)
 
     def setPicture(self, imagePath):
-        pm = QPixmap(imagePath)
+        pm = QPixmap(imagePath) if imagePath else QPixmap()
         if pm.isNull():
             self.havePic = False
         else:
@@ -406,7 +406,7 @@ class SummonerSpellButton(QFrame):
         return super().paintEvent(e)
 
     def setPicture(self, path):
-        pm = QPixmap(path)
+        pm = QPixmap(path) if path else QPixmap()
         self.image = None if pm.isNull() else pm
 
     def setSpellId(self, id):

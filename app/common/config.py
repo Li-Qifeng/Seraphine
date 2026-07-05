@@ -251,6 +251,15 @@ class Config(QConfig):
     hextechAssistAutoShow = ConfigItem(
         "Functions", "HextechAssistAutoShow", True, BoolValidator())
 
+    # 死亡自动切窗: 死亡时自动切到指定应用, 复活后切回游戏窗口
+    enableDeathSwitch = ConfigItem(
+        "Functions", "EnableDeathSwitch", False, BoolValidator())
+    deathSwitchTargetExe = ConfigItem(
+        "Functions", "DeathSwitchTargetExe", "")
+    deathSwitchExcludedModes = ConfigItem(
+        "Functions", "DeathSwitchExcludedModes",
+        [1700, 1090, 1100, 1110, 1130, 1160])
+
     lastSummoner = ConfigItem("Other", "LastSummoner", {})
 
 YEAR = 2023

@@ -67,7 +67,7 @@ class RoundLevelAvatar(QWidget):
         self.sep = .3 * diameter
         self.iconPath = icon
 
-        self.image = QPixmap(self.iconPath)
+        self.image = QPixmap(self.iconPath) if self.iconPath else QPixmap()
         self.havePic = not self.image.isNull()
 
         self.setFixedSize(self.diameter, self.diameter)
@@ -130,7 +130,7 @@ class RoundLevelAvatar(QWidget):
 
     def updateIcon(self, icon: str, xpSinceLastLevel=None, xpUntilNextLevel=None, text=""):
         self.iconPath = icon
-        pm = QPixmap(self.iconPath)
+        pm = QPixmap(self.iconPath) if self.iconPath else QPixmap()
         if pm.isNull():
             self.havePic = False
             self.image = QPixmap()

@@ -86,6 +86,56 @@ class LiveClient:
         phase = await self.getGamePhase()
         return phase is not None
 
+    async def getActivePlayerDeathInfo(self) -> Optional[dict]:
+        """获取当前玩家的死亡状态。
+
+        返回:
+            {'isDead': bool, 'respawnTimer': float} 或 None
+            - isDead: 是否死亡
+            - respawnTimer: 剩余复活时间 (秒), 存活时为 0
+        """
+        data = await self.getActivePlayer()
+        if not isinstance(data, dict):
+            return None
+        # activePlayer 本身不含 isDead/respawnTimer, 必须从 allPlayers 匹配
+        # 保险起见, 尝试从 activePlayer 的 championStats 推断
+        stats = data.get('championStats')
+        if isinstance(stats, dict):
+            hp = stats.get('currentHealth', 0)
+            max_hp = stats.get('maxHealth', 1)
+            if hp == 0 and max_hp > 0:
+                return {'isDead': True, 'respawnTimer': 30.0}
+        return {'isDead': False, 'respawnTimer': 0.0}
+
+    async def getActivePlayerDeathInfoFromAll(self) -> Optional[dict]:
+        """从全量数据中获取当前玩家死亡状态 (有 isDead + respawnTimer)。
+
+        返回:
+            {'isDead': bool, 'respawnTimer': float} 或 None
+        """
+        data = await self.getAllGameData()
+        if not isinstance(data, dict):
+            return None
+        ap = data.get('activePlayer')
+        if not isinstance(ap, dict):
+            return None
+        active_name = ap.get('summonerName', '')
+        if not active_name:
+            return None
+        all_players = data.get('allPlayers')
+        if not isinstance(all_players, list):
+            return None
+        for p in all_players:
+            if not isinstance(p, dict):
+                continue
+            name = p.get('summonerName', '') or p.get('riotIdGameName', '')
+            if name == active_name:
+                return {
+                    'isDead': bool(p.get('isDead', False)),
+                    'respawnTimer': float(p.get('respawnTimer', 0.0)),
+                }
+        return None
+
 
 # 全局单例
 liveClient = LiveClient()

@@ -8,8 +8,11 @@ import requests
 import base64
 import subprocess
 import psutil
+import ctypes
 import win32api
+import win32con
 import win32gui
+import win32process
 
 from PyQt5.QtCore import QRectF
 
@@ -486,3 +489,109 @@ def getLolClientWindowPos() -> QRectF:
         return None
 
     return QRectF(rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
+
+
+def _enumWindowsFilter(hwnd, exe_name):
+    """辅助: 检查窗口是否属于指定 exe 且可见"""
+    if not win32gui.IsWindowVisible(hwnd):
+        return False
+    try:
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return psutil.Process(pid).name().lower() == exe_name.lower()
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return False
+
+
+def _enumHwnds():
+    hwnds = []
+    win32gui.EnumWindows(lambda h, _: hwnds.append(h) or True, None)
+    return hwnds
+
+
+def findGameWindowHwnd():
+    """找到 LoL 游戏窗口 (League of Legends.exe) 句柄, 返回 0 表示未找到"""
+    for hwnd in _enumHwnds():
+        if _enumWindowsFilter(hwnd, 'League of Legends.exe'):
+            return hwnd
+    return 0
+
+
+def findProcessWindowHwnd(exe_name):
+    """按 exe 名称找到主窗口句柄 (选标题最长的可见窗口), 返回 0 表示未找到"""
+    if not exe_name:
+        return 0
+    best_hwnd = 0
+    best_len = 0
+    for hwnd in _enumHwnds():
+        if not _enumWindowsFilter(hwnd, exe_name):
+            continue
+        title = win32gui.GetWindowText(hwnd) or ''
+        if len(title) > best_len:
+            best_hwnd = hwnd
+            best_len = len(title)
+    if best_hwnd:
+        logger.info(f"DeathSwitch: found '{exe_name}' hwnd={best_hwnd} title='{win32gui.GetWindowText(best_hwnd)[:80]}'", TAG)
+    return best_hwnd
+
+
+def forceForegroundWindow(hwnd):
+    """强制将窗口带到前台 (绕过 Windows 前台窗口限制)"""
+    if not hwnd:
+        logger.error("DeathSwitch: forceForegroundWindow called with hwnd=0", TAG)
+        return
+    try:
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE if win32gui.IsIconic(hwnd) else win32con.SW_SHOW)
+        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW)
+        win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
+                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW)
+        # 双 AttachThreadInput: 同时绑前台线程和目标线程, 再 SetForegroundWindow
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        fg_hwnd = user32.GetForegroundWindow()
+        cur_tid = kernel32.GetCurrentThreadId()
+        target_tid = user32.GetWindowThreadProcessId(hwnd, None)
+        fg_tid = user32.GetWindowThreadProcessId(fg_hwnd, None) if fg_hwnd else None
+        if fg_tid and fg_tid != cur_tid:
+            user32.AttachThreadInput(fg_tid, cur_tid, True)
+        if target_tid and target_tid != cur_tid:
+            user32.AttachThreadInput(target_tid, cur_tid, True)
+        user32.SetForegroundWindow(hwnd)
+        user32.BringWindowToTop(hwnd)
+        if target_tid and target_tid != cur_tid:
+            user32.AttachThreadInput(target_tid, cur_tid, False)
+        if fg_tid and fg_tid != cur_tid:
+            user32.AttachThreadInput(fg_tid, cur_tid, False)
+        logger.info(f"DeathSwitch: forceForegroundWindow(hwnd={hwnd}) done", TAG)
+    except Exception as e:
+        logger.error(f"DeathSwitch: forceForegroundWindow failed: {e}", TAG)
+
+
+def sendMediaPlayPause(hwnd: int = 0):
+    """发送播放/暂停命令。
+
+    双保险策略:
+    1. VK_MEDIA_PLAY_PAUSE (0xB3) 系统媒体键 — 现代浏览器/播放器均响应
+    2. WM_APPCOMMAND 定向发送 — 兼容部分传统应用
+    """
+    try:
+        VK_MEDIA_PLAY_PAUSE = 0xB3
+        KEYEVENTF_KEYUP = 0x0002
+        user32 = ctypes.windll.user32
+        user32.keybd_event(VK_MEDIA_PLAY_PAUSE, 0, 0, 0)
+        user32.keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0)
+        logger.info("sendMediaPlayPause: VK_MEDIA_PLAY_PAUSE sent", TAG)
+    except Exception as e:
+        logger.warning(f"sendMediaPlayPause keybd_event failed: {e}", TAG)
+
+    if hwnd:
+        try:
+            WM_APPCOMMAND = 0x0319
+            APPCOMMAND_MEDIA_PLAY_PAUSE = 14
+            win32gui.SendMessage(hwnd, WM_APPCOMMAND, 0,
+                                 APPCOMMAND_MEDIA_PLAY_PAUSE << 16)
+            logger.info(
+                f"sendMediaPlayPause: WM_APPCOMMAND sent to hwnd={hwnd}", TAG)
+        except Exception as e:
+            logger.warning(
+                f"sendMediaPlayPause WM_APPCOMMAND failed: {e}", TAG)
