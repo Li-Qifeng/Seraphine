@@ -931,7 +931,7 @@ class SummonerInfoBar(QFrame):
         self.goldLabel.setAlignment(Qt.AlignCenter)
         self.goldLabel.setFixedWidth(60)
 
-        self.demageLabel.setText(str(summoner["demage"]))
+        self.demageLabel.setText(str(summoner.get("damage", 0)))
         self.demageLabel.setAlignment(Qt.AlignCenter)
         self.demageLabel.setFixedWidth(70)
 
