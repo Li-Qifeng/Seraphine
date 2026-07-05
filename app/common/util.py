@@ -511,8 +511,21 @@ def _enumHwnds():
 def findGameWindowHwnd():
     """找到 LoL 游戏窗口 (League of Legends.exe) 句柄, 返回 0 表示未找到"""
     for hwnd in _enumHwnds():
-        if _enumWindowsFilter(hwnd, 'League of Legends.exe'):
-            return hwnd
+        if not win32gui.IsWindowVisible(hwnd) and not win32gui.IsIconic(hwnd):
+            continue
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            try:
+                if psutil.Process(pid).name().lower() == 'league of legends.exe':
+                    return hwnd
+            except psutil.AccessDenied:
+                # ponytail: Vanguard blocks psutil; fallback to window title
+                title = win32gui.GetWindowText(hwnd)
+                if title and 'League of Legends' in title:
+                    logger.info(f"findGameWindowHwnd: matched by title hwnd={hwnd}", TAG)
+                    return hwnd
+        except (psutil.NoSuchProcess, Exception):
+            continue
     return 0
 
 
@@ -570,28 +583,36 @@ def forceForegroundWindow(hwnd):
 def sendMediaPlayPause(hwnd: int = 0):
     """发送播放/暂停命令。
 
-    双保险策略:
-    1. VK_MEDIA_PLAY_PAUSE (0xB3) 系统媒体键 — 现代浏览器/播放器均响应
-    2. WM_APPCOMMAND 定向发送 — 兼容部分传统应用
+    使用 SendInput 发送 VK_MEDIA_PLAY_PAUSE 系统媒体键 — 比 legacy keybd_event
+    更可靠, 支持现代浏览器/播放器响应.
     """
     try:
-        VK_MEDIA_PLAY_PAUSE = 0xB3
-        KEYEVENTF_KEYUP = 0x0002
+        # ponytail: SendInput > keybd_event, WM_APPCOMMAND 对浏览器无效
         user32 = ctypes.windll.user32
-        user32.keybd_event(VK_MEDIA_PLAY_PAUSE, 0, 0, 0)
-        user32.keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0)
-        logger.info("sendMediaPlayPause: VK_MEDIA_PLAY_PAUSE sent", TAG)
-    except Exception as e:
-        logger.warning(f"sendMediaPlayPause keybd_event failed: {e}", TAG)
+        VK_MEDIA_PLAY_PAUSE = 0xB3
+        INPUT_KEYBOARD = 1
+        KEYEVENTF_KEYUP = 0x0002
 
-    if hwnd:
-        try:
-            WM_APPCOMMAND = 0x0319
-            APPCOMMAND_MEDIA_PLAY_PAUSE = 14
-            win32gui.SendMessage(hwnd, WM_APPCOMMAND, 0,
-                                 APPCOMMAND_MEDIA_PLAY_PAUSE << 16)
-            logger.info(
-                f"sendMediaPlayPause: WM_APPCOMMAND sent to hwnd={hwnd}", TAG)
-        except Exception as e:
-            logger.warning(
-                f"sendMediaPlayPause WM_APPCOMMAND failed: {e}", TAG)
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [("wVk", ctypes.c_ushort),
+                        ("wScan", ctypes.c_ushort),
+                        ("dwFlags", ctypes.c_ulong),
+                        ("time", ctypes.c_ulong),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+
+        class INPUT(ctypes.Structure):
+            _fields_ = [("type", ctypes.c_ulong),
+                        ("ki", KEYBDINPUT)]
+
+        def _send_key(down: bool):
+            inp = INPUT()
+            inp.type = INPUT_KEYBOARD
+            inp.ki = KEYBDINPUT(VK_MEDIA_PLAY_PAUSE, 0,
+                                0 if down else KEYEVENTF_KEYUP, 0, None)
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+
+        _send_key(True)
+        _send_key(False)
+        logger.info("sendMediaPlayPause: SendInput VK_MEDIA_PLAY_PAUSE sent", TAG)
+    except Exception as e:
+        logger.warning(f"sendMediaPlayPause SendInput failed: {e}", TAG)
