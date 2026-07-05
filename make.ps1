@@ -34,6 +34,8 @@ if ($dbg -and (Test-Path .\dist)) {
 pyinstaller -w -i .\app\resource\images\logo.ico `
     --collect-submodules tufup `
     --collect-submodules tuf `
+    --exclude PyQt6 `
+    --exclude PySide6 `
     main.py
 rm -r -fo .\build
 rm -r -fo .\main.spec

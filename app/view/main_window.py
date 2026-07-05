@@ -31,7 +31,7 @@ from app.view.hextech_window import HextechWindow, HextechGrabFlyout
 from app.common.util import (github, getLolClientPid, getTasklistPath,
                              getLolClientPidSlowly, getLoLPathByRegistry,
                              findGameWindowHwnd, findProcessWindowHwnd,
-                             forceForegroundWindow, sendMediaPlayPause)
+                              forceForegroundWindow, sendMediaPlay, sendMediaPause)
 from app.components.avatar_widget import NavigationAvatarWidget
 from app.components.temp_system_tray_menu import TmpSystemTrayMenu
 from app.common.icons import Icon
@@ -1695,7 +1695,7 @@ class MainWindow(FluentWindow):
                     logger.info(f"DeathSwitch: switching to hwnd={hwnd}", TAG)
                     self._deathBrowserHwnd = hwnd
                     forceForegroundWindow(hwnd)
-                    sendMediaPlayPause(hwnd)
+                    sendMediaPlay(hwnd)
                 else:
                     logger.warning(f"DeathSwitch: no visible window for target exe '{cfg.get(cfg.deathSwitchTargetExe)}'", TAG)
                 self._deathPrevAlive = False
@@ -1708,11 +1708,11 @@ class MainWindow(FluentWindow):
                 if hwnd:
                     forceForegroundWindow(hwnd)
                 if self._deathBrowserHwnd:
-                    sendMediaPlayPause(self._deathBrowserHwnd)
+                    sendMediaPause(self._deathBrowserHwnd)
                 self._deathPrevAlive = True
         except Exception as e:
             logger.warning(f"DeathSwitch tick failed: {e}", TAG)
-
+    
     def __onDeathCountdownTick(self):
         now = time.time()
         remaining = self._deathCountdownEnd - now
@@ -1740,7 +1740,7 @@ class MainWindow(FluentWindow):
                     if hwnd:
                         forceForegroundWindow(hwnd)
                     if self._deathBrowserHwnd:
-                        sendMediaPlayPause(self._deathBrowserHwnd)
+                        sendMediaPause(self._deathBrowserHwnd)
                     self._deathPrevAlive = True
                     self._deathRespawnTask = None
                     logger.info("DeathSwitch: switched back to game window", TAG)
@@ -1754,6 +1754,8 @@ class MainWindow(FluentWindow):
         finally:
             if self._deathRespawnTask and self._deathRespawnTask.done():
                 self._deathRespawnTask = None
+            if not self._deathPrevAlive:
+                self._deathPrevAlive = True
 
     def __checkWindowSize(self):
         if (dpi := self.devicePixelRatioF()) == 1.0:
