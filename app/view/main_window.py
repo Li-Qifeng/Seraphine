@@ -1090,6 +1090,7 @@ class MainWindow(FluentWindow):
 
         if status != 'ChampSelect':
             self.opggWindow.setStaysOnTopEnabled(False)
+            self.hextechWindow.setStaysOnTopEnabled(False)
             self.hextechWindow.hide()
 
         if title is not None:
@@ -1108,12 +1109,9 @@ class MainWindow(FluentWindow):
 
     async def _do_accept(self):
         import random
-        min_ms = cfg.get(cfg.autoAcceptDelayMinMs)
-        max_ms = cfg.get(cfg.autoAcceptDelayMaxMs)
-        if max_ms <= min_ms:
-            delay_ms = min_ms
-        else:
-            delay_ms = random.randint(min_ms, max_ms)
+        delay_ms = cfg.get(cfg.autoAcceptDelayMs)
+        if delay_ms > 0:
+            delay_ms = random.randint(0, delay_ms)
 
         await asyncio.sleep(delay_ms / 1000)
 
@@ -1332,17 +1330,17 @@ class MainWindow(FluentWindow):
 
         self.championSelection.queueId = queueId
 
+        # ponytail: 先设 flag 再 show，避免 setWindowFlags 重建窗口
         if cfg.get(cfg.autoShowOpgg):
-            self.opggWindow.show()
-
             if cfg.get(cfg.enableOpggOnTop):
                 self.opggWindow.setStaysOnTopEnabled(True)
+            self.opggWindow.show()
 
         # 海克斯/大乱斗抢人窗口: 仅备选席模式 + 自动弹开启时显示
         if cfg.get(cfg.autoShowHextechWindow) and cSession.get('benchEnabled'):
-            self.hextechWindow.show()
             if cfg.get(cfg.enableHextechWindowOnTop):
                 self.hextechWindow.setStaysOnTopEnabled(True)
+            self.hextechWindow.show()
 
         currentSummonerId = self.currentSummoner['summonerId']
         info = await parseAllyGameInfo(cSession, currentSummonerId, queueId, useSGP=True)

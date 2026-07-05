@@ -55,42 +55,42 @@ class AuxiliaryInterface(SeraphineInterface):
             self.tr("OPGG 助手"), self.scrollWidget)
 
         self.onlineStatusCard = OnlineStatusCard(
-            title=self.tr("Online status"),
-            content=self.tr("Set your profile online status"),
+            title=self.tr("在线状态"),
+            content=self.tr("设置个人主页在线状态"),
             parent=self.profileGroup)
         self.profileBackgroundCard = ProfileBackgroundCard(
-            self.tr("Profile background"),
-            self.tr("Set your profile background skin"), self.profileGroup)
+            self.tr("个人主页背景"),
+            self.tr("设置个人主页背景皮肤"), self.profileGroup)
         self.profileTierCard = ProfileTierCard(
-            self.tr("Profile tier"),
-            self.tr("Set your tier showed in your profile card"),
+            self.tr("个人主页段位"),
+            self.tr("设置个人主页卡片显示的段位"),
             self.profileGroup)
         self.onlineAvailabilityCard = OnlineAvailabilityCard(
-            self.tr("Online Availability"),
-            self.tr("Set your online Availability"), self.profileGroup)
+            self.tr("在线可用状态"),
+            self.tr("设置在线可用状态"), self.profileGroup)
         self.removeTokensCard = RemoveTokensCard(
-            self.tr("Remove challenge tokens"),
-            self.tr("Remove all challenge tokens from your profile"),
+            self.tr("移除挑战代币"),
+            self.tr("从个人主页移除所有挑战代币"),
             self.profileGroup)
         self.removePrestigeCrestCard = RemovePrestigeCrestCard(
-            self.tr("Remove prestige crest"),
+            self.tr("移除荣誉徽章"),
             self.tr(
-                "Remove prestige crest from your profile icon (need your summoner level >= 525)"),
+                "从个人主页图标移除荣誉徽章 (需要召唤师等级 >= 525)"),
             self.profileGroup)
         self.lockConfigCard = LockConfigCard(
-            self.tr("Lock config"),
-            self.tr("Make your game config unchangeable"),
+            self.tr("锁定配置"),
+            self.tr("锁定游戏配置文件不可更改"),
             self.toolsGroup)
 
         self.fixDpiCard = FixClientDpiCard(
-            self.tr("Fix client window"),
+            self.tr("修复客户端窗口"),
             self.tr(
-                "Fix incorrect client window size caused by DirectX 9 (need UAC)"),
+                "修复 DirectX 9 导致的客户端窗口大小异常 (需要 UAC)"),
             self.toolsGroup
         )
         self.restartClientCard = RestartClientCard(
-            self.tr("Restart client"),
-            self.tr("Restart the LOL client without re queuing"),
+            self.tr("重启客户端"),
+            self.tr("重启英雄联盟客户端而不退出队列"),
             self.toolsGroup
         )
         self.leaveQueueCard = LeaveQueueCard(
@@ -100,14 +100,14 @@ class AuxiliaryInterface(SeraphineInterface):
         )
 
         self.createPracticeLobbyCard = CreatePracticeLobbyCard(
-            self.tr("Create 5v5 practice lobby"),
-            self.tr("Only bots can be added to the lobby"),
+            self.tr("创建 5v5 训练模式"),
+            self.tr("仅可添加机器人到房间"),
             self.toolsGroup)
         # 自动接受对局
         self.autoReconnectCard = SwitchSettingCard(
             Icon.CONNECTION,
-            self.tr("Auto reconnect"),
-            self.tr("Automatically reconnect when disconnected"),
+            self.tr("自动重连"),
+            self.tr("断线时自动重新连接"),
             cfg.enableAutoReconnect, self.automationGroup)
         self.autoHonorCard = AutoHonorCard(
             self.tr("自动点赞"),
@@ -117,25 +117,25 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.enableAutoHonor, cfg.autoHonorDelay, cfg.autoHonorStrategy,
             self.automationGroup)
         self.spectateCard = SpectateCard(
-            self.tr("Spectate"),
-            self.tr("Spectate live game of summoner in the same environment"),
+            self.tr("观战"),
+            self.tr("观战同一局域网的召唤师实时对局"),
             self.toolsGroup
         )
 
         self.autoAcceptMatchingCard = AutoAcceptMsCard(
-            self.tr("Auto accept"),
-            self.tr("Accept match making automatically after a random delay"),
+            self.tr("自动接受对局"),
+            self.tr("随机延迟后自动接受对局匹配"),
             cfg.enableAutoAcceptMatching,
-            cfg.autoAcceptDelayMinMs, cfg.autoAcceptDelayMaxMs,
+            cfg.autoAcceptDelayMs,
             cfg.autoAcceptDeclineEnabled,
             self.automationGroup)
         self.autoStartMatchmakingCard = AutoAcceptMatchingCard(
-            self.tr("Auto start matchmaking"),
+            self.tr("自动开始匹配"),
             self.tr(
-                "Start searching for match automatically when in lobby"),
+                "在大厅时自动开始搜索对局"),
             cfg.enableAutoStartMatchmaking, cfg.autoStartMatchmakingDelay,
             self.automationGroup, delayRange=(0, 30),
-            delayLabelText=self.tr("Delay seconds after entering lobby:"))
+            delayLabelText=self.tr("进入大厅后延迟秒数:"))
         self.autoPlayAgainCard = SwitchSettingCard(
             Icon.ARROWREPEAT,
             self.tr("自动再来一局"),
@@ -143,14 +143,14 @@ class AuxiliaryInterface(SeraphineInterface):
                 "游戏结束时自动点击\"再来一局\""),
             cfg.enableAutoPlayAgain, self.automationGroup)
         self.autoAcceptSwapingCard = AutoAcceptSwapingCard(
-            self.tr("Auto accept swaping"),
+            self.tr("自动同意换人/换英雄"),
             self.tr(
-                "Accept ceil or champion swaping requests during B/P"),
+                "自动接受禁用/选人阶段的换人和换英雄请求"),
             cfg.autoAcceptCeilSwap, cfg.autoAcceptChampTrade,
             self.automationGroup)
         self.autoSelectChampionCard = AutoSelectChampionCard(
-            self.tr("Auto select champion"),
-            self.tr("Auto select champion when your selection begins"),
+            self.tr("自动选择英雄"),
+            self.tr("轮到选人时自动选择预设英雄"),
             cfg.enableAutoSelectChampion,
             cfg.autoSelectChampion,
             cfg.autoSelectChampionTop,
@@ -161,8 +161,8 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.enableAutoSelectTimeoutCompleted,
             self.automationGroup)
         self.autoBanChampionsCard = AutoBanChampionCard(
-            self.tr("Auto ban champion"),
-            self.tr("Auto ban champion when your ban section begins"),
+            self.tr("自动禁用英雄"),
+            self.tr("轮到禁用时自动禁用预设英雄"),
             cfg.enableAutoBanChampion,
             cfg.autoBanChampion,
             cfg.autoBanChampionTop,
@@ -174,8 +174,8 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.autoBanDelay,
             self.automationGroup)
         self.autoSetSpellCard = AutoSetSummonerSpellCard(
-            self.tr("Auto set summoner spells"),
-            self.tr("Auto set your summoner spells when champion selection begins"),
+            self.tr("自动设置召唤师技能"),
+            self.tr("选人开始时自动设置召唤师技能"),
             cfg.enableAutoSetSpells,
             cfg.autoSetSummonerSpell,
             cfg.autoSetSummonerSpellTop,

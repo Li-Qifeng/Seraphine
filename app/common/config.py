@@ -107,10 +107,8 @@ class Config(QConfig):
                                      "EnableAutoPlayAgain", False,
                                      BoolValidator())
 
-    autoAcceptDelayMinMs = RangeConfigItem(
-        "Functions", "AutoAcceptDelayMinMs", 2000, RangeValidator(0, 15000))
-    autoAcceptDelayMaxMs = RangeConfigItem(
-        "Functions", "AutoAcceptDelayMaxMs", 5000, RangeValidator(0, 15000))
+    autoAcceptDelayMs = RangeConfigItem(
+        "Functions", "AutoAcceptDelayMs", 1000, RangeValidator(0, 15000))
     autoAcceptDeclineEnabled = ConfigItem(
         "Functions", "AutoAcceptDeclineEnabled", True, BoolValidator())
     autoStartMatchmakingDelay = RangeConfigItem(

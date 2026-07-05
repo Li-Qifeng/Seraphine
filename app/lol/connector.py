@@ -22,6 +22,7 @@ from app.lol.exceptions import *
 from app.lol.persistent_cache import cache as sqlite_cache
 
 TAG = "Connector"
+MANAGER_CACHE_PATH = "app/resource/game/manager_data_cache.json"
 
 
 class PastRequest:
@@ -388,17 +389,41 @@ class LolClientConnector(QObject):
         ]:
             os.makedirs(f"app/resource/game/{folder}", exist_ok=True)
 
+    def _tryLoadManagerCache(self):
+        if not os.path.exists(MANAGER_CACHE_PATH):
+            return None
+        try:
+            with open(MANAGER_CACHE_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load manager cache: {e}", TAG)
+            return None
+
+    def _saveManagerCache(self, data):
+        try:
+            os.makedirs(os.path.dirname(MANAGER_CACHE_PATH), exist_ok=True)
+            with open(MANAGER_CACHE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"Failed to save manager cache: {e}", TAG)
+
     async def __initManager(self):
-        items = await self.__json_retry_get("/lol-game-data/assets/v1/items.json")
-        spells = await self.__json_retry_get(
-            "/lol-game-data/assets/v1/summoner-spells.json")
-        runes = await self.__json_retry_get("/lol-game-data/assets/v1/perks.json")
-        perks = await self.__json_retry_get("/lol-game-data/assets/v1/perkstyles.json")
-        queues = await self.__json_retry_get("/lol-game-queues/v1/queues")
-        champions = await self.__json_retry_get(
-            "/lol-game-data/assets/v1/champion-summary.json")
-        skins = await self.__json_retry_get("/lol-game-data/assets/v1/skins.json")
-        augments = await self.__json_retry_get("/lol-game-data/assets/v1/cherry-augments.json")
+        cached = self._tryLoadManagerCache()
+        if cached is not None:
+            items, spells, runes, queues, champions, skins, perks, augments = cached
+            logger.info("Loaded manager data from cache, skipping LCU fetch", TAG)
+        else:
+            items = await self.__json_retry_get("/lol-game-data/assets/v1/items.json")
+            spells = await self.__json_retry_get(
+                "/lol-game-data/assets/v1/summoner-spells.json")
+            runes = await self.__json_retry_get("/lol-game-data/assets/v1/perks.json")
+            perks = await self.__json_retry_get("/lol-game-data/assets/v1/perkstyles.json")
+            queues = await self.__json_retry_get("/lol-game-queues/v1/queues")
+            champions = await self.__json_retry_get(
+                "/lol-game-data/assets/v1/champion-summary.json")
+            skins = await self.__json_retry_get("/lol-game-data/assets/v1/skins.json")
+            augments = await self.__json_retry_get("/lol-game-data/assets/v1/cherry-augments.json")
+            self._saveManagerCache([items, spells, runes, queues, champions, skins, perks, augments])
 
         self.manager = JsonManager(
             items, spells, runes, queues, champions, skins, perks, augments)

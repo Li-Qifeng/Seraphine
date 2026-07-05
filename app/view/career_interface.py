@@ -23,8 +23,59 @@ from app.common.signals import signalBus
 from app.common.config import cfg
 from app.lol.connector import connector
 from app.lol.tools import (parseGames, parseSummonerData,
-                           getRecentTeammates, parseDetailRankInfo)
+                           getRecentTeammates, parseDetailRankInfo,
+                           getNameTagLineFromGame)
 from ..components.seraphine_interface import SeraphineInterface
+
+
+def _sgpGamesToLcuFormat(sgp_response: dict) -> dict:
+    """Convert SGP SUMMARY games response to LCU format for parseSummonerData."""
+    games = sgp_response.get("games") or []
+    return {
+        "gameCount": sgp_response.get("totalGames", len(games)),
+        "games": [g["json"] for g in games],
+        "gameBeginDate": sgp_response.get("gameBeginDate"),
+    }
+
+
+def _sgpSummonerToLcuFormat(sgp_summoner: dict, puuid: str, first_game: dict) -> dict:
+    """Convert SGP summoner response to LCU format for parseSummonerData."""
+    name, tagline = "", ""
+    if first_game and "json" in first_game:
+        result = getNameTagLineFromGame(first_game, puuid)
+        if result:
+            name, tagline = result
+    return {
+        "puuid": puuid,
+        "gameName": name,
+        "displayName": name,
+        "tagLine": tagline,
+        "summonerLevel": sgp_summoner.get("level", -1),
+        "xpSinceLastLevel": sgp_summoner.get("expPoints", 0),
+        "xpUntilNextLevel": sgp_summoner.get("expToNextLevel", 0),
+        "profileIconId": sgp_summoner.get("profileIconId", 0),
+        "privacy": sgp_summoner.get("privacy", "PUBLIC"),
+    }
+
+
+def _sgpRankedToLcuFormat(sgp_ranked: dict) -> dict:
+    """Convert SGP ranked stats (queues list) to LCU format (queueMap dict)."""
+    if not sgp_ranked or "errorCode" in sgp_ranked:
+        return {}
+    queue_map = {}
+    for q in sgp_ranked.get("queues") or []:
+        queue_map[q["queueType"]] = {
+            "tier": q.get("tier", ""),
+            "division": q.get("rank", "NA"),
+            "highestTier": q.get("highestTier", ""),
+            "highestDivision": q.get("highestRank", "NA"),
+            "previousSeasonEndTier": q.get("previousSeasonEndTier", ""),
+            "previousSeasonEndDivision": q.get("previousSeasonEndRank", "NA"),
+            "wins": q.get("wins", 0),
+            "losses": q.get("losses", 0),
+            "leaguePoints": q.get("leaguePoints", 0),
+        }
+    return {"queueMap": queue_map}
 
 
 class NameLabel(QLabel):
@@ -417,9 +468,38 @@ class CareerInterface(SeraphineInterface):
             self.recentTeammatesFlyout.close()
             self.recentTeammatesFlyout = None
 
+        _use_sgp = False
         try:
             if summoner is None:
-                summoner = await connector.getSummonerByPuuid(puuid)
+                if connector.isInTencent():
+                    _use_sgp = True
+                    sgp_summoner, sgp_games, sgp_ranked = await asyncio.gather(
+                        connector.getSummonerByPuuidViaSGP(puuid),
+                        connector.getSummonerGamesByPuuidViaSGP(puuid, 0, cfg.get(cfg.careerGamesNumber) - 1),
+                        connector.getRankedStatsByPuuidViaSGP(puuid),
+                    )
+                    if sgp_summoner is None:
+                        self.setLoadingPageEnabled(False)
+                        return
+                    if 'errorCode' in sgp_summoner:
+                        InfoBar.error(self.tr("Get summoner infomation error"),
+                                      self.tr("The server returned abnormal content."),
+                                      orient=Qt.Vertical,
+                                      position=InfoBarPosition.BOTTOM_RIGHT,
+                                      duration=5000,
+                                      parent=self.window())
+                        self.setLoadingPageEnabled(False)
+                        return
+                    first_game = (sgp_games.get("games") or [{}])[0]
+                    summoner = _sgpSummonerToLcuFormat(sgp_summoner, puuid, first_game)
+                    async def _wrap(v):
+                        return v
+                    self.loadGamesTask = asyncio.create_task(
+                        _wrap(_sgpGamesToLcuFormat(sgp_games)))
+                    rankTask = asyncio.create_task(
+                        _wrap(_sgpRankedToLcuFormat(sgp_ranked)))
+                else:
+                    summoner = await connector.getSummonerByPuuid(puuid)
         except Exception as e:
             InfoBar.warning(
                 self.tr("Connection error"),
@@ -448,10 +528,11 @@ class CareerInterface(SeraphineInterface):
             self.setLoadingPageEnabled(False)
             return
 
-        self.loadGamesTask = asyncio.create_task(
-            connector.getSummonerGamesByPuuid(summoner['puuid'], 0, cfg.get(cfg.careerGamesNumber) - 1))
-        rankTask = asyncio.create_task(
-            connector.getRankedStatsByPuuid(summoner['puuid']))
+        if not _use_sgp:
+            self.loadGamesTask = asyncio.create_task(
+                connector.getSummonerGamesByPuuid(summoner['puuid'], 0, cfg.get(cfg.careerGamesNumber) - 1))
+            rankTask = asyncio.create_task(
+                connector.getRankedStatsByPuuid(summoner['puuid']))
 
         try:
             info = await parseSummonerData(summoner, rankTask, self.loadGamesTask)

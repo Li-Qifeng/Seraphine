@@ -212,12 +212,11 @@ class AutoHonorCard(ExpandGroupSettingCard):
             self.statusLabel.setText(self.tr("已禁用"))
 
 class AutoAcceptMsCard(ExpandGroupSettingCard):
-    """自动接受对局 (毫秒随机延迟 + 反悔权限)."""
+    """自动接受对局 (随机延迟 + 反悔权限)."""
 
     def __init__(self, title, content,
                  enableConfigItem=None,
-                 minMsConfigItem=None,
-                 maxMsConfigItem=None,
+                 delayMsConfigItem=None,
                  declineEnabledConfigItem=None,
                  parent=None):
         super().__init__(Icon.CIRCLEMARK, title, content, parent)
@@ -227,10 +226,8 @@ class AutoAcceptMsCard(ExpandGroupSettingCard):
         self.inputWidget = QWidget(self.view)
         self.inputLayout = QHBoxLayout(self.inputWidget)
 
-        self.minLabel = QLabel(self)
-        self.minSpinBox = SpinBox()
-        self.maxLabel = QLabel(self)
-        self.maxSpinBox = SpinBox()
+        self.delayLabel = QLabel(self)
+        self.delaySpinBox = SpinBox()
 
         self.declineWidget = QWidget(self.view)
         self.declineLayout = QHBoxLayout(self.declineWidget)
@@ -242,8 +239,7 @@ class AutoAcceptMsCard(ExpandGroupSettingCard):
         self.switchButton = SwitchButton(indicatorPos=IndicatorPosition.RIGHT)
 
         self.enableConfigItem = enableConfigItem
-        self.minMsConfigItem = minMsConfigItem
-        self.maxMsConfigItem = maxMsConfigItem
+        self.delayMsConfigItem = delayMsConfigItem
         self.declineEnabledConfigItem = declineEnabledConfigItem
 
         self.__initLayout()
@@ -255,11 +251,8 @@ class AutoAcceptMsCard(ExpandGroupSettingCard):
         self.inputLayout.setSpacing(19)
         self.inputLayout.setAlignment(Qt.AlignTop)
         self.inputLayout.setContentsMargins(48, 18, 44, 18)
-        self.inputLayout.addWidget(self.minLabel, alignment=Qt.AlignLeft)
-        self.inputLayout.addWidget(self.minSpinBox, alignment=Qt.AlignLeft)
-        self.inputLayout.addSpacing(8)
-        self.inputLayout.addWidget(self.maxLabel, alignment=Qt.AlignLeft)
-        self.inputLayout.addWidget(self.maxSpinBox, alignment=Qt.AlignRight)
+        self.inputLayout.addWidget(self.delayLabel, alignment=Qt.AlignLeft)
+        self.inputLayout.addWidget(self.delaySpinBox, alignment=Qt.AlignLeft)
         self.inputLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
 
         self.declineLayout.setContentsMargins(48, 18, 44, 18)
@@ -278,46 +271,34 @@ class AutoAcceptMsCard(ExpandGroupSettingCard):
         self.addGroupWidget(self.switchButtonWidget)
 
     def __initWidget(self):
-        self.minLabel.setText(self.tr("Min delay (ms):"))
-        self.minSpinBox.setRange(0, 15000)
-        self.minSpinBox.setValue(cfg.get(self.minMsConfigItem))
-        self.minSpinBox.setSingleStep(100)
-        self.minSpinBox.setMinimumWidth(120)
+        self.delayLabel.setText(self.tr("最大延迟 (毫秒):"))
+        self.delaySpinBox.setRange(0, 15000)
+        self.delaySpinBox.setValue(cfg.get(self.delayMsConfigItem))
+        self.delaySpinBox.setSingleStep(100)
+        self.delaySpinBox.setMinimumWidth(120)
 
-        self.maxLabel.setText(self.tr("Max delay (ms):"))
-        self.maxSpinBox.setRange(0, 15000)
-        self.maxSpinBox.setValue(cfg.get(self.maxMsConfigItem))
-        self.maxSpinBox.setSingleStep(100)
-        self.maxSpinBox.setMinimumWidth(120)
-
-        self.declineLabel.setText(self.tr("Allow declining after auto-accept:"))
+        self.declineLabel.setText(self.tr("自动接受后可手动拒绝:"))
         self.declineSwitch.setChecked(cfg.get(self.declineEnabledConfigItem))
 
         self.switchButton.setChecked(cfg.get(self.enableConfigItem))
 
-        self.minSpinBox.valueChanged.connect(self.__save)
-        self.maxSpinBox.valueChanged.connect(self.__save)
+        self.delaySpinBox.valueChanged.connect(self.__save)
         self.declineSwitch.checkedChanged.connect(self.__save)
         self.switchButton.checkedChanged.connect(self.__save)
 
         self.__updateStatus()
 
     def __save(self):
-        qconfig.set(self.minMsConfigItem, self.minSpinBox.value())
-        qconfig.set(self.maxMsConfigItem, self.maxSpinBox.value())
+        qconfig.set(self.delayMsConfigItem, self.delaySpinBox.value())
         qconfig.set(self.declineEnabledConfigItem, self.declineSwitch.isChecked())
         qconfig.set(self.enableConfigItem, self.switchButton.isChecked())
         self.__updateStatus()
 
     def __updateStatus(self):
         if self.switchButton.isChecked():
-            self.statusLabel.setText(
-                self.tr("Enabled, delay: ") +
-                f"{self.minSpinBox.value()}~{self.maxSpinBox.value()}ms" +
-                (self.tr(", decline allowed") if self.declineSwitch.isChecked()
-                 else self.tr(", decline disabled")))
+            self.statusLabel.setText(self.tr("已启用"))
         else:
-            self.statusLabel.setText(self.tr("Disabled"))
+            self.statusLabel.setText(self.tr("已禁用"))
 
 
 class AutoAcceptSwapingCard(ExpandGroupSettingCard):
