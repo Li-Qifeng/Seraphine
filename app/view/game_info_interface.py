@@ -417,7 +417,7 @@ class SummonerInfoView(ColorAnimationFrame):
         else:
             sacle, scroll, lp = 15, -2, '--'
 
-        solo_pm = QPixmap(soloRank['icon'])
+        solo_pm = QPixmap(soloRank['icon']) if soloRank['icon'] else QPixmap()
         if not solo_pm.isNull():
             self.rankSoloIcon.setPixmap(
                 solo_pm.scaled(sacle, sacle, Qt.KeepAspectRatio, Qt.SmoothTransformation))
@@ -438,7 +438,7 @@ class SummonerInfoView(ColorAnimationFrame):
         sacle, scroll = (24,
                          -10) if flexRank['tier'] not in ["Unranked", '未定级'
                                                           ] else (15, 0)
-        flex_pm = QPixmap(flexRank['icon'])
+        flex_pm = QPixmap(flexRank['icon']) if flexRank['icon'] else QPixmap()
         if not flex_pm.isNull():
             self.rankFlexIcon.setPixmap(
                 flex_pm.scaled(sacle, sacle, Qt.KeepAspectRatio, Qt.SmoothTransformation))

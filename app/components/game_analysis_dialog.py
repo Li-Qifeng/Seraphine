@@ -239,7 +239,8 @@ class _PlayerRow(QFrame):
         ci = QLabel(iconC)
         ci.setFixedSize(28, 28)
         ci.move(0, 0)
-        pix = QPixmap(data.get('championIcon', ''))
+        ci_path = data.get('championIcon', '')
+        pix = QPixmap(ci_path) if ci_path else QPixmap()
         if not pix.isNull():
             ci.setPixmap(pix.scaled(28, 28, Qt.KeepAspectRatio,
                                      Qt.SmoothTransformation))

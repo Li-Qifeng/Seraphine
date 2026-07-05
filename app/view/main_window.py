@@ -62,6 +62,39 @@ import threading
 TAG = "MainWindow"
 
 
+class DeathCountdownWindow(QLabel):
+    """顶层置顶复活倒计时窗口 — 即使 Seraphine 在后台也可见"""
+
+    def __init__(self):
+        super().__init__(None)
+        self.setWindowFlags(
+            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setAlignment(Qt.AlignCenter)
+        self.setStyleSheet(
+            "QLabel { background: rgba(0,0,0,180); color: #ff6666; "
+            "font-size: 32px; font-weight: bold; padding: 6px 20px; "
+            "border-radius: 10px; border: 1px solid rgba(255,70,70,100); }"
+        )
+
+    def showWithText(self, text: str):
+        self.setText(text)
+        self.adjustSize()
+        # 定位在屏幕正中央顶部
+        screen = QApplication.primaryScreen()
+        if screen:
+            sg = screen.availableGeometry()
+            self.move(sg.left() + (sg.width() - self.width()) // 2, sg.top() + 12)
+        self.show()
+
+    def closeEvent(self, a0):
+        # 防止悬空窗口残留 — Qt.Tool + 无 parent 时需显式关闭
+        self.hide()
+        super().closeEvent(a0)
+
+
 class MainWindow(FluentWindow):
     mainWindowHide = pyqtSignal(bool)
     showUpdateMessageBox = pyqtSignal(dict)
@@ -129,17 +162,10 @@ class MainWindow(FluentWindow):
         self._deathRespawnTask = None
         self._deathBrowserHwnd = 0
         self._deathCountdownEnd = 0.0
-        self.deathCountdownLabel = QLabel(self)
-        self.deathCountdownLabel.setAlignment(Qt.AlignCenter)
-        self.deathCountdownLabel.setStyleSheet(
-            "QLabel { background: rgba(0,0,0,180); color: #ff4444; "
-            "font-size: 28px; font-weight: bold; padding: 8px 24px; "
-            "border-radius: 8px; }")
-        self.deathCountdownLabel.raise_()
-        self.deathCountdownLabel.hide()
-        self.deathCountdownTimer = QTimer(self)
-        self.deathCountdownTimer.setInterval(1000)
-        self.deathCountdownTimer.timeout.connect(self.__onDeathCountdownTick)
+        self._deathCountdownWindow = DeathCountdownWindow()
+        self._deathCountdownTimer = QTimer(self)
+        self._deathCountdownTimer.setInterval(1000)
+        self._deathCountdownTimer.timeout.connect(self.__onDeathCountdownTick)
 
         self.lastTipsTime = time.time()
         self.lastTipsType = None
@@ -810,7 +836,7 @@ class MainWindow(FluentWindow):
             name = self.tr("Start LOL")
             self.avatarWidget.setToolTip("")
 
-        img = QImage(icon)
+        img = QImage(icon) if icon else QImage(24, 24, QImage.Format_ARGB32)
         if img.isNull():
             img = QImage(24, 24, QImage.Format_ARGB32)
             img.fill(QColor(0, 0, 0, 0))
@@ -958,6 +984,7 @@ class MainWindow(FluentWindow):
 
         if not cfg.get(cfg.enableCloseToTray) or self.isTrayExit:
             self.__terminateListeners()
+            self._deathCountdownWindow.close()
             self.opggWindow.close()
             self.hextechWindow.close()
 
@@ -1662,11 +1689,9 @@ class MainWindow(FluentWindow):
                 logger.info(f"DeathSwitch: detected death, respawnTimer={info.get('respawnTimer')}", TAG)
                 remaining = info.get('respawnTimer', 30.0)
                 self._deathCountdownEnd = time.time() + remaining
-                self.deathCountdownLabel.setText(
-                    self.tr("复活倒计时: {:.0f}s").format(remaining))
-                self.__positionCountdownLabel()
-                self.deathCountdownLabel.show()
-                self.deathCountdownTimer.start()
+                self._deathCountdownWindow.showWithText(
+                    self.tr("{:.0f}s 后复活").format(remaining))
+                self._deathCountdownTimer.start()
                 hwnd = findProcessWindowHwnd(cfg.get(cfg.deathSwitchTargetExe))
                 if hwnd:
                     logger.info(f"DeathSwitch: switching to hwnd={hwnd}", TAG)
@@ -1694,22 +1719,16 @@ class MainWindow(FluentWindow):
         now = time.time()
         remaining = self._deathCountdownEnd - now
         if remaining > 0:
-            self.deathCountdownLabel.setText(
-                self.tr("复活倒计时: {:.0f}s").format(remaining))
+            self._deathCountdownWindow.setText(
+                self.tr("{:.0f}s 后复活").format(remaining))
+            self._deathCountdownWindow.adjustSize()
         else:
-            self.deathCountdownLabel.hide()
-            self.deathCountdownTimer.stop()
-
-    def __positionCountdownLabel(self):
-        g = self.stackedWidget.geometry()
-        self.deathCountdownLabel.adjustSize()
-        lbl_w = self.deathCountdownLabel.width()
-        cx = g.x() + g.width() // 2 if g.width() > 0 else self.width() // 2
-        self.deathCountdownLabel.move(max(0, cx - lbl_w // 2), g.y() + 5 if g.height() > 0 else 48)
+            self._deathCountdownWindow.hide()
+            self._deathCountdownTimer.stop()
 
     def __hideDeathCountdown(self):
-        self.deathCountdownLabel.hide()
-        self.deathCountdownTimer.stop()
+        self._deathCountdownWindow.hide()
+        self._deathCountdownTimer.stop()
 
     async def __onRespawnWaiter(self, respawn_timer: float):
         """等待复活后自动切回游戏窗口"""
@@ -1759,8 +1778,6 @@ class MainWindow(FluentWindow):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if hasattr(self, 'deathCountdownLabel') and self.deathCountdownLabel.isVisible():
-            self.__positionCountdownLabel()
 
     @asyncSlot(str)
     async def __onCareerGameClicked(self, gameId):

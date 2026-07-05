@@ -11,7 +11,7 @@ class NavigationAvatarWidget(NavigationWidget):
         super().__init__(isSelectable=False, parent=parent)
 
         self.name = name
-        img = QImage(avatar)
+        img = QImage(avatar) if avatar else QImage(24, 24, QImage.Format_ARGB32)
         if img.isNull():
             img = QImage(24, 24, QImage.Format_ARGB32)
             img.fill(QColor(0, 0, 0, 0))

@@ -880,7 +880,7 @@ class SummonerInfoBar(QFrame):
         self.summonerName.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Minimum)
 
-        rune_pm = QPixmap(summoner["runeIcon"])
+        rune_pm = QPixmap(summoner["runeIcon"]) if summoner["runeIcon"] else QPixmap()
         if not rune_pm.isNull():
             self.runeIcon.setPixmap(rune_pm)
             self.runeIcon.havePic = True

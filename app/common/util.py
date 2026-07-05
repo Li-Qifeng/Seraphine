@@ -567,12 +567,31 @@ def forceForegroundWindow(hwnd):
         logger.error(f"DeathSwitch: forceForegroundWindow failed: {e}", TAG)
 
 
-def sendMediaPlayPause(hwnd: int):
-    """通过 WM_APPCOMMAND 向目标窗口发送播放/暂停命令"""
+def sendMediaPlayPause(hwnd: int = 0):
+    """发送播放/暂停命令。
+
+    双保险策略:
+    1. VK_MEDIA_PLAY_PAUSE (0xB3) 系统媒体键 — 现代浏览器/播放器均响应
+    2. WM_APPCOMMAND 定向发送 — 兼容部分传统应用
+    """
     try:
-        WM_APPCOMMAND = 0x0319
-        APPCOMMAND_MEDIA_PLAY_PAUSE = 14
-        win32api.PostMessage(hwnd, WM_APPCOMMAND, 0, APPCOMMAND_MEDIA_PLAY_PAUSE << 16)
-        logger.info(f"sendMediaPlayPause(hwnd={hwnd}) sent", TAG)
+        VK_MEDIA_PLAY_PAUSE = 0xB3
+        KEYEVENTF_KEYUP = 0x0002
+        user32 = ctypes.windll.user32
+        user32.keybd_event(VK_MEDIA_PLAY_PAUSE, 0, 0, 0)
+        user32.keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0)
+        logger.info("sendMediaPlayPause: VK_MEDIA_PLAY_PAUSE sent", TAG)
     except Exception as e:
-        logger.warning(f"sendMediaPlayPause failed: {e}", TAG)
+        logger.warning(f"sendMediaPlayPause keybd_event failed: {e}", TAG)
+
+    if hwnd:
+        try:
+            WM_APPCOMMAND = 0x0319
+            APPCOMMAND_MEDIA_PLAY_PAUSE = 14
+            win32gui.SendMessage(hwnd, WM_APPCOMMAND, 0,
+                                 APPCOMMAND_MEDIA_PLAY_PAUSE << 16)
+            logger.info(
+                f"sendMediaPlayPause: WM_APPCOMMAND sent to hwnd={hwnd}", TAG)
+        except Exception as e:
+            logger.warning(
+                f"sendMediaPlayPause WM_APPCOMMAND failed: {e}", TAG)
