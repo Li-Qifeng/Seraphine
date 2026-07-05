@@ -580,30 +580,39 @@ def forceForegroundWindow(hwnd):
         logger.error(f"DeathSwitch: forceForegroundWindow failed: {e}", TAG)
 
 
-def _winrt_media(action: str):
-    """PowerShell + WinRT 全局媒体播放/暂停 (绕过 UIPI)."""
-    ps = (
-        'Add-Type -AssemblyName System.Runtime.WindowsRuntime;'
-        '[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,'
-        'Windows.System,ContentType=WindowsRuntime]|Out-Null;'
-        '$m=[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]'
-        '::RequestAsync().GetAwaiter().GetResult();'
-        '$s=$m.GetCurrentSession();'
-        f'if($s){{$s.Try{action}Async().GetAwaiter().GetResult()}}'
-    )
+def sendMediaPlayPause(hwnd: int = 0):
+    """发送播放/暂停命令。
+
+    使用 SendInput 发送 VK_MEDIA_PLAY_PAUSE 系统媒体键 — 比 legacy keybd_event
+    更可靠, 支持现代浏览器/播放器响应.
+    """
     try:
-        subprocess.run(['powershell', '-NoProfile', '-Command', ps],
-                       capture_output=True, timeout=5)
-        logger.info(f"WinRT media {action} sent", TAG)
+        # ponytail: SendInput > keybd_event, WM_APPCOMMAND 对浏览器无效
+        user32 = ctypes.windll.user32
+        VK_MEDIA_PLAY_PAUSE = 0xB3
+        INPUT_KEYBOARD = 1
+        KEYEVENTF_KEYUP = 0x0002
+
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [("wVk", ctypes.c_ushort),
+                        ("wScan", ctypes.c_ushort),
+                        ("dwFlags", ctypes.c_ulong),
+                        ("time", ctypes.c_ulong),
+                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+
+        class INPUT(ctypes.Structure):
+            _fields_ = [("type", ctypes.c_ulong),
+                        ("ki", KEYBDINPUT)]
+
+        def _send_key(down: bool):
+            inp = INPUT()
+            inp.type = INPUT_KEYBOARD
+            inp.ki = KEYBDINPUT(VK_MEDIA_PLAY_PAUSE, 0,
+                                0 if down else KEYEVENTF_KEYUP, 0, None)
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+
+        _send_key(True)
+        _send_key(False)
+        logger.info("sendMediaPlayPause: SendInput VK_MEDIA_PLAY_PAUSE sent", TAG)
     except Exception as e:
-        logger.warning(f"WinRT media {action} failed: {e}", TAG)
-
-
-def sendMediaPlay(hwnd: int = 0):
-    """向系统发送媒体播放命令 (WinRT)."""
-    _winrt_media("Play")
-
-
-def sendMediaPause(hwnd: int = 0):
-    """向系统发送媒体暂停命令 (WinRT)."""
-    _winrt_media("Pause")
+        logger.warning(f"sendMediaPlayPause SendInput failed: {e}", TAG)
