@@ -4,8 +4,9 @@ import math
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QPainterPath, QColor, QFont, QPen
-from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-                             QWidget, QSizePolicy, QSpacerItem)
+from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout,
+                             QLabel, QFrame, QWidget, QSizePolicy,
+                             QSpacerItem)
 
 from app.common.qfluentwidgets import (isDarkTheme, SmoothScrollArea)
 from app.lol.war_criminal_cache import getVerdict
@@ -180,10 +181,11 @@ class HexagonScore(QWidget):
         self._size = size
 
     def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        _renderBuf(self, self._draw)
+
+    def _draw(self, p, w, h):
         r = self._size / 2 - 2
-        cx, cy = self._size / 2, self._size / 2
+        cx, cy = w / 2, h / 2
         n = 6
 
         path = QPainterPath()
@@ -215,16 +217,13 @@ class HexagonScore(QWidget):
         p.setBrush(bg)
         p.drawPath(inner)
 
-        font = QFont('Consolas', int(self._size / 4.5), QFont.Bold)
-        p.setFont(font)
+        p.setFont(QFont('Consolas', int(self._size / 4.5), QFont.Bold))
         p.setPen(QColor('#FFFFFF'))
         text = f"{self._score:.1f}"
         fm = p.fontMetrics()
         tw = fm.horizontalAdvance(text)
         th = fm.height()
         p.drawText(int(cx - tw / 2), int(cy + th / 4), text)
-
-        p.end()
 
 
 # ── PlayerCard ─────────────────────────────────────────────
@@ -259,7 +258,8 @@ class PlayerCard(QFrame):
         ci = QLabel(iconC)
         ci.setFixedSize(48, 48)
         ci.move(0, 0)
-        pix = QPixmap(data.get('championIcon', ''))
+        champ_icon = data.get('championIcon', '')
+        pix = QPixmap(champ_icon) if champ_icon else QPixmap()
         if not pix.isNull():
             ci.setPixmap(pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         ci.setStyleSheet("border-radius: 4px;")
@@ -356,14 +356,15 @@ class TeamRadar(QWidget):
         self._blueVals = blueVals
         self._redVals = redVals
         self._n = len(blueVals)
-        self.setFixedSize(160, 160)
+        self.setFixedSize(172, 180)
 
     def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        r = min(self.width(), self.height()) / 2 - 18
-        cx, cy = self.width() / 2, self.height() / 2 + 8
+        _renderBuf(self, self._draw)
+
+    def _draw(self, p, w, h):
         n = self._n
+        r = min(w, h) / 2 - 24
+        cx, cy = w / 2, h / 2
 
         for ring in (0.25, 0.5, 0.75):
             path = QPainterPath()
@@ -389,8 +390,7 @@ class TeamRadar(QWidget):
             label_x = cx + (r + 14) * math.cos(angle)
             label_y = cy + (r + 14) * math.sin(angle)
             p.setPen(QColor('#8B95A5'))
-            font = QFont('Segoe UI', 8)
-            p.setFont(font)
+            p.setFont(QFont('Segoe UI', 8))
             fm = p.fontMetrics()
             text = _TEAM_RADAR_LABELS[i]
             tw = fm.horizontalAdvance(text)
@@ -411,22 +411,16 @@ class TeamRadar(QWidget):
             fill = QColor(color)
             fill.setAlpha(35)
             p.setBrush(fill)
-            pen = p.pen()
-            pen.setWidthF(2)
-            pen.setColor(c)
-            p.setPen(pen)
+            p.setPen(QPen(c, 2))
             p.drawPath(path)
 
         _drawTeam(self._blueVals, _BLUE)
         _drawTeam(self._redVals, _RED)
 
         p.setPen(QColor('#8B95A5'))
-        font = QFont('Segoe UI', 9)
-        p.setFont(font)
+        p.setFont(QFont('Segoe UI', 9))
         p.drawText(4, 14, "● 蓝队")
-        p.drawText(self.width() - 50, 14, "● 红队")
-
-        p.end()
+        p.drawText(w - 50, 14, "● 红队")
 
 
 # ── Insights Summary ───────────────────────────────────────
@@ -571,6 +565,27 @@ class TeamPanel(QFrame):
             layout.addWidget(PlayerCard(p, teamTotals))
 
         layout.addSpacerItem(QSpacerItem(1, 1, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+
+# ── Bottom Chart Widgets ────────────────────────────────────
+
+def _renderBuf(widget, drawFn):
+    """Render widget content to offscreen QPixmap to avoid QPainter
+    conflict with QGraphicsEffect applied by SmoothScrollArea."""
+    w, h = widget.width(), widget.height()
+    if w < 10 or h < 10:
+        return
+    buf = QPixmap(w, h)
+    buf.fill(Qt.transparent)
+    p = QPainter(buf)
+    p.setRenderHint(QPainter.Antialiasing)
+    try:
+        drawFn(p, w, h)
+    finally:
+        p.end()
+    p2 = QPainter(widget)
+    p2.drawPixmap(0, 0, buf)
+    p2.end()
 
 
 # ── AnalysisPage ───────────────────────────────────────────
@@ -721,3 +736,5 @@ class AnalysisPage(QFrame):
         cl.addLayout(row, 1)
 
         self.contentLayout.addWidget(self._teamContainer)
+
+        self.contentLayout.addStretch(1)
