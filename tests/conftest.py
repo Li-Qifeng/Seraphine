@@ -74,7 +74,7 @@ if 'PyQt5' not in sys.modules:
     _pyqt5.QtCore.QLocale = MagicMock()
     _pyqt5.QtCore.QSize = MagicMock()
     _pyqt5.QtCore.Qt = MagicMock()
-    _pyqt5.QtCore.QObject = MagicMock()
+    _pyqt5.QtCore.QObject = type('QObject', (object,), {'pyqtSignal': MagicMock})
     _pyqt5.QtCore.pyqtSignal = MagicMock()
     _pyqt5.QtCore.QRectF = MagicMock()
     _pyqt5.QtGui = types.ModuleType('PyQt5.QtGui')
