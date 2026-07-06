@@ -1712,7 +1712,7 @@ class MainWindow(FluentWindow):
                 self._deathPrevAlive = True
         except Exception as e:
             logger.warning(f"DeathSwitch tick failed: {e}", TAG)
-    
+
     def __onDeathCountdownTick(self):
         now = time.time()
         remaining = self._deathCountdownEnd - now
