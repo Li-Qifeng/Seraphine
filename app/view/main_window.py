@@ -31,7 +31,7 @@ from app.view.hextech_window import HextechWindow, HextechGrabFlyout
 from app.common.util import (github, getLolClientPid, getTasklistPath,
                              getLolClientPidSlowly, getLoLPathByRegistry,
                              findGameWindowHwnd, findProcessWindowHwnd,
-                              forceForegroundWindow, sendMediaPlay, sendMediaPause)
+                              forceForegroundWindow, sendMediaPlayPause)
 from app.components.avatar_widget import NavigationAvatarWidget
 from app.components.temp_system_tray_menu import TmpSystemTrayMenu
 from app.common.icons import Icon
@@ -1695,7 +1695,7 @@ class MainWindow(FluentWindow):
                     logger.info(f"DeathSwitch: switching to hwnd={hwnd}", TAG)
                     self._deathBrowserHwnd = hwnd
                     forceForegroundWindow(hwnd)
-                    sendMediaPlay(hwnd)
+                    sendMediaPlayPause(hwnd)
                 else:
                     logger.warning(f"DeathSwitch: no visible window for target exe '{cfg.get(cfg.deathSwitchTargetExe)}'", TAG)
                 self._deathPrevAlive = False
@@ -1708,7 +1708,7 @@ class MainWindow(FluentWindow):
                 if hwnd:
                     forceForegroundWindow(hwnd)
                 if self._deathBrowserHwnd:
-                    sendMediaPause(self._deathBrowserHwnd)
+                    sendMediaPlayPause(self._deathBrowserHwnd)
                 self._deathPrevAlive = True
         except Exception as e:
             logger.warning(f"DeathSwitch tick failed: {e}", TAG)
@@ -1740,7 +1740,7 @@ class MainWindow(FluentWindow):
                     if hwnd:
                         forceForegroundWindow(hwnd)
                     if self._deathBrowserHwnd:
-                        sendMediaPause(self._deathBrowserHwnd)
+                        sendMediaPlayPause(self._deathBrowserHwnd)
                     self._deathPrevAlive = True
                     self._deathRespawnTask = None
                     logger.info("DeathSwitch: switched back to game window", TAG)

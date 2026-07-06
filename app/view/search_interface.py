@@ -1388,26 +1388,10 @@ class SearchInterface(SeraphineInterface):
                 try:
                     games = await connector.getSummonerGamesByPuuid(self.puuid, 0, 19)
                 except SummonerGamesNotFound:
-                    cached = await connector.getSummonerGamesCached(self.puuid, 20, 0)
-                    if cached:
-                        games = cached
-                        self.gamesView.gamesTab.updateQueueIdMap(games)
-                        self.gameLoadingTask = asyncio.create_task(
-                            self.__loadGames(self.puuid))
-                        self.gamesView.gamesTab.showTheFirstPage()
-                        return True
                     games = []
                 else:
                     # LCU 未就绪时 @retry 返回 None (统一提示已发射)
                     if games is None:
-                        cached = await connector.getSummonerGamesCached(self.puuid, 20, 0)
-                        if cached:
-                            games = cached
-                            self.gamesView.gamesTab.updateQueueIdMap(games)
-                            self.gameLoadingTask = asyncio.create_task(
-                                self.__loadGames(self.puuid))
-                            self.gamesView.gamesTab.showTheFirstPage()
-                            return True
                         self.gamesView.setLoadingPageEnable(False)
                         return False
                     games = await parseGamesDataConcurrently(games['games'], self.puuid)
@@ -1594,9 +1578,6 @@ class SearchInterface(SeraphineInterface):
             # 尝试从缓存读取
             cached = await connector.getGameDetailCached(gameId)
             if cached:
-                # ponytail: JSON序列化将int键转成了字符串, 复原
-                if 'teams' in cached:
-                    cached['teams'] = {int(k): v for k, v in cached['teams'].items()}
                 game = cached
                 self.gamesView.gameDetailView.setLoadingPageEnabled(False)
                 # 直接从缓存显示
