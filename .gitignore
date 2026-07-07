@@ -45,4 +45,7 @@ tests/py_out.txt
 tufup_keys/
 tufup_repo/
 tufup_keys.b64
+
+# 持久缓存数据库（测试生成的）
+seraphine_cache.db
 .tufup-repo-config
