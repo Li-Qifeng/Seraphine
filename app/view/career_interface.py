@@ -435,7 +435,20 @@ class CareerInterface(SeraphineInterface):
 
     @asyncSlot()
     async def refresh(self):
-        if not self.puuid:
+        # 三层 puuid 兜底:
+        #   1. self.puuid (正常加载后)
+        #   2. self.loginSummonerPuuid (初始加载失败的恢复)
+        #   3. connector.getCurrentSummoner() (极端边缘情况)
+        puuid = self.puuid
+        if not puuid:
+            puuid = self.loginSummonerPuuid
+        if not puuid:
+            try:
+                s = await connector.getCurrentSummoner()
+                puuid = s.get('puuid') if s else None
+            except Exception:
+                pass
+        if not puuid:
             return
 
         # 同步设置 loading 状态, 确保 UI 立即反馈
@@ -447,7 +460,7 @@ class CareerInterface(SeraphineInterface):
             self.loadGamesTask.cancel()
 
         index = self.filterComboBox.currentIndex()
-        await self.updateInterface(puuid=self.puuid)
+        await self.updateInterface(puuid=puuid)
         self.filterComboBox.blockSignals(True)
         self.filterComboBox.setCurrentIndex(index)
         self.filterComboBox.blockSignals(False)
