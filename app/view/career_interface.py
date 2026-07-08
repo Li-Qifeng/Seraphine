@@ -552,8 +552,7 @@ class CareerInterface(SeraphineInterface):
             info = await parseSummonerData(summoner, rankTask, self.loadGamesTask)
         except Exception as e:
             logger.exception(
-                f"parseSummonerData raised: {type(e).__name__}: {e}",
-                "CareerInterface")
+                "parseSummonerData raised", e, "CareerInterface")
             InfoBar.warning(
                 self.tr("Data load failed"),
                 self.tr("Failed to load game data, displaying cached data."),
