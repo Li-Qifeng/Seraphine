@@ -149,8 +149,20 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
                 "assists": 0,
                 "games": [],
             }
-            for game in gamesInfo["games"]:
-                info = await parseGameData(game)
+            raw_games = gamesInfo.get("games")
+            if not isinstance(raw_games, list):
+                logger.warning(
+                    f"parseSummonerData: games is {type(raw_games).__name__}, "
+                    f"expected list", "tools")
+                raw_games = []
+            for game in raw_games:
+                try:
+                    info = await parseGameData(game)
+                except Exception as e:
+                    logger.warning(
+                        f"parseSummonerData: skipping malformed game "
+                        f"({type(e).__name__}: {e})", "tools")
+                    continue
                 if time.time() - info["timeStamp"] / 1000 > 60 * 60 * 24 * 365:
                     continue
                 if not info["remake"] and info["queueId"] != 0:
