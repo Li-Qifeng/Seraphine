@@ -1391,6 +1391,10 @@ class MainWindow(FluentWindow):
             if cfg.get(cfg.enableHextechWindowOnTop):
                 self.hextechWindow.setStaysOnTopEnabled(True)
             self.hextechWindow.show()
+            # WS 事件可能在 show() 之前已到达 (await asyncio.gather 交出事件循环),
+            # 此时 isVisible() 为 False, hextechSessionUpdated 不会触发,
+            # 导致窗口保留上一局旧数据. 用当前 session 强制刷新.
+            signalBus.hextechSessionUpdated.emit(cSession)
 
         currentSummonerId = self.currentSummoner['summonerId']
         info = await parseAllyGameInfo(cSession, currentSummonerId, queueId, useSGP=True)
