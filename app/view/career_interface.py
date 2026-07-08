@@ -10,6 +10,7 @@ from ..common.qfluentwidgets import (TableWidget, PushButton, ComboBox,
                                      ToolTipPosition, ToolButton, IndeterminateProgressRing,
                                      Flyout, FlyoutViewBase, FlyoutAnimationType, InfoBar,
                                      InfoBarPosition)
+from app.common.logger import logger
 
 from app.components.game_infobar_widget import GameInfoBar
 from app.components.champion_icon_widget import RoundIcon
@@ -550,6 +551,9 @@ class CareerInterface(SeraphineInterface):
         try:
             info = await parseSummonerData(summoner, rankTask, self.loadGamesTask)
         except Exception as e:
+            logger.exception(
+                f"parseSummonerData raised: {type(e).__name__}: {e}",
+                "CareerInterface")
             InfoBar.warning(
                 self.tr("Data load failed"),
                 self.tr("Failed to load game data, displaying cached data."),
