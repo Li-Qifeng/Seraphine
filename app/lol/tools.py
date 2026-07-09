@@ -230,28 +230,20 @@ async def parseGameData(game) -> GameSummary:
     spell2Icon = await connector.getSummonerSpellIcon(spell2Id)
     stats = participant.get('stats', participant)
 
-    champLevel = stats['champLevel']
-    kills = stats['kills']
-    deaths = stats['deaths']
-    assists = stats['assists']
-    itemIds = [
-        stats['item0'],
-        stats['item1'],
-        stats['item2'],
-        stats['item3'],
-        stats['item4'],
-        stats['item5'],
-        stats['item6'],
-    ]
+    champLevel = stats.get('champLevel', 0)
+    kills = stats.get('kills', 0)
+    deaths = stats.get('deaths', 0)
+    assists = stats.get('assists', 0)
+    itemIds = [stats.get(f'item{i}', 0) for i in range(7)]
 
     itemIcons = [await connector.getItemIcon(itemId) for itemId in itemIds]
-    runeId = stats['perk0']
+    runeId = stats.get('perk0', 0)
     runeIcon = await connector.getRuneIcon(runeId)
 
-    cs = stats['totalMinionsKilled'] + stats['neutralMinionsKilled']
-    gold = stats['goldEarned']
-    remake = stats['gameEndedInEarlySurrender']
-    win = stats['win']
+    cs = stats.get('totalMinionsKilled', 0) + stats.get('neutralMinionsKilled', 0)
+    gold = stats.get('goldEarned', 0)
+    remake = stats.get('gameEndedInEarlySurrender', False)
+    win = stats.get('win', False)
 
     timeline = participant['timeline']
     lane = timeline['lane']
