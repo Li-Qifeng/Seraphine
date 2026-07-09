@@ -228,7 +228,7 @@ async def parseGameData(game) -> GameSummary:
     spell2Id = participant['spell2Id']
     spell1Icon = await connector.getSummonerSpellIcon(spell1Id)
     spell2Icon = await connector.getSummonerSpellIcon(spell2Id)
-    stats = participant['stats']
+    stats = participant.get('stats', participant)
 
     champLevel = stats['champLevel']
     kills = stats['kills']
