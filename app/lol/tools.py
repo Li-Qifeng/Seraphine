@@ -245,9 +245,9 @@ async def parseGameData(game) -> GameSummary:
     remake = stats.get('gameEndedInEarlySurrender', False)
     win = stats.get('win', False)
 
-    timeline = participant['timeline']
-    lane = timeline['lane']
-    role = timeline['role']
+    timeline = participant.get('timeline', {})
+    lane = timeline.get('lane', '')
+    role = timeline.get('role', '')
 
     position = None
 
