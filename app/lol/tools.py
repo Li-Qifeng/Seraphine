@@ -157,7 +157,7 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
                 raw_games = []
             for game in raw_games:
                 try:
-                    info = await parseGameData(game)
+                    info = await parseGameData(game, summoner['puuid'])
                 except Exception as e:
                     logger.warning(
                         f"parseSummonerData: skipping malformed game "
@@ -205,7 +205,7 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
     }
 
 
-async def parseGameData(game) -> GameSummary:
+async def parseGameData(game, puuid=None) -> GameSummary:
     timeStamp = game["gameCreation"]  # 毫秒级时间戳
     time = timeStampToStr(game['gameCreation'])
     shortTime = timeStampToShortStr(game['gameCreation'])
@@ -221,7 +221,11 @@ async def parseGameData(game) -> GameSummary:
     else:
         mapName = connector.manager.getMapNameById(game['mapId'])
 
-    participant = game['participants'][0]
+    participants = game['participants']
+    if puuid:
+        participant = next((p for p in participants if p.get('puuid') == puuid), participants[0])
+    else:
+        participant = participants[0]
     championId = participant['championId']
     championIcon = await connector.getChampionIcon(championId)
     spell1Id = participant['spell1Id']
@@ -880,7 +884,7 @@ def getTeamColor(session, currentSummonerId):
 
 
 async def parseGamesDataConcurrently(games, puuid: str = ""):
-    results = await asyncio.gather(*[parseGameData(game) for game in games])
+    results = await asyncio.gather(*[parseGameData(game, puuid) for game in games])
     if puuid:
         asyncio.get_running_loop().run_in_executor(
             None, sqlite_cache.set_games, puuid, results)
@@ -936,7 +940,7 @@ async def parseSummonerGameInfo(item, queueId, currentSummonerId) -> Optional[Te
     except Exception:
         gamesInfo = []
     else:
-        tasks = [parseGameData(game)
+        tasks = [parseGameData(game, puuid)
                  for game in origGamesInfo["games"][:11]]
         gamesInfo = await asyncio.gather(*tasks)
 

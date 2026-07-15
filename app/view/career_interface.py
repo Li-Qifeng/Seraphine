@@ -482,11 +482,13 @@ class CareerInterface(SeraphineInterface):
             self.recentTeammatesFlyout.close()
             self.recentTeammatesFlyout = None
 
-        _use_sgp = False
+        sgp_fallback = False
         try:
             if summoner is None:
-                if connector.isInTencent():
-                    _use_sgp = True
+                try:
+                    summoner = await connector.getSummonerByPuuid(puuid)
+                except Exception:
+                    sgp_fallback = True
                     sgp_summoner, sgp_games, sgp_ranked = await asyncio.gather(
                         connector.getSummonerByPuuidViaSGP(puuid),
                         connector.getSummonerGamesByPuuidViaSGP(puuid, 0, cfg.get(cfg.careerGamesNumber) - 1),
@@ -512,8 +514,6 @@ class CareerInterface(SeraphineInterface):
                         _wrap(_sgpGamesToLcuFormat(sgp_games)))
                     rankTask = asyncio.create_task(
                         _wrap(_sgpRankedToLcuFormat(sgp_ranked)))
-                else:
-                    summoner = await connector.getSummonerByPuuid(puuid)
         except Exception as e:
             InfoBar.warning(
                 self.tr("Connection error"),
@@ -542,7 +542,7 @@ class CareerInterface(SeraphineInterface):
             self.setLoadingPageEnabled(False)
             return
 
-        if not _use_sgp:
+        if not sgp_fallback:
             self.loadGamesTask = asyncio.create_task(
                 connector.getSummonerGamesByPuuid(summoner['puuid'], 0, cfg.get(cfg.careerGamesNumber) - 1))
             rankTask = asyncio.create_task(

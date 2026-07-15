@@ -9,6 +9,7 @@ import base64
 import subprocess
 import psutil
 import ctypes
+import time
 import win32api
 import win32con
 import win32gui
@@ -583,36 +584,79 @@ def forceForegroundWindow(hwnd):
 def sendMediaPlayPause(hwnd: int = 0):
     """发送播放/暂停命令。
 
-    使用 SendInput 发送 VK_MEDIA_PLAY_PAUSE 系统媒体键 — 比 legacy keybd_event
-    更可靠, 支持现代浏览器/播放器响应.
+    使用 SendInput 发送媒体键, 优先 VK_MEDIA_PLAY_PAUSE, 失败后尝试 scan code 兜底.
+    结构体使用完整 INPUT union, 确保 sizeof 在 x64 上正确 (40 字节).
     """
     try:
-        # ponytail: SendInput > keybd_event, WM_APPCOMMAND 对浏览器无效
         user32 = ctypes.windll.user32
         VK_MEDIA_PLAY_PAUSE = 0xB3
+        SCAN_MEDIA_PLAY_PAUSE = 0x22
         INPUT_KEYBOARD = 1
         KEYEVENTF_KEYUP = 0x0002
+        KEYEVENTF_SCANCODE = 0x0008
+        KEYEVENTF_EXTENDEDKEY = 0x0001
 
         class KEYBDINPUT(ctypes.Structure):
-            _fields_ = [("wVk", ctypes.c_ushort),
-                        ("wScan", ctypes.c_ushort),
-                        ("dwFlags", ctypes.c_ulong),
-                        ("time", ctypes.c_ulong),
-                        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+            _fields_ = [
+                ("wVk", ctypes.c_ushort),
+                ("wScan", ctypes.c_ushort),
+                ("dwFlags", ctypes.c_ulong),
+                ("time", ctypes.c_ulong),
+                ("dwExtraInfo", ctypes.c_void_p),
+            ]
+
+        class MOUSEINPUT(ctypes.Structure):
+            _fields_ = [
+                ("dx", ctypes.c_long),
+                ("dy", ctypes.c_long),
+                ("mouseData", ctypes.c_ulong),
+                ("dwFlags", ctypes.c_ulong),
+                ("time", ctypes.c_ulong),
+                ("dwExtraInfo", ctypes.c_void_p),
+            ]
+
+        class HARDWAREINPUT(ctypes.Structure):
+            _fields_ = [
+                ("uMsg", ctypes.c_ulong),
+                ("wParamL", ctypes.c_ushort),
+                ("wParamH", ctypes.c_ushort),
+            ]
+
+        class INPUT_UNION(ctypes.Union):
+            _fields_ = [
+                ("mi", MOUSEINPUT),
+                ("ki", KEYBDINPUT),
+                ("hi", HARDWAREINPUT),
+            ]
 
         class INPUT(ctypes.Structure):
-            _fields_ = [("type", ctypes.c_ulong),
-                        ("ki", KEYBDINPUT)]
+            _fields_ = [
+                ("type", ctypes.c_ulong),
+                ("u", INPUT_UNION),
+            ]
 
-        def _send_key(down: bool):
+        def _send(wVk, wScan, dwFlags):
             inp = INPUT()
             inp.type = INPUT_KEYBOARD
-            inp.ki = KEYBDINPUT(VK_MEDIA_PLAY_PAUSE, 0,
-                                0 if down else KEYEVENTF_KEYUP, 0, None)
-            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+            inp.u.ki = KEYBDINPUT(wVk, wScan, dwFlags, 0, 0)
+            return user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
 
-        _send_key(True)
-        _send_key(False)
-        logger.info("sendMediaPlayPause: SendInput VK_MEDIA_PLAY_PAUSE sent", TAG)
+        # 等窗口切换落地
+        time.sleep(0.03)
+
+        ret = _send(VK_MEDIA_PLAY_PAUSE, 0, 0)
+        ret += _send(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP)
+        if ret == 2:
+            logger.info("sendMediaPlayPause: VK succeeded", TAG)
+            return
+
+        logger.warning(f"sendMediaPlayPause: VK returned {ret}/2, trying scan code", TAG)
+        flags = KEYEVENTF_SCANCODE | KEYEVENTF_EXTENDEDKEY
+        ret = _send(0, SCAN_MEDIA_PLAY_PAUSE, flags)
+        ret += _send(0, SCAN_MEDIA_PLAY_PAUSE, flags | KEYEVENTF_KEYUP)
+        if ret == 2:
+            logger.info("sendMediaPlayPause: scan code succeeded", TAG)
+        else:
+            logger.warning(f"sendMediaPlayPause: scan code also failed ({ret}/2)", TAG)
     except Exception as e:
-        logger.warning(f"sendMediaPlayPause SendInput failed: {e}", TAG)
+        logger.warning(f"sendMediaPlayPause failed: {e}", TAG)
