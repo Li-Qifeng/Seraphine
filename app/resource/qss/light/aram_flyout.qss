@@ -1,6 +1,7 @@
+/* ARAM Flyout — Light Theme */
 #titleLabel {
-    color: black;
-    font: bold 18px 'Microsoft YaHei', 'Segoe UI';
+    color: rgba(0, 0, 0, 0.85);
+    font: bold 16px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
 }
 
 #damageDealtLabel,
@@ -10,27 +11,25 @@
 #abilityHasteLabel,
 #tenacityLabel,
 #descriptionLabel {
-    color: black;
-    font: 14px 'Microsoft YaHei', 'Segoe UI';
+    color: rgba(0, 0, 0, 0.75);
+    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
 }
-
 
 #damageDealtValueLabel,
 #damageReceivedValueLabel,
 #healingIncreaseValueLabel,
 #shieldIncreaseValueLabel,
 #abilityHasteValueLabel,
-#tenacityValueLabel,
-#descriptionLabel {
-    font: 14px 'Microsoft YaHei', 'Segoe UI';
+#tenacityValueLabel {
+    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
 }
 
 #powerByLabel {
-    font: 12px 'Microsoft YaHei', 'Segoe UI';
-    color: gray;
+    font: 11px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    color: rgba(0, 0, 0, 0.35);
 }
 
 #descriptionLabel {
-    border-top: 1px solid rgba(0, 0, 0, 80);
-    padding-top: 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    margin-top: 8px;
 }

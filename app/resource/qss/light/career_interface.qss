@@ -1,18 +1,18 @@
+/* Career Interface — Light Theme */
 QLabel {
-    font: 14px 'Segoe UI', 'Microsoft YaHei';
+    color: rgba(0, 0, 0, 0.85);
+    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
 }
 
 QLabel#name {
-    font: bold 32px 'Microsoft YaHei', 'Segoe UI';
+    color: rgba(0, 0, 0, 0.9);
+    font: bold 28px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    letter-spacing: -0.3px;
 }
 
 QLabel#tagLineLabel {
-    font: 16px;
-    color: rgb(100, 100, 100);
-}
-
-QLabel#level {
-    font: 14px 'Segoe UI', 'Microsoft YaHei';
+    font: 14px;
+    color: rgba(0, 0, 0, 0.5);
 }
 
 QLabel#rencent20GamesLabel,
@@ -20,63 +20,59 @@ QLabel#winsLabel,
 QLabel#lossesLabel,
 QLabel#kdaLabel,
 QLabel#kdaValLabel {
-    font: 14px 'Segoe UI', 'Microsoft YaHei';
+    color: rgba(0, 0, 0, 0.8);
+    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
 }
 
-QLabel#winsLabel {
-    font: bold;
-}
-
+QLabel#winsLabel,
 QLabel#lossesLabel {
-    font: bold;
+    font: bold 13px;
+}
+
+QLabel#totalLabel {
+    font: bold 13px;
+    color: --ThemeColorPrimary;
 }
 
 #gameInfoArea {
-    border: 1px solid rgba(0, 0, 0, 0.095);
-    border-radius: 6px;
-    background-color: rgba(255, 255, 255, 0.667);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    background-color: rgba(0, 0, 0, 0.03);
 }
 
-QWidget#gameInfoWidget {
+#gameInfoWidget {
     background: transparent;
 }
 
 GameInfoBar {
-    border-radius: 6px;
-    border: 1px solid;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+GameInfoBar:hover {
+    background-color: rgba(0, 0, 0, 0.04);
 }
 
 GameInfoBar>QLabel {
+    color: rgba(0, 0, 0, 0.8);
     background: transparent;
-    font: 14px 'Segoe UI', 'Microsoft YaHei';
+    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
 }
 
 ItemsKdaCsGold>QLabel {
-    font: 16px 'Segoe UI', 'Microsoft YaHei';
+    font: 15px 'Segoe UI', 'Microsoft YaHei';
 }
 
-ItemsKdaCsGold>#kills {
-    font: bold 16px 'Segoe UI', 'Microsoft YaHei';
-}
-
-ItemsKdaCsGold>#deaths {
-    font: bold 16px 'Segoe UI', 'Microsoft YaHei';
-}
-
-ItemsKdaCsGold>#assists {
-    font: bold 16px 'Segoe UI', 'Microsoft YaHei';
-}
-
-ItemsKdaCsGold>#slash1 {
-    font: bold 16px 'Segoe UI', 'Microsoft YaHei';
-}
-
+ItemsKdaCsGold>#kills,
+ItemsKdaCsGold>#deaths,
+ItemsKdaCsGold>#assists,
+ItemsKdaCsGold>#slash1,
 ItemsKdaCsGold>#slash2 {
-    font: bold 16px 'Segoe UI', 'Microsoft YaHei';
+    font: bold 15px 'Segoe UI', 'Microsoft YaHei';
 }
 
 ResultModeSpell>ColorLabel {
-    font: bold 17px 'Segoe UI', 'Microsoft YaHei';
+    font: bold 16px 'Segoe UI', 'Microsoft YaHei';
 }
 
 CareerInterface {
@@ -85,44 +81,32 @@ CareerInterface {
 }
 
 TeammateInfoBar {
-    border: 1px solid;
-    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
 }
 
-QLabel#totalLabel {
-    font: bold;
-    color: --ThemeColorPrimary;
+TeammateInfoBar:hover {
+    background-color: rgba(0, 0, 0, 0.03);
 }
 
-TeammateInfoBar>#winsLabel {
-    font: bold;
-}
-
+TeammateInfoBar>#winsLabel,
 TeammateInfoBar>#lossesLabel {
     font: bold;
 }
 
-
 SummonerName {
-    font: bold 14px 'Segoe UI', 'Microsoft YaHei';
+    font: bold 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
     text-align: center;
-    padding: 4px 6px 4px 6px;
-    color: black;
+    padding: 4px 8px 4px 8px;
+    color: rgba(0, 0, 0, 0.8);
     border: none;
     background-color: transparent;
 }
 
 SummonerName:hover {
-    color: --ThemeColorLight1;
+    color: --ThemeColorDark1;
 }
 
 SummonerName[pressed=true] {
-    color: --ThemeColorLight3;
+    color: --ThemeColorDark3;
 }
-
-
-/* ChampionsCard {
-    border: 1px solid rgba(0, 0, 0, 0.095);
-    border-radius: 10px;
-    background-color: rgba(255, 255, 255, 0.667);
-} */

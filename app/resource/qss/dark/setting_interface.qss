@@ -1,19 +1,4 @@
-/* SettingInterface,
-#scrollWidget {
-    background-color: transparent;
-}
-
-QScrollArea {
-    border: none;
-    background-color: transparent;
-}
-
-QLabel#settingLabel {
-    font: 33px 'Microsoft YaHei Light';
-    background-color: transparent;
-    color: white;
-} */
-
+/* Setting Interface — Dark Theme */
 SettingInterface,
 #scrollWidget {
     background-color: transparent;
@@ -24,19 +9,19 @@ QScrollArea {
     background-color: transparent;
 }
 
-
 /* 标签 */
 QLabel#settingLabel {
-    font: 33px 'Microsoft YaHei';
+    font: 28px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
     background-color: transparent;
-    color: white;
+    color: rgba(255, 255, 255, 0.9);
+    letter-spacing: -0.3px;
 }
 
 ColorAnimationFrame {
-    border: 1px solid;
-    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
 }
 
 ModeCheckButtonsGroup>#separator {
-    color: rgb(82, 82, 82);
+    color: rgba(255, 255, 255, 0.2);
 }

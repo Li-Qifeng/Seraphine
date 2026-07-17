@@ -1,15 +1,17 @@
+/* Start Interface — Light Theme */
 QScrollArea {
     background-color: transparent;
     border: none;
 }
 
 QLabel#label1 {
-    font: bold 33px 'Microsoft YaHei', 'Segoe UI', ;
-    color: black;
+    font: bold 28px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    color: rgba(0, 0, 0, 0.85);
+    letter-spacing: -0.3px;
 }
 
 QLabel#label2,
 QLabel#label3 {
-    font: 14px 'Segoe UI', 'Microsoft YaHei';
-    color: rgb(131, 131, 131)
+    font: 14px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    color: rgba(0, 0, 0, 0.5);
 }

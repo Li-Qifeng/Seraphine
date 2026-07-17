@@ -1,7 +1,9 @@
+/* Auxiliary Interface — Dark Theme */
 QLabel#titleLabel {
-    color: white;
-    font: 33px 'Microsoft YaHei';
+    color: rgba(255, 255, 255, 0.9);
+    font: 28px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
     background-color: transparent;
+    letter-spacing: -0.3px;
 }
 
 QScrollArea {
@@ -15,13 +17,13 @@ AuxiliaryInterface,
 }
 
 ChampionsCard {
-    border: 1px solid rgb(70, 70, 70);
-    border-radius: 6px;
-    background-color: rgba(255, 255, 255, 0.051);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.04);
 }
 
 SplashesSelectWidget>#buttonsGroup {
-    background-color: rgb(32, 32, 32);
+    background-color: rgb(28, 28, 28);
     border-top-left-radius: 0px;
     border-top-right-radius: 0px;
     border-bottom-left-radius: 8px;
@@ -30,7 +32,7 @@ SplashesSelectWidget>#buttonsGroup {
 }
 
 SplashesSelectWidget>#viewWidget {
-    background-color: rgb(32, 32, 32);
+    background-color: rgb(28, 28, 28);
     border-top-left-radius: 10px;
     border-top-right-radius: 10px;
     border-bottom-left-radius: 0px;

@@ -1,51 +1,53 @@
+/* Transparent Button & Primary Button — Light Theme */
 TransparentButton {
-    color: black;
-    background-color: transparent;
+    color: rgba(0, 0, 0, 0.8);
+    background: none;
     border: none;
-    border-radius: 5px;
-
-    padding: 6px 6px 8px 6px;
+    border-radius: 6px;
+    padding: 6px 8px;
     outline: none;
 }
 
 TransparentButton[selected=true] {
-    color: --ThemeColorLight1;
+    color: --ThemeColorDark1;
     font-weight: bold;
-    background-color: transparent;
+    background: none;
     border: none;
-    border-radius: 5px;
-
-    padding: 6px 6px 6px 6px;
+    border-radius: 6px;
+    padding: 6px 8px;
     outline: none;
 }
 
 TransparentButton:hover {
-    background-color: rgba(0, 0, 0, 9);
-    border: none;
+    background-color: rgba(0, 0, 0, 0.06);
 }
 
 TransparentButton:pressed {
-    color: rgba(0, 0, 0, 0.63);
-    background-color: rgba(0, 0, 0, 6);
-    border: none;
+    color: rgba(0, 0, 0, 0.6);
+    background-color: rgba(0, 0, 0, 0.03);
 }
 
 PrimaryButton {
-    color: white;
+    color: rgba(0, 0, 0, 0.9);
     background-color: --ThemeColorPrimary;
     border: 1px solid --ThemeColorLight1;
-    border-bottom: 1px solid --ThemeColorDark1;
-    font: 13px 'Segoe UI', 'Microsoft YaHei';
+    border-bottom: 1px solid --ThemeColorLight2;
+    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    border-radius: 6px;
+    padding: 6px 16px;
 }
 
 PrimaryButton:hover {
-    background-color: --ThemeColorLight1;
-    border: 1px solid --ThemeColorLight2;
-    border-bottom: 1px solid --ThemeColorDark1;
+    background-color: --ThemeColorDark1;
 }
 
 PrimaryButton:pressed {
-    color: rgba(255, 255, 255, 0.63);
-    background-color: --ThemeColorLight3;
-    border: 1px solid --ThemeColorLight3;
+    color: rgba(0, 0, 0, 0.6);
+    background-color: --ThemeColorDark2;
+    border: 1px solid --ThemeColorDark2;
+}
+
+PrimaryButton:disabled {
+    color: rgba(0, 0, 0, 0.3);
+    background-color: rgba(0, 0, 0, 0.1);
 }

@@ -1,20 +1,20 @@
+/* Hextech Window — Light Theme */
 #titleLabel {
-    font: bold 22px 'Microsoft YaHei', 'Segoe UI';
-    color: black;
+    font: bold 20px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    color: rgba(0, 0, 0, 0.85);
 }
 
 #contentLabel {
-    font: 14px 'Microsoft YaHei', 'Segoe UI';
-    color: rgba(0, 0, 0, 0.63);
+    font: 13px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    color: rgba(0, 0, 0, 0.55);
 }
 
 #hintLabel {
-    font: 13px 'Microsoft YaHei', 'Segoe UI';
-    color: rgba(0, 0, 0, 0.55);
+    font: 12px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    color: rgba(0, 0, 0, 0.45);
 }
 
 HextechInterface {
     border: none;
-    border-radius: 0px;
     background: transparent;
 }

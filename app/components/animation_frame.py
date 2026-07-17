@@ -10,6 +10,9 @@ class CardWidget(BackgroundAnimationWidget, QFrame):
     clicked = pyqtSignal()
     pressed = pyqtSignal()
 
+    # Animation durations (ms) — Apple Design: 150-300ms for micro-interactions
+    _ANIM_DURATION = 160
+
     def __init__(self, parent=None, type=None):
         QFrame.__init__(self, parent=parent)
         if type:
@@ -17,7 +20,7 @@ class CardWidget(BackgroundAnimationWidget, QFrame):
         else:
             BackgroundAnimationWidget.__init__(self)
         self._isClickEnabled = False
-        self._borderRadius = 4
+        self._borderRadius = 8  # 4→8: modern radius
 
     def mousePressEvent(self, e):
         super().mousePressEvent(e)
@@ -35,13 +38,13 @@ class CardWidget(BackgroundAnimationWidget, QFrame):
         return self._isClickEnabled
 
     def _normalBackgroundColor(self):
-        return QColor(233, 233, 233, 13 if isDarkTheme() else 170)
+        return QColor(255, 255, 255, 25 if isDarkTheme() else 210)
 
     def _hoverBackgroundColor(self):
-        return QColor(243, 243, 243, 21 if isDarkTheme() else 127)
+        return QColor(255, 255, 255, 40 if isDarkTheme() else 160)
 
     def _pressedBackgroundColor(self):
-        return QColor(255, 255, 255, 8 if isDarkTheme() else 64)
+        return QColor(255, 255, 255, 12 if isDarkTheme() else 100)
 
     def getBorderRadius(self):
         return self._borderRadius
