@@ -190,7 +190,10 @@ class PersistentCache:
         if row is None:
             return None
         try:
-            return json.loads(row["detail_json"])
+            result = json.loads(row["detail_json"])
+            if result and "teams" in result:
+                result["teams"] = {int(k): v for k, v in result["teams"].items()}
+            return result
         except (JSONDecodeError, TypeError):
             return None
 

@@ -126,17 +126,33 @@ def _buildInsights(bluePlayers: list, redPlayers: list) -> list:
     return insights
 
 
-def _teamRadarVals(players: list) -> list:
+def _teamRadarVals(players: list, pool: list = None) -> list:
     metrics = ['damage', 'damage_taken', 'gold', 'cc', 'vision', 'kill_participation']
+    stat_keys = ['damage', 'damageTaken', 'gold', 'ccTime', 'visionScore', None]
+
+    pool = pool or players
     result = []
-    for m in metrics:
-        zs = []
+    for m, key in zip(metrics, stat_keys):
+        if m == 'kill_participation':
+            total = sum(p.get('kills', 0) for p in pool)
+            vals = [((p.get('kills', 0) or 0) + (p.get('assists', 0) or 0)) / max(total, 1) for p in pool]
+        else:
+            vals = [p.get(key, 0) or 0 for p in pool]
+        mean = sum(vals) / max(len(vals), 1)
+        variance = sum((v - mean) ** 2 for v in vals) / max(len(vals), 1) if len(vals) > 1 else 0
+        std = math.sqrt(variance) if variance > 0 else 1
+
+        team_vals = []
         for p in players:
-            for e in (p.get('evidence') or []):
-                if e.get('metric') == m:
-                    zs.append(e.get('zScore', 0))
-        avg = sum(zs) / max(len(zs), 1) if zs else 0
-        result.append(max(0.0, min(1.0, (avg + 2) / 4)))
+            if m == 'kill_participation':
+                total = sum(pp.get('kills', 0) for pp in pool)
+                v = ((p.get('kills', 0) or 0) + (p.get('assists', 0) or 0)) / max(total, 1)
+            else:
+                v = p.get(key, 0) or 0
+            team_vals.append(v)
+
+        avg_z = sum((v - mean) / std for v in team_vals) / max(len(team_vals), 1)
+        result.append((math.tanh(avg_z / 2.5) + 1) / 2)
     return result
 
 
@@ -377,24 +393,26 @@ class TeamRadar(QWidget):
                 else:
                     path.lineTo(x, y)
             p.setBrush(QColor('#1A2D44'))
-            p.setPen(QPen(QColor('rgba(255,255,255,0.1)'), 0.5))
+            p.setPen(QPen(QColor('rgba(255,255,255,0.15)'), 0.5))
             p.drawPath(path)
 
         for i in range(n):
             angle = -math.pi / 2 + i * 2 * math.pi / n
             x = cx + r * math.cos(angle)
             y = cy + r * math.sin(angle)
-            p.setPen(QPen(QColor('rgba(255,255,255,0.08)'), 0.5))
+            p.setPen(QPen(QColor('rgba(255,255,255,0.12)'), 0.5))
             p.drawLine(int(cx), int(cy), int(x), int(y))
 
             label_x = cx + (r + 14) * math.cos(angle)
             label_y = cy + (r + 14) * math.sin(angle)
-            p.setPen(QColor('#8B95A5'))
+            p.setPen(QColor('#A0AAB8'))
             p.setFont(QFont('Segoe UI', 8))
             fm = p.fontMetrics()
             text = _TEAM_RADAR_LABELS[i]
             tw = fm.horizontalAdvance(text)
             p.drawText(int(label_x - tw / 2), int(label_y + 3), text)
+
+        hasData = any(v != 0.5 for v in self._blueVals) or any(v != 0.5 for v in self._redVals)
 
         def _drawTeam(vals, color):
             path = QPainterPath()
@@ -408,19 +426,26 @@ class TeamRadar(QWidget):
                 else:
                     path.lineTo(x, y)
             c = QColor(color)
+            c.setAlpha(200)
             fill = QColor(color)
-            fill.setAlpha(35)
+            fill.setAlpha(100)
             p.setBrush(fill)
-            p.setPen(QPen(c, 2))
+            p.setPen(QPen(c, 2.5))
             p.drawPath(path)
 
-        _drawTeam(self._blueVals, _BLUE)
-        _drawTeam(self._redVals, _RED)
+        if hasData:
+            _drawTeam(self._blueVals, _BLUE)
+            _drawTeam(self._redVals, _RED)
 
         p.setPen(QColor('#8B95A5'))
         p.setFont(QFont('Segoe UI', 9))
         p.drawText(4, 14, "● 蓝队")
         p.drawText(w - 50, 14, "● 红队")
+
+        if not hasData:
+            p.setPen(QColor('#5A6A7A'))
+            p.setFont(QFont('Segoe UI', 10))
+            p.drawText(int(cx - 45), int(cy + 4), "暂无评级数据")
 
 
 # ── Insights Summary ───────────────────────────────────────
@@ -486,8 +511,9 @@ class CenterCompare(QFrame):
             f"color: {sc}; background: transparent;")
         layout.addWidget(scoreLabel)
 
-        blueVals = _teamRadarVals(bluePlayers)
-        redVals = _teamRadarVals(redPlayers)
+        pool = bluePlayers + redPlayers
+        blueVals = _teamRadarVals(bluePlayers, pool=pool)
+        redVals = _teamRadarVals(redPlayers, pool=pool)
         layout.addWidget(TeamRadar(blueVals, redVals), 0, Qt.AlignCenter)
 
         bKills = sum(p['kills'] for p in bluePlayers)
@@ -688,8 +714,8 @@ class AnalysisPage(QFrame):
         loserRating = (verdict or {}).get('loserRating') or []
 
         teams = gameData.get('teams', {})
-        team100 = teams.get(100, {})
-        team200 = teams.get(200, {})
+        team100 = teams.get(100) or teams.get('100') or {}
+        team200 = teams.get(200) or teams.get('200') or {}
 
         win100 = _isWin(team100.get('win'))
         win200 = _isWin(team200.get('win'))

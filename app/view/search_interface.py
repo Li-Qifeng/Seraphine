@@ -382,8 +382,9 @@ class GameDetailView(QFrame):
         isMayhem = game["queueId"] == 2400
         self.titleBar.updateTitleBar(game)
 
-        team1 = game["teams"][100]
-        team2 = game["teams"][200]
+        teams = game.get("teams", {})
+        team1 = teams.get(100) or teams.get("100") or {}
+        team2 = teams.get(200) or teams.get("200") or {}
 
         # 全队 5 档评级: 每个队友一个档位标签
         ratingList1 = self.__getTeamRating(game.get('gameId'),
@@ -407,12 +408,13 @@ class GameDetailView(QFrame):
         self.extraTeamView6.setVisible(isCherry)
 
         if isCherry:
-            team3 = game["teams"][300]
-            team4 = game["teams"][400]
-            team5 = game["teams"][500]
-            team6 = game["teams"][600]
-            team7 = game["teams"][700]
-            team8 = game["teams"][800]
+            teams = game.get("teams", {})
+            team3 = teams.get(300) or teams.get("300") or {}
+            team4 = teams.get(400) or teams.get("400") or {}
+            team5 = teams.get(500) or teams.get("500") or {}
+            team6 = teams.get(600) or teams.get("600") or {}
+            team7 = teams.get(700) or teams.get("700") or {}
+            team8 = teams.get(800) or teams.get("800") or {}
 
             rl3 = self.__getTeamRating(game.get('gameId'), team3.get('win'))
             rl4 = self.__getTeamRating(game.get('gameId'), team4.get('win'))

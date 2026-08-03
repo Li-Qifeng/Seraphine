@@ -58,9 +58,10 @@ _qfw_top_names = [
     'qconfig', 'QConfig', 'ConfigItem', 'BoolValidator',
     'OptionsConfigItem', 'OptionsValidator', 'ConfigSerializer',
     'RangeConfigItem', 'RangeValidator', 'ColorConfigItem',
-    'Theme', 'EnumSerializer',
+    'Theme', 'EnumSerializer', 'isDarkTheme', 'SmoothScrollArea',
 ]
 _make_stub('qfluentwidgets', _qfw_sub, _qfw_sub_attrs, _qfw_top_names)
+
 
 if 'qframelesswindow' not in sys.modules:
     _qfw2 = types.ModuleType('qframelesswindow')

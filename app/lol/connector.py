@@ -1630,7 +1630,13 @@ class JsonManager:
                 "name": "Custom" if cfg.language.value == Language.ENGLISH else "自定义"
             }
 
-        data = self.queues[queueId]
+        data = self.queues.get(queueId)
+        if data is None:
+            logger.warning(
+                f"getNameMapByQueueId: unknown queueId {queueId}", TAG)
+            name = f"Mode {queueId}" if cfg.language.value == Language.ENGLISH \
+                else f"模式 {queueId}"
+            return {"name": name, "map": ""}
         mapId = data["mapId"]
         name = data["name"]
 
