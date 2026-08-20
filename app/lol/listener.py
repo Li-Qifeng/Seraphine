@@ -13,6 +13,7 @@ class LolProcessExistenceListener(QThread):
         # 当前 Seraphine 连接的客户端 pid
         self.runningPid = 0
 
+        self._running = True
         super().__init__(parent)
 
     def run(self):
@@ -22,7 +23,7 @@ class LolProcessExistenceListener(QThread):
             signalBus.tasklistNotFound.emit()
             return
 
-        while True:
+        while self._running:
             try:
                 # 取一下当前运行中的所有客户端 pid
                 pids = getLolClientPids(path)

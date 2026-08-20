@@ -276,7 +276,7 @@ class SettingInterface(SeraphineInterface):
             lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL)))
         self.deleteResourceCard.clicked.connect(self.__showFlyout)
         self.viewLogCard.clicked.connect(
-            lambda: os.system(f'explorer {os.getcwd()}\\log')
+            lambda: os.startfile(os.path.join(os.getcwd(), 'log'))
         )
 
     def __onLolFolderCardClicked(self):

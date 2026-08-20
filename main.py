@@ -107,6 +107,7 @@ def main():
     app.installTranslator(seraphineTranslator)
 
     w = MainWindow()
+    app.aboutToQuit.connect(w.processListener.terminate)
     w.show()
 
     eventLoop.run_until_complete(appCloseEvent.wait())
