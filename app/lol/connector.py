@@ -1586,7 +1586,12 @@ class JsonManager:
 
     def getSummonerSpellIconPath(self, spellId) -> str:
         if spellId != 0:
-            return self.spells[spellId]
+            try:
+                return self.spells[spellId]
+            except KeyError:
+                logger.warning(
+                    f"getSummonerSpellIconPath: unknown spellId {spellId}", TAG)
+                return f"/lol-game-data/assets/v1/summoner-spells/{spellId}.png"
         else:
             return "/lol-game-data/assets/data/spells/icons2d/summoner_empty.png"
 

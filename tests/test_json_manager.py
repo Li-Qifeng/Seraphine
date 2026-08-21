@@ -170,6 +170,12 @@ class TestGetSummonerSpellIconPath:
         result = jm.getSummonerSpellIconPath(0)
         assert "summoner_empty" in result
 
+    def test_unknown_spell_returns_default_path(self, jm):
+        # 未知/被 : -3 切掉的合法法术 (如 714 雪球) -> 回退到标准 LCU 路径
+        # 与 getSummonerSpellIcon 在 manager is None 时使用的路径一致
+        result = jm.getSummonerSpellIconPath(714)
+        assert result == "/lol-game-data/assets/v1/summoner-spells/714.png"
+
 
 # ---------------------------------------------------------------------------
 # 符文
