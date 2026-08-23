@@ -76,6 +76,9 @@ if 'PyQt5' not in sys.modules:
     _pyqt5.QtCore.QSize = MagicMock()
     _pyqt5.QtCore.Qt = MagicMock()
     _pyqt5.QtCore.QObject = type('QObject', (object,), {'pyqtSignal': MagicMock})
+    # 可继承的空类 (test_shutdown_filter 需要 subclass)
+    _pyqt5.QtCore.QAbstractNativeEventFilter = type(
+        'QAbstractNativeEventFilter', (object,), {})
     _pyqt5.QtCore.pyqtSignal = MagicMock()
     _pyqt5.QtCore.QRectF = MagicMock()
     _pyqt5.QtGui = types.ModuleType('PyQt5.QtGui')
