@@ -1257,6 +1257,21 @@ class LolClientConnector(QObject):
         except Exception:
             return False
 
+    async def sendChampSelectMessage(self, message: str) -> bool:
+        """向 BP 聊天窗发送一条消息 (conversation id 固定为 champ-select).
+
+        失败静默返回 False (logger.warning), 不弹窗 — 播报属锦上添花,
+        不能因它打断正常流程.
+        """
+        try:
+            res = await self.__post(
+                "/lol-chat/v1/conversations/champ-select/messages",
+                data={"type": "chat", "body": message})
+            return res.status in (200, 201)
+        except Exception as e:
+            logger.warning(f"sendChampSelectMessage failed: {e}", TAG)
+            return False
+
     async def getFriends(self) -> list:
         """获取好友列表, 用于 auto honor 识别可点赞好友.
 

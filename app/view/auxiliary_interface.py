@@ -254,6 +254,26 @@ class AuxiliaryInterface(SeraphineInterface):
             texts=[self.tr("Tieba"), self.tr("Horse")],
             parent=self.teamRatingGroup)
 
+        # --- 上等马赛前评级组 ---
+        self.enableHorseRatingChatCard = SwitchSettingCard(
+            Icon.EYES, self.tr("Horse rating chat"),
+            self.tr(
+                "Rate teammates (hidden elo + recent 10 games) at champion "
+                "select and post the verdict to BP chat. Third-party data "
+                "source required; disabled by default"),
+            cfg.enableHorseRatingChat,
+            parent=self.teamRatingGroup)
+
+        self.horseRatingStyleCard = ComboBoxSettingCard(
+            cfg.horseRatingStyle,
+            Icon.SCALEFIT,
+            self.tr("Horse rating style"),
+            self.tr(
+                "Horse: 马系风 (上等马/中上等马/中等马/下等马/驽马); "
+                "Formal: 正式风"),
+            texts=[self.tr("Horse"), self.tr("Formal")],
+            parent=self.teamRatingGroup)
+
         # --- OPGG 助手组 ---
         self.autoShowOpggCard = SwitchSettingCard(
             Icon.WINDOW, self.tr("Show OP.GG window automatically"),
@@ -336,6 +356,8 @@ class AuxiliaryInterface(SeraphineInterface):
         # 全队评级
         self.teamRatingGroup.addSettingCard(self.enableTeamRatingCard)
         self.teamRatingGroup.addSettingCard(self.teamRatingStyleCard)
+        self.teamRatingGroup.addSettingCard(self.enableHorseRatingChatCard)
+        self.teamRatingGroup.addSettingCard(self.horseRatingStyleCard)
 
         # OPGG 助手
         self.opggGroup.addSettingCard(self.autoShowOpggCard)

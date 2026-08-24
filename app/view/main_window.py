@@ -1,5 +1,6 @@
 import os
 import sys
+import random
 import traceback
 import time
 import copy
@@ -56,6 +57,7 @@ from app.lol.opgg import opgg
 from app.lol.static_data import static_data
 from app.lol.live_client import liveClient
 from app.lol.tools_pure import pickHonorTarget  # noqa: F401  # 保留供测试/外部调用
+from app.lol.horse_orchestrator import SendGuard, tierNameToIdx
 
 import threading
 
@@ -100,6 +102,7 @@ class MainWindow(FluentWindow):
     showUpdateMessageBox = pyqtSignal(dict)
     showNoticeMessageBox = pyqtSignal(str)
     checkUpdateFailed = pyqtSignal()
+
     checkUpToDate = pyqtSignal()
     fetchNoticeFailed = pyqtSignal()
     showUpdateDot = pyqtSignal()
@@ -133,6 +136,8 @@ class MainWindow(FluentWindow):
         self.checkNoticeThread = StoppableThread(
             target=lambda: self.checkNotice(False), parent=self)
         self._updateDot = None
+        # 上等马播报: 每局每通道最多一次的守卫
+        self._horseSendGuard = SendGuard()
 
         logger.critical("Seraphine listerners started", TAG)
 
@@ -1400,7 +1405,36 @@ class MainWindow(FluentWindow):
         info = await parseAllyGameInfo(cSession, currentSummonerId, queueId, useSGP=True)
         self.gameInfoInterface.updateAllySummoners(info)
 
+        # 上等马赛前评级: BP 阶段评价队友并播报到聊天窗 (默认关)
+        if cfg.get(cfg.enableHorseRatingChat) and self._horseSendGuard.try_acquire():
+            asyncio.create_task(self.__postHorseReport(info))
+
         self.checkAndSwitchTo(self.gameInfoInterface)
+
+    async def __postHorseReport(self, allyInfo):
+        """构建上等马播报文案并延迟发送到 BP 聊天窗 (失败静默)."""
+        from app.lol.horse_orchestrator import buildHorseReport, serverToAreaId
+        try:
+            summoners = [
+                {
+                    'puuid': s.get('puuid'),
+                    'gameName': s.get('name'),
+                    'tagLine': s.get('tagLine'),
+                    'tierIdx': tierNameToIdx(
+                        (s.get('rankInfo') or {}).get('solo', {}).get('tier')),
+                }
+                for s in (allyInfo or {}).get('summoners', [])
+                if s.get('puuid') and s.get('puuid') != self.currentSummoner.get('puuid')
+            ]
+            areaId = serverToAreaId(connector.server)
+            message = await buildHorseReport(summoners, areaId)
+            if not message:
+                return
+            await asyncio.sleep(random.uniform(2.0, 5.0))
+            if await connector.sendChampSelectMessage(message):
+                logger.info("HorseRating: report posted to BP chat", TAG)
+        except Exception as e:
+            logger.warning(f"HorseRating: report failed: {e}", TAG)
 
     # 英雄选择时，英雄改变 / 楼层改变时触发
     @asyncSlot(dict)
