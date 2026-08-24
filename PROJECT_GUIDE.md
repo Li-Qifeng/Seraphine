@@ -3,7 +3,7 @@
 > 本文档面向**二次开发者**，聚焦于：架构与实现原理深析、二次开发规范、已知问题与技术债。
 > 安装、卸载、FAQ、免责声明、致谢等内容请参见 [`readme.md`](./readme.md)。
 >
-> **当前适用版本**：`v1.1.9`（`app/common/config.py:251`）
+> **当前适用版本**：`v1.2.12`（`app/common/config.py:270`）
 > **原作者 / 年份**：Zzaphkiel / 2023
 > **当前维护者**：Li-Qifeng（[Li-Qifeng/Seraphine](https://github.com/Li-Qifeng/Seraphine)）—— 本仓库为 [Zzaphkiel/Seraphine](https://github.com/Zzaphkiel/Seraphine) 的二次开发版本
 > **许可证**：GPLv3（禁止商用）
@@ -724,7 +724,7 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
 ### 5.3 代码质量问题（现状→风险→建议）
 
 #### ① 测试套件（已有初步覆盖）
-- **现状**：已有 8 个测试文件共 213 用例（CI windows-latest 全绿）：
+- **现状**：已有 9 个测试文件共 222 用例（CI windows-latest 全绿）：
   - `tests/test_tools_pure.py`（35 用例，覆盖 `translateTier`、`timeStampToStr`、`separateTeams`、`parseSummonerOrder`、`sortedSummonersByGameRole`、`parseGames`、`parseRankInfo`、`parseDetailRankInfo`）。
   - `tests/test_connector_contract.py`（31 用例，mock 私有 HTTP 方法注入预设 LCU 响应，验证 connector 公共方法的返回值结构、异常分支、响应转换契约，覆盖 `getSummonerByPuuid` / `getSummonerGamesByPuuid` / `getRankedStatsByPuuid` / `getCurrentSummoner` / `getGameStatus` / `getMapSide` / `getLobbyStatus` / `getMatchmakingStatus` / `isLobbyReadyToSearch` / `isInTencent` / `getLoginSummonerByPid` / `startMatchmaking`）。
   - `tests/test_json_manager.py`（41 用例，纯数据访问层单测，mock 掉 `static_data.registerAugmentRarity` 副作用后由 8 份构造 JSON 实例化 `JsonManager`，覆盖 `getItemIconPath` / `getSummonerSpellIconPath` / `getRuneIconPath` / `getRuneName` / `getRuneDesc`（含 HTML 白名单过滤与 `.strip("<br>")` 字符集剥离语义）/ `getChampionIconPath` / `getMapNameById` / `getNameMapByQueueId` / `getSkinListByChampionName` / `getSkinIdByChampionAndSkinName` / `getAugmentsIconPath` / `getPerkStyles` 等）。
@@ -733,7 +733,9 @@ logger.exception(f"exit xxx", exc, TAG)  # 带堆栈
   - `tests/test_team_rating.py`（28 用例，专测全队 5 档评级：`gradeFromScore` 阈值边界、`gradeLabel` 贴吧风/马系风胜败方、`rateEntireTeam` 全队分级与排序、缓存 `getTeamRating` 胜败方查询）。
   - `tests/test_version_compare.py`（10 用例，覆盖 `version_utils.coerce_version` 的 PEP 440 解析：`v` 前缀剥离、空串/None 容错、预发布/构建元数据、非法版本回退为原串比较）。
   - `tests/test_tufup_updater.py`（14 用例，覆盖 `tufup_updater` 封装逻辑：开发模式（无 Seraphine.exe）跳过、`root.json` 缺失、`check_update` 成功/无更新/网络异常、`download_and_install` 成功/失败/`progress_hook` 透传/`purge_dst_dir` 默认 True。mock `app.common.config` 与 `tufup.client.Client`，sandbox 无 PyQt5 可跑）。
-- **运行方式**：`python -m pytest tests/`（CI 共 213 passed）。CI 在非 Windows 环境通过 `tests/conftest.py` stub `winreg/win32api/win32gui` 使 connector 可导入；`test_war_criminal.py`/`test_team_rating.py` 额外 stub `PyQt5` 使评级算法可独立单测；`test_tufup_updater.py`/`test_version_compare.py` 纯逻辑无 GUI 依赖。
+  - `tests/test_war_criminal.py`（34 用例，覆盖 `_kda`/`_zScore`/`_roleOf` 纯函数、`rateEntireTeam` 集成（明显 worst/明显躺赢狗/平衡全档3/海克斯视野不计/OPGG基线放大/强化基线放大）、`gradeLabel`/`gradeFromScore` 分级、`war_criminal_cache` 读写、`pickHonorTarget` 4 策略。stub PyQt5 使非 Windows 环境可导入）。
+  - `tests/test_shutdown_filter.py`（4 用例，ShutdownFilter 回归测试：WM_QUERYENDSESSION / WM_ENDSESSION 必须被吞掉并答复 TRUE（允许结束会话），防止托盘模式 closeEvent ignore 回 FALSE 导致 Windows 弹"应用阻止关机"；纯 ctypes 构造 MSG 结构，无 GUI 依赖）。
+- **运行方式**：`python -m pytest tests/`（CI 共 222 passed）。CI 在非 Windows 环境通过 `tests/conftest.py` stub `winreg/win32api/win32gui` 使 connector 可导入；`test_war_criminal.py`/`test_team_rating.py` 额外 stub `PyQt5` 使评级算法可独立单测；`test_tufup_updater.py`/`test_version_compare.py`/`test_shutdown_filter.py` 纯逻辑无 GUI 依赖。
 - **CI lint**：`.github/workflows/build_seraphine.yaml` 的 `lint-and-test` job 已用 `ruff check app/ tests/ --output-format=github` **强制阻断**（曾为 `continue-on-error: true` advisory 模式，现已收紧）；161 个历史 ruff 错误（136 个 `--fix` 自动修复 + 18 个手动修复，含 E711/E402/E741/F823/W293）已清零。
 - **建议**：后续给 `tools.py` 的 `parseAllyGameInfo` 等带状态依赖的函数补测试；可选引入 `mypy`/`pyright` CI。
 
@@ -868,13 +870,13 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 - [x] CI 自动构建 7z + 安装包 + tufup 增量更新
 - [x] 默认开启自动检查更新
 - [x] 设置页"Check Now"手动检查按钮
-- [ ] **导航栏更新 badge**：检测到新版本时在 Settings 图标右上角显示小红点 + 主界面右下角 InfoBar 提示
-- [ ] **定时轮询检查**：启动后每 4h 用 QTimer 自动检查一次
+- [x] **导航栏更新 badge**：检测到新版本时在 Settings 图标右上角显示小红点 + 主界面 InfoBar 提示（`main_window.py` `_showUpdateDot`/`_clearUpdateDot`；实现用 QLabel 子控件替代 qfluentwidgets `DotInfoBadge`——后者会因 parent=None 成为顶层 4×4 窗口，与 Windows 标题栏最小尺寸冲突）
+- [ ] **定时轮询检查**：启动后每 4h 用 QTimer 自动检查一次（现状仅启动时单次 + 手动触发）
 
 #### 🎯 P1 — 功能补齐（对标竞品缺失项）
 - [ ] **好友管理器**：批量删除好友、接受好友请求、查询好友最近对局
 - [ ] **大厅暴露召唤师名**：Ranked 选人阶段显示队友/对手 ID（KBotExt 热门功能）
-- [ ] **秒退不关客户端**：通过 `POST /lol-lobby/v2/leave-queue` 实现，省 30s 重开时间
+- [ ] **秒退不关客户端**：通过 `POST /lol-lobby/v2/leave-queue` 实现，省 30s 重开时间（⚠️ 部分完成：`connector.leaveQueue()` + `LeaveQueueCard` UI 已存在，待核实语义是否覆盖"秒退不关客户端"完整场景）
 - [ ] **OPGG 代理设置**：已支持 HTTP 代理，可补充内置代理/缓存加速国内访问
 
 #### 📊 P2 — AI 复盘扩展
@@ -884,12 +886,14 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 - [ ] **队友位置冲突预警**：BP 阶段检测多人常玩同位置 → 提示"建议秒"
 
 #### 🔬 P3 — 探索性方向
-- [ ] **对局中实时提醒**：打野计时/龙刷新/敌方消失（已有 `live_client.py` + `liveGameDataUpdated` 信号）
+- [ ] **对局中实时提醒**：打野计时/龙刷新/敌方消失（`app/lol/live_client.py` + `signalBus.liveGameDataUpdated` 已落地基础数据链路，提醒功能未做）
 - [ ] **Replay 管理器**：浏览/重命名/分享 .rofl 文件
 - [ ] **赛季分析面板**：按英雄/角色/双排队友/时段的胜率统计
 - [ ] **皮肤/战利品通知**：检测宝箱资格、皮肤折扣、英雄碎片
 
 > 已完成方向：GameInfo 按队列模式筛选（`mode_filter_widget.py` 已接入 `GameInfoInterface`）；自定义模式 <5 人重载守卫（`main_window.py`）；rollAndSwapBack 删除（海克斯大乱斗无摇骰子）；team1/team2 预组队高亮色开放用户自定义（`TeamColorSettingCard`，cfg 项 `team1Color`/`team2Color`，经 `signalBus.customColorChanged` 触发刷新）；`getLoginSummonerByPid` 异步化改造；CI ruff lint 收紧为强制阻断 + 161 个历史错误清零；`JsonManager` + `opgg.py` 类型注解补全；`parseGameInfoByGameflowSession` 契约测试建立 + §5.1 FIXME（自定义模式名单泄露）修复；**结算后自动点赞**（`tools_pure.pickHonorTarget` 4 策略 + `connector.getEogStats/submitHonor`，cfg 项 `enableAutoHonor`/`autoHonorStrategy`/`autoHonorDelay`）；**全队 5 档评级**（`war_criminal.py` z-score 算法 + `grade_badge.py` UI + OPGG 胜率/海克斯强化基线，cfg 项 `enableTeamRating`/`teamRatingStyle`）。
+>
+> v1.2.x 追加：关机消息吞掉并答复 TRUE 根治"应用阻止关机"（`ShutdownFilter` 原生事件过滤器 + `test_shutdown_filter.py` 回归测试）；未知召唤师技能兜底（KeyError 714 雪球）+ 未知 queueId 兜底；JSON int-key 缓存修复；TeamRadar 与 SGP 字段兜底（perk/stats/timeline `.get()` 默认值）；生涯页 LCU 优先 SGP fallback + `parseGameData` puuid 匹配；`sendMediaPlayPause` 改 SendInput 结构体重写；大乱斗抢人窗口第二局残留数据强制刷新；Apple Design 风格 UI polish（design tokens、QSS 一致性、动效参数）；导航栏更新红点 badge（QLabel 替代 DotInfoBadge，见 P0）。
 
 ---
 
@@ -899,8 +903,8 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 | 用途 | 路径 |
 |---|---|
-| 入口 | `D:\Code\Seraphine\main.py` |
-| 版本常量 | `app\common\config.py:251`（`VERSION`） |
+| 入口 | `main.py` |
+| 版本常量 | `app\common\config.py:270`（`VERSION`，可被环境变量 `SERAPHINE_DEV_VERSION` 覆盖） |
 | 配置单例 | `app\common\config.py`（`cfg`） |
 | 信号总线 | `app\common\signals.py`（`signalBus`） |
 | 日志器 | `app\common\logger.py`（`logger`） |
@@ -915,6 +919,14 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 | 评级结果缓存 | `app\lol\war_criminal_cache.py`（`setVerdict`/`getTeamRating`） |
 | 海克斯强化基线 | `app\lol\augment_baseline.py`（`getHextechAugmentScore`） |
 | 英雄 OPGG 胜率基线 | `app\lol\champion_baseline.py`（`getChampionBaselineWinrate`） |
+| 海克斯强化推荐 | `app\lol\augment_recommender.py` + `app\lol\augment_live.py` |
+| Live Client 数据（对局中实时数据） | `app\lol\live_client.py`（`liveClient`，经 `signalBus.liveGameDataUpdated` 推送） |
+| 持久化缓存 | `app\lol\persistent_cache.py` |
+| 关机事件过滤器 | `app\common\shutdown_filter.py`（`ShutdownFilter`，防"应用阻止关机"） |
+| 全队评级 UI | `app\lol\war_criminal_ui.py` |
+| 海克斯抢人窗口 | `app\view\hextech_window.py` + `app\view\opgg_hextech_assist_interface.py` |
+| 对局分析页 | `app\view\analysis_page.py` |
+| 辅助功能卡片 | `app\view\auxiliary_cards\`（tool_cards/automation_cards 等，含 `LeaveQueueCard`） |
 | 进程监听 | `app\lol\listener.py` |
 | 自定义异常 | `app\lol\exceptions.py` |
 | OPGG 客户端 | `app\lol\opgg.py`（`opgg`） |
@@ -978,4 +990,4 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 ---
 
-*本文档基于 v1.1.9 源码梳理。代码变更时请同步更新对应章节，并在版本升级时更新顶部「适用版本」。*
+*本文档基于 v1.2.12 源码梳理。代码变更时请同步更新对应章节，并在版本升级时更新顶部「适用版本」。*
