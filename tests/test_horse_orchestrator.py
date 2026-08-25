@@ -153,3 +153,42 @@ def test_tier_name_to_idx():
     assert ho.tierNameToIdx("宗师") == 8
     assert ho.tierNameToIdx(None) is None
     assert ho.tierNameToIdx("未定级") is None
+
+
+def test_fetch_verdicts_for_team_maps_by_puuid():
+    players = {"A#cn1": {"battleInfo": {"openId": "oa"}, "games": []},
+               "B#cn1": {"battleInfo": {"openId": "ob"}, "games": []}}
+    fake = FakeLzyumi(players=players)
+    ho.lzyumi = fake
+
+    async def run():
+        return await ho.fetchVerdictsForTeam(
+            [_summoner("A", "puuid-a"), _summoner("B", "puuid-b")], 1)
+
+    import asyncio as _a
+    results = _a.run(run())
+    assert set(results) == {"puuid-a", "puuid-b"}
+    assert all(v["score"] is not None for v in results.values())
+
+
+def test_fetch_verdicts_single_failure_degrades():
+    players = {"A#cn1": {"battleInfo": {"openId": "oa"}, "games": []}}
+    fake = FakeLzyumi(players=players, fail_names={"B#cn1"})
+    ho.lzyumi = fake
+
+    async def run():
+        return await ho.fetchVerdictsForTeam(
+            [_summoner("A", "puuid-a"), _summoner("B", "puuid-b")], 1)
+
+    import asyncio as _a
+    results = _a.run(run())
+    assert results["puuid-a"]["score"] is not None
+    assert results["puuid-b"]["grade"] == "Unknown"
+
+
+def test_fetch_verdicts_skips_missing_puuid():
+    async def run():
+        return await ho.fetchVerdictsForTeam([{"gameName": "X"}], 1)
+
+    import asyncio as _a
+    assert _a.run(run()) == {}

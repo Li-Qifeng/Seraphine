@@ -123,6 +123,29 @@ async def _rateSummoner(s: dict, area_id: int) -> HorseVerdict:
     return verdict
 
 
+async def fetchVerdictsForTeam(summoners: list[dict],
+                               cfg_areaId: int) -> dict[str, HorseVerdict]:
+    """队友摘要列表 -> {puuid: HorseVerdict}，供对局页/生涯页展示.
+
+    复用 _rateSummoner 的缓存；单人失败降级为 Unknown verdict，
+    不中断其余查询。无 puuid 的条目跳过。
+    """
+    results: dict[str, HorseVerdict] = {}
+    for s in summoners:
+        puuid = s.get("puuid")
+        if not puuid:
+            continue
+        try:
+            results[puuid] = await _rateSummoner(s, cfg_areaId)
+        except (LzyumiUnavailable, Exception) as e:  # noqa: BLE001 - 单人失败降级
+            logger.warning(
+                f"horse rating failed for {puuid}, degrade to Unknown: {e}",
+                TAG)
+            results[puuid] = {"score": None, "grade": "Unknown",
+                              "style_labels": {}, "reason": "查询失败"}
+    return results
+
+
 def formatHorseReport(entries: list, style: str = "horse") -> Optional[str]:
     """[(name, verdict)] -> 一行播报文案; 空输入返回 None."""
     if not entries:

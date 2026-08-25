@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 
 from PyQt5.QtCore import pyqtSignal, Qt, QTimer
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QFrame, QVBoxLayout,
@@ -448,6 +448,18 @@ class SummonerInfoView(ColorAnimationFrame):
 
         self.rankFlexLp = QLabel(lp)
 
+        # 隐藏分 + 上等马评级行 (lzyumi 异步填充, 默认开启)
+        self.eloLabel = QLabel(self.tr("Elo: --"))
+        self.eloLabel.setToolTip(
+            self.tr("Hidden MMR (Solo). Compare with tier to spot smurfs."))
+        self.eloLabel.installEventFilter(
+            ToolTipFilter(self.eloLabel, 0, ToolTipPosition.TOP))
+        self.horseLabel = QLabel('')
+        self.horseLabel.setToolTip(
+            self.tr("Pre-game rating from hidden MMR + recent performance."))
+        self.horseLabel.installEventFilter(
+            ToolTipFilter(self.horseLabel, 0, ToolTipPosition.TOP))
+
         self.rankSolo.setToolTip(self.tr("Ranked Solo / Duo"))
         self.rankSolo.installEventFilter(
             ToolTipFilter(self.rankSolo, 0, ToolTipPosition.TOP))
@@ -481,6 +493,9 @@ class SummonerInfoView(ColorAnimationFrame):
         self.gridLayout.addWidget(self.rankFlexIcon, 1, 1, Qt.AlignCenter)
         self.gridLayout.addWidget(self.rankFlex, 1, 2, Qt.AlignCenter)
         self.gridLayout.addWidget(self.rankFlexLp, 1, 3, Qt.AlignCenter)
+
+        self.gridLayout.addWidget(self.eloLabel, 0, 4, Qt.AlignCenter)
+        self.gridLayout.addWidget(self.horseLabel, 1, 4, Qt.AlignCenter)
 
         self.gridHBoxLayout.addSpacerItem(
             QSpacerItem(1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
@@ -521,6 +536,18 @@ class SummonerInfoView(ColorAnimationFrame):
 
     def updateAramInfo(self, info):
         self.icon.updateAramInfo(info)
+
+    def updateEloInfo(self, elo: Optional[int], verdict: dict):
+        """填充隐藏分 + 上等马评级 (lzyumi 异步回调)."""
+        if elo is not None:
+            self.eloLabel.setText(f"Elo: {elo}")
+        label = (verdict or {}).get('style_labels', {}).get(
+            'horse') or (verdict or {}).get('grade')
+        score = (verdict or {}).get('score')
+        if score is not None and label:
+            self.horseLabel.setText(f"{label} {score}")
+            self.horseLabel.setToolTip(
+                (verdict or {}).get('reason') or self.horseLabel.toolTip())
 
 
 class SummonersGamesView(QFrame):

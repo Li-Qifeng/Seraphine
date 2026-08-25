@@ -1405,6 +1405,9 @@ class MainWindow(FluentWindow):
         info = await parseAllyGameInfo(cSession, currentSummonerId, queueId, useSGP=True)
         self.gameInfoInterface.updateAllySummoners(info)
 
+        # 对局页概览: 异步填充隐藏分 + 上等马评级 (默认开启, 失败静默)
+        asyncio.create_task(self.__fillEloInfoForSummoners(info))
+
         # 上等马赛前评级: BP 阶段评价队友并播报到聊天窗 (默认关)
         if cfg.get(cfg.enableHorseRatingChat) and self._horseSendGuard.try_acquire():
             asyncio.create_task(self.__postHorseReport(info))
@@ -1435,6 +1438,51 @@ class MainWindow(FluentWindow):
                 logger.info("HorseRating: report posted to BP chat", TAG)
         except Exception as e:
             logger.warning(f"HorseRating: report failed: {e}", TAG)
+
+    async def __fillEloInfoForSummoners(self, allyInfo):
+        """对局页概览卡异步填充隐藏分 + 上等马评级 (默认开启)."""
+        from app.lol.horse_orchestrator import fetchVerdictsForTeam, serverToAreaId
+        from app.lol.lzyumi import lzyumi
+
+        summoners = [
+            s for s in (allyInfo or {}).get('summoners', [])
+            if s.get('puuid') and s.get('rankInfo')
+        ]
+        if not summoners:
+            return
+        try:
+            areaId = serverToAreaId(connector.server)
+            summaries = [
+                {'puuid': s['puuid'],
+                 'gameName': s.get('name'),
+                 'tagLine': s.get('tagLine'),
+                 'tierIdx': tierNameToIdx(
+                     (s.get('rankInfo') or {}).get('solo', {}).get('tier'))}
+                for s in summoners]
+            verdicts = await fetchVerdictsForTeam(summaries, areaId)
+            for s in summoners:
+                view = self.gameInfoInterface.summonersView.ally.items.get(
+                    s.get('summonerId'))
+                if not view:
+                    continue
+                elo = None
+                try:
+                    gameName = s.get('name') or ''
+                    tagLine = s.get('tagLine')
+                    nickname = f"{gameName}#{tagLine}" if tagLine else gameName
+                    payload = await lzyumi.searchPlayer(nickname, areaId, 10)
+                    open_id = (payload.get("battleInfo") or {}).get("openId")
+                    if open_id:
+                        elo_info = await lzyumi.getRankEloInfo(
+                            open_id, areaId)
+                        if elo_info:
+                            elo = elo_info.get('solo')
+                except Exception:
+                    elo = None
+                view.updateEloInfo(elo, verdicts.get(s['puuid'], {}))
+        except Exception as e:
+            logger.warning(f"fill elo info failed: {e}", TAG)
+
 
     # 英雄选择时，英雄改变 / 楼层改变时触发
     @asyncSlot(dict)
@@ -1512,6 +1560,7 @@ class MainWindow(FluentWindow):
             self.gameInfoInterface.allyGamesView.clear()
 
             self.gameInfoInterface.updateAllySummoners(info)
+            asyncio.create_task(self.__fillEloInfoForSummoners(info))
 
         # 将敌方的召唤师基本信息绘制上去
         async def paintEnemySummonersInfo():

@@ -184,8 +184,8 @@ class CareerInterface(SeraphineInterface):
 
         self.recentTeamButton.setEnabled(True)
 
-        self.rankTable.setRowCount(2)
-        self.rankTable.setColumnCount(9)
+        self.rankTable.setRowCount(3)
+        self.rankTable.setColumnCount(10)
         self.rankTable.verticalHeader().hide()
         self.rankTable.setWordWrap(False)
         self.rankTable.setHorizontalHeaderLabels([
@@ -198,13 +198,20 @@ class CareerInterface(SeraphineInterface):
             self.tr('LP'),
             self.tr("Highest tier"),
             self.tr("Previous end tier"),
+            self.tr("Elo"),
         ])
+        self.rankTable.horizontalHeaderItem(9).setToolTip(
+            self.tr("Hidden MMR from lzyumi (third-party). Compare with tier "
+                    "to spot smurfs. Solo / Flex / ARAM."))
 
         self.rankInfo = [[
             self.tr('Ranked Solo'),
         ], [
             self.tr('Ranked Flex'),
+        ], [
+            self.tr("大乱斗"),
         ]]
+        self.__setEloColumn(['--', '--', '--'])
 
         self.filterComboBox.addItems([
             self.tr('All'),
@@ -339,7 +346,12 @@ class CareerInterface(SeraphineInterface):
 
     def __updateTable(self):
         for i, line in enumerate(self.rankInfo):
-            for j, data in enumerate(line):
+            row = list(line)
+            if getattr(self, 'eloColumn', None) and i < len(self.eloColumn):
+                row.append(self.eloColumn[i])
+            else:
+                row.append('--')
+            for j, data in enumerate(row):
                 item = QTableWidgetItem(data)
                 item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
@@ -381,6 +393,41 @@ class CareerInterface(SeraphineInterface):
         '''
 
         setCustomStyleSheet(self.rankTable, light, dark)
+
+    def __setEloColumn(self, values: list):
+        """写入隐藏分列 (第 10 列)."""
+        self.eloColumn = list(values)
+
+    async def __updateEloColumn(self, puuid: str):
+        """异步拉取 lzyumi 隐藏分并刷新 Elo 列; 失败静默保持 '--'."""
+        from app.lol.horse_orchestrator import serverToAreaId
+        from app.lol.lzyumi import lzyumi
+
+        def fmt(v):
+            return str(v) if v is not None else '--'
+
+        try:
+            area_id = serverToAreaId(connector.server)
+            gameName = self.name.text().replace("🔒", "")
+            tagLine = self.tagLineLabel.text().lstrip("# ")
+            nickname = f"{gameName}#{tagLine}" if tagLine else gameName
+            payload = await lzyumi.searchPlayer(nickname, area_id, 10)
+            open_id = (payload.get("battleInfo") or {}).get("openId")
+
+            elo_values = ['--', '--', '--']
+            if open_id:
+                elo_info = await lzyumi.getRankEloInfo(open_id, area_id)
+                if elo_info:
+                    elo_values = [fmt(elo_info.get('solo')),
+                                  fmt(elo_info.get('flex')),
+                                  fmt(elo_info.get('aram'))]
+
+            # 期间用户可能已切到别人主页
+            if self.puuid == puuid:
+                self.__setEloColumn(elo_values)
+                self.__updateTable()
+        except Exception as e:
+            logger.warning(f"update elo column failed: {e}", "CareerInterface")
 
     def __connectSignalToSlot(self):
         self.backToMeButton.clicked.connect(self.__changeToCurrentSummoner)
@@ -605,7 +652,10 @@ class CareerInterface(SeraphineInterface):
                 self.tr('Ranked Solo'),
             ], [
                 self.tr('Ranked Flex'),
+            ], [
+                self.tr("大乱斗"),
             ]]
+            self.__setEloColumn(['--', '--', '--'])
             self.copyButton.setEnabled(False)
 
         if not self.isLoginSummoner():
@@ -614,6 +664,8 @@ class CareerInterface(SeraphineInterface):
                     self.rankInfo[i][j] = '--'
 
         self.__updateTable()
+        # 隐藏分列异步填充 (lzyumi, 默认开启; 失败静默保持 --)
+        asyncio.create_task(self.__updateEloColumn(puuid))
 
         if 'gameCount' in games:
             self.recent20GamesLabel.setText(
