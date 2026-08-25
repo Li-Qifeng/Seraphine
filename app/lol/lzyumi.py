@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 import aiohttp
 
+from app.common.logger import logger
 from app.lol.tools_lzyumi import (
     decode_response,
     lzyumi_sign,
@@ -35,7 +36,8 @@ AREA_NAMES = {
     25: "峡谷之巅", 26: "男爵领域", 30: "艾欧尼亚", 31: "峡谷之巅",
 }
 
-TIMEOUT_SECONDS = 10
+TIMEOUT_SECONDS = 25
+FETCH_RETRIES = 1
 ELO_TTL = 10 * 60
 GAMES_TTL = 2 * 60
 
@@ -85,18 +87,24 @@ class Lzyumi:
     async def _fetch(self, path: str, params: Dict[str, str]) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
         session = await self._get_session()
-        try:
-            async with session.get(
-                url, params=self._signed_params(params),
-                timeout=aiohttp.ClientTimeout(total=self.timeout),
-            ) as resp:
-                body = await resp.read()
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            raise LzyumiUnavailable(f"[{TAG}] request failed: {e}") from e
-        try:
-            return decode_response(body)
-        except ValueError as e:
-            raise LzyumiError(str(e)) from e
+        last_exc: Exception = LzyumiUnavailable(f"[{TAG}] not attempted")
+        for attempt in range(1 + FETCH_RETRIES):
+            try:
+                async with session.get(
+                    url, params=self._signed_params(params),
+                    timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    proxy=None,
+                ) as resp:
+                    body = await resp.read()
+                return decode_response(body)
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                last_exc = e
+                logger.warning(
+                    f"lzyumi fetch {path} attempt {attempt + 1} failed: "
+                    f"{type(e).__name__}: {e}", TAG)
+            except ValueError as e:
+                raise LzyumiError(str(e)) from e
+        raise LzyumiUnavailable(f"[{TAG}] request failed: {last_exc}") from last_exc
 
     async def getRankEloInfo(self, open_id: str, area_id: int = 16) -> Optional[Dict[str, Optional[int]]]:
         """隐藏分：{solo, flex, aram}；无数据返回 None。"""

@@ -175,7 +175,7 @@ class FakeSession:
         self.exc = exc
         self.requests = []
 
-    def get(self, url, params=None, timeout=None):
+    def get(self, url, params=None, timeout=None, proxy=None):
         self.requests.append((url, dict(params or {})))
         if self.exc:
             raise self.exc
