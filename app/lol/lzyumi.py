@@ -24,6 +24,17 @@ from app.lol.tools_lzyumi import (
 TAG = "Lzyumi"
 
 BASE_URL = "https://a.2025lol.top/lzyumi/lol/info"
+
+# lzyumi areaId -> 大区中文名 (searchPlayer 必传 areaName, 否则后端 500)
+AREA_NAMES = {
+    1: "艾欧尼亚", 2: "德玛西亚", 3: "班德尔城", 4: "诺克萨斯",
+    6: "祖安", 9: "弗雷尔卓德", 11: "皮尔特沃夫", 12: "战争学院",
+    13: "巨神峰", 14: "黑色玫瑰", 15: "暗影岛", 16: "恕瑞玛",
+    17: "钢铁烈阳", 18: "水晶之痕", 19: "裁决之地", 20: "扭曲丛林",
+    21: "教育网", 22: "卡拉曼达", 23: "雷瑟守备", 24: "征服之海",
+    25: "峡谷之巅", 26: "男爵领域", 30: "艾欧尼亚", 31: "峡谷之巅",
+}
+
 TIMEOUT_SECONDS = 10
 ELO_TTL = 10 * 60
 GAMES_TTL = 2 * 60
@@ -95,16 +106,22 @@ class Lzyumi:
             return cached
         raw = await self._fetch(
             "/getRankEloInfo",
-            {"openId": _encode_openid(open_id), "areaId": str(area_id), "filter": "1"},
+            # openId 传原始串, aiohttp params 会正确编码;
+            # 预编码后再传会被二次转义 (%2B -> %252B) 导致后端解密 500
+            {"openId": open_id, "areaId": str(area_id), "filter": "2"},
         )
-        result = parse_rank_elo(raw)
+        result = parse_rank_elo(raw.get("data") or raw)
         if result is None:
             return None
         self._cache_put(key, result, ELO_TTL)
         return result
 
-    async def searchPlayer(self, nickname: str, area_id: int, count: int = 10) -> Dict[str, Any]:
-        """近十场主查询：返回原始 dict（battleInfo + data[]）。"""
+    async def searchPlayer(self, nickname: str, area_id: int, count: int = 10,
+                           area_name: str = "") -> Dict[str, Any]:
+        """近十场主查询：返回原始 dict（battleInfo + data[]）。
+
+        area_name 必填 (大区中文名): 缺失时后端 500 NullPointerException。
+        """
         key = ("games", nickname, area_id, count)
         cached = self._cache_get(key)
         if cached is not None:
@@ -115,9 +132,11 @@ class Lzyumi:
                 "nickname": _encode_nickname(nickname),
                 "allCount": str(count),
                 "areaId": str(area_id),
+                "areaName": area_name or AREA_NAMES.get(area_id, "未知"),
                 "seleMe": "1",
                 "filter": "1",
                 "openId": "",
+                "modelId": "1",
             },
         )
         if not isinstance(raw.get("data"), list) or "battleInfo" not in raw:
