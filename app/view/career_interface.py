@@ -185,7 +185,7 @@ class CareerInterface(SeraphineInterface):
         self.recentTeamButton.setEnabled(True)
 
         self.rankTable.setRowCount(3)
-        self.rankTable.setColumnCount(10)
+        self.rankTable.setColumnCount(9)
         self.rankTable.verticalHeader().hide()
         self.rankTable.setWordWrap(False)
         self.rankTable.setHorizontalHeaderLabels([
