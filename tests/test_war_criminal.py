@@ -294,6 +294,29 @@ class TestGradeLabel:
         assert gradeLabel(0, True, 'tieba') == '神'
         assert gradeLabel(99, True, 'tieba') == '消失'
 
+    def test_custom_labels_win_and_loss(self):
+        """自定义文案: 胜/败方各五档, 优先于预设."""
+        from unittest.mock import patch
+        custom = {'win': ['W1', 'W2', 'W3', 'W4', 'W5'],
+                  'loss': ['L1', 'L2', 'L3', 'L4', 'L5']}
+        with patch('app.common.config.cfg.get',
+                   return_value=custom):
+            for g, expect in zip(range(1, 6), custom['win']):
+                assert gradeLabel(g, True, 'custom') == expect
+            for g, expect in zip(range(1, 6), custom['loss']):
+                assert gradeLabel(g, False, 'custom') == expect
+
+    def test_custom_labels_invalid_falls_back(self):
+        """自定义为坏 JSON (None/空/长度不足) 时回退贴吧风."""
+        from unittest.mock import patch
+        with patch('app.common.config.cfg.get', return_value=None):
+            assert gradeLabel(1, True, 'custom') == '神'
+        with patch('app.common.config.cfg.get', return_value={}):
+            assert gradeLabel(5, False, 'custom') == '初升东曦'
+        with patch('app.common.config.cfg.get',
+                   return_value={'win': ['a', 'b']}):
+            assert gradeLabel(2, True, 'custom') == '爹'
+
 
 class TestGradeFromScore:
     def test_high_positive(self):

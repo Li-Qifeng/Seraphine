@@ -1,11 +1,11 @@
 import asyncio
 from app.common.config import cfg
 from app.common.icons import Icon
-from app.common.qfluentwidgets import (SettingCardGroup, SwitchSettingCard,
-                                        ComboBoxSettingCard)
+from app.common.qfluentwidgets import SettingCardGroup, SwitchSettingCard
 from app.common.style_sheet import StyleSheet
 from app.components.seraphine_interface import SeraphineInterface
-from app.components.setting_cards import QueueFilterCard
+from app.components.setting_cards import QueueFilterCard, RatingStyleSettingCard
+from app.lol.war_criminal import GRADE_LABELS_TIEBA
 from app.view.auxiliary_cards import (
     OnlineStatusCard,
     ProfileBackgroundCard,
@@ -244,34 +244,40 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.enableTeamRating,
             parent=self.teamRatingGroup)
 
-        self.teamRatingStyleCard = ComboBoxSettingCard(
+        self.teamRatingStyleCard = RatingStyleSettingCard(
             cfg.teamRatingStyle,
-            Icon.SCALEFIT,
             self.tr("Team rating style"),
             self.tr(
                 "Tieba: 贴吧风 (win/loss separate labels); "
-                "Horse: 马系风 (上等马/中等马/下等马/纯牛马)"),
-            texts=[self.tr("Tieba"), self.tr("Horse")],
+                "Horse: 马系风 (上等马/中等马/下等马/纯牛马); "
+                "Custom: 自定义胜/败方各五档文案"),
+            texts=[self.tr("Tieba"), self.tr("Horse"), self.tr("Custom")],
+            defaultLabels={
+                True: GRADE_LABELS_TIEBA[True],
+                False: GRADE_LABELS_TIEBA[False],
+            },
             parent=self.teamRatingGroup)
 
         # --- 上等马赛前评级组 ---
         self.enableHorseRatingChatCard = SwitchSettingCard(
             Icon.EYES, self.tr("Horse rating chat"),
             self.tr(
-                "Rate teammates (hidden elo + recent 10 games) at champion "
-                "select and post the verdict to BP chat. Third-party data "
-                "source required; disabled by default"),
+                "Rate teammates by their visible rank at champion select and "
+                "post the verdict to BP chat"),
             cfg.enableHorseRatingChat,
             parent=self.teamRatingGroup)
 
-        self.horseRatingStyleCard = ComboBoxSettingCard(
+        self.horseRatingStyleCard = RatingStyleSettingCard(
             cfg.horseRatingStyle,
-            Icon.SCALEFIT,
             self.tr("Horse rating style"),
             self.tr(
                 "Horse: 马系风 (上等马/中上等马/中等马/下等马/驽马); "
-                "Formal: 正式风"),
-            texts=[self.tr("Horse"), self.tr("Formal")],
+                "Formal: 正式风; Custom: 自定义五档文案"),
+            texts=[self.tr("Horse"), self.tr("Formal"), self.tr("Custom")],
+            defaultLabels={
+                True: ['上等马', '中上等马', '中等马', '下等马', '驽马'],
+                False: ['上等马', '中上等马', '中等马', '下等马', '驽马'],
+            },
             parent=self.teamRatingGroup)
 
         # --- OPGG 助手组 ---

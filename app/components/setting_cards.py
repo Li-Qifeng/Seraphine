@@ -6,7 +6,7 @@ from app.common.qfluentwidgets import (FluentIconBase, ExpandGroupSettingCard,
                                        ConfigItem, qconfig, PushButton, SpinBox,
                                        ColorDialog, LineEdit, SwitchButton,
                                        IndicatorPosition, SwitchSettingCard, setThemeColor,
-                                       PillPushButton)
+                                       PillPushButton, ComboBox)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIcon, QColor
 from PyQt5.QtWidgets import (QWidget, QLabel, QHBoxLayout, QGridLayout, QFrame)
@@ -745,6 +745,172 @@ class QueueFilterCard(ExpandGroupSettingCard):
 
         default = self.configItem.defaultValue
         qconfig.set(self.configItem, default)
+
+
+class RatingStyleSettingCard(ExpandGroupSettingCard):
+    """评级文案风格设置卡: 头部 ComboBox 选风格, 选 'custom' 时展开
+    胜方/败方各 5 档文案编辑器, 点保存写入配置, 删除恢复默认.
+    未选 custom 时不显示展开按钮, 头部点击不展开.
+
+    与 ComboBoxSettingCard 不同, 本卡把 ComboBox 放进头部 (header),
+    展开区 (view) 承载自定义文案编辑, 契合"对局信息过滤"式的内嵌页面.
+    """
+
+    def __init__(self, configItem, title, content=None, texts=None,
+                 defaultLabels=None, icon=Icon.SCALEFIT, parent=None):
+        """Args:
+        configItem:   风格 ConfigItem (如 cfg.teamRatingStyle, 含 'custom' 选项)
+        defaultLabels: 预设标签 {isWin: [5 档]}, 用于自定义为空时的占位/初始化
+        texts:         ComboBox 文本列表, 与 configItem.options 对齐
+        """
+        super().__init__(icon, title, content, parent)
+        self.configItem = configItem
+        self.defaultLabels = defaultLabels or {}
+
+        self.comboBox = ComboBox(self)
+        for option, text in zip(configItem.options, texts or []):
+            self.comboBox.addItem(text, userData=option)
+
+        self.winEdits = [LineEdit(self) for _ in range(5)]
+        self.lossEdits = [LineEdit(self) for _ in range(5)]
+        self.winHints = [QLabel(self.tr("Win %1").replace("%1", str(i + 1)))
+                         for i in range(5)]
+        self.lossHints = [QLabel(self.tr("Loss %1").replace("%1", str(i + 1)))
+                          for i in range(5)]
+
+        self.titleLabel = QLabel(self.tr("Custom win/loss labels"))
+        self.titleLabel.setObjectName("ratingViewTitle")
+
+        self.inputWidget = QWidget(self.view)
+        self.inputLayout = QGridLayout(self.inputWidget)
+
+        self.buttonWidget = QWidget(self.view)
+        self.buttonLayout = QHBoxLayout(self.buttonWidget)
+        self.saveButton = PushButton(self.tr("Save"))
+        self.deleteButton = PushButton(self.tr("Delete"))
+
+        self.__initLayout()
+        self.__initWidget()
+
+    def __initLayout(self):
+        self.titleWidget = QWidget(self.view)
+        self.titleLayout = QHBoxLayout(self.titleWidget)
+        self.titleLayout.setContentsMargins(48, 18, 44, 0)
+        self.titleLayout.addWidget(self.titleLabel)
+
+        for i in range(5):
+            self.inputLayout.addWidget(self.winHints[i], i, 0, Qt.AlignRight)
+        for i in range(5):
+            self.inputLayout.addWidget(self.lossHints[i], i, 2, Qt.AlignRight)
+        for i in range(5):
+            self.inputLayout.addWidget(self.winEdits[i], i, 1, Qt.AlignLeft)
+        for i in range(5):
+            self.inputLayout.addWidget(self.lossEdits[i], i, 3, Qt.AlignLeft)
+
+        self.inputLayout.setHorizontalSpacing(19)
+        self.inputLayout.setVerticalSpacing(12)
+        self.inputLayout.setContentsMargins(48, 18, 44, 18)
+        self.inputLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
+
+        self.buttonLayout.setContentsMargins(48, 12, 44, 18)
+        self.buttonLayout.addWidget(self.saveButton, 0, Qt.AlignRight)
+        self.buttonLayout.addWidget(self.deleteButton, 0, Qt.AlignRight)
+        self.buttonLayout.setSizeConstraint(QHBoxLayout.SetMinimumSize)
+
+        self.viewLayout.setSpacing(0)
+        self.viewLayout.setContentsMargins(0, 0, 0, 0)
+        self.addGroupWidget(self.titleWidget)
+        self.addGroupWidget(self.inputWidget)
+        self.addGroupWidget(self.buttonWidget)
+
+    def __initWidget(self):
+        self.comboBox.setCurrentIndex(
+            self.configItem.options.index(qconfig.get(self.configItem)))
+        self.comboBox.currentIndexChanged.connect(self.__onCurrentIndexChanged)
+
+        self.saveButton.clicked.connect(self.__onSaveClicked)
+
+        self.deleteButton.clicked.connect(self.__onDeleteClicked)
+
+        self.addWidget(self.comboBox)
+        self.__applyCustomState()
+
+    def showEvent(self, e):
+        """构造期(setExpand)拿不到可靠的 view 尺寸: 高度不足 -> 胜/败 5 行显示不全,
+        动画状态也易残留(下拉框点击后表现异常). 延迟到真实几何后再展开."""
+        super().showEvent(e)
+        if qconfig.get(self.configItem) == 'custom':
+            self._adjustViewSize()
+            self.setExpand(True)
+
+    def toggleExpand(self):
+        if qconfig.get(self.configItem) == 'custom':
+            super().toggleExpand()
+        else:
+            self.setExpand(False)
+
+    def __onCurrentIndexChanged(self, index):
+        option = self.configItem.options[index]
+        qconfig.set(self.configItem, option)
+        self.__applyCustomState()
+
+    def __applyCustomState(self):
+        isCustom = qconfig.get(self.configItem) == 'custom'
+        self.card.expandButton.setVisible(isCustom)
+        if isCustom:
+            self.__loadCustomLabels()
+            if self.isVisible():
+                self._adjustViewSize()
+                self.setExpand(True)
+        else:
+            self.setExpand(False)
+
+    def __loadCustomLabels(self):
+        """自定义文案回填; 未配置/损坏时用默认标签作为可编辑基."""
+        raw = qconfig.get(cfg.teamRatingCustomLabels if
+                          self.configItem is cfg.teamRatingStyle
+                          else cfg.horseRatingCustomLabels)
+        try:
+            win = (raw or {}).get('win') or []
+            loss = (raw or {}).get('loss') or []
+            win = [str(x) for x in win] if isinstance(win, list) else []
+            loss = [str(x) for x in loss] if isinstance(loss, list) else []
+            winValid = len(win) == 5
+            lossValid = len(loss) == 5
+        except AttributeError:
+            win, loss, winValid, lossValid = [], [], False, False
+
+        if not winValid:
+            win = list((self.defaultLabels.get(True) or [""] * 5))
+        if not lossValid:
+            loss = list((self.defaultLabels.get(False) or [""] * 5))
+
+        for edit, text in zip(self.winEdits, win):
+            edit.setText(text)
+        for edit, text in zip(self.lossEdits, loss):
+            edit.setText(text)
+
+    def __onSaveClicked(self):
+        self.__saveCustomLabels()
+
+    def __saveCustomLabels(self):
+        item = (cfg.teamRatingCustomLabels if
+                self.configItem is cfg.teamRatingStyle
+                else cfg.horseRatingCustomLabels)
+        qconfig.set(item, {
+            'win': [e.text() for e in self.winEdits],
+            'loss': [e.text() for e in self.lossEdits],
+        })
+
+    def __onDeleteClicked(self):
+        item = (cfg.teamRatingCustomLabels if
+                self.configItem is cfg.teamRatingStyle
+                else cfg.horseRatingCustomLabels)
+        qconfig.set(item, item.defaultValue)
+        qconfig.set(self.configItem, self.configItem.defaultValue)
+        self.comboBox.setCurrentIndex(
+            self.configItem.options.index(self.configItem.defaultValue))
+        self.__applyCustomState()
 
 
 class TeamColorSettingCard(ExpandGroupSettingCard):

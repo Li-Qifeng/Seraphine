@@ -785,6 +785,41 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation>马系风</translation>
     </message>
     <message>
+        <location filename="../../view/auxiliary_interface.py" line="250"/>
+        <source>Formal</source>
+        <translation>正式风</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="250"/>
+        <source>Custom</source>
+        <translation>自定义</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="250"/>
+        <source>Tieba: 贴吧风 (win/loss separate labels); Horse: 马系风 (上等马/中等马/下等马/纯牛马); Custom: 自定义胜/败方各五档文案</source>
+        <translation>贴吧风：胜方/败方不同标签；马系风：上等马/中等马/下等马/纯牛马；自定义：胜/败方各五档文案</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="272"/>
+        <source>Horse: 马系风 (上等马/中上等马/中等马/下等马/驽马); Formal: 正式风; Custom: 自定义五档文案</source>
+        <translation>马系风：上等马/中上等马/中等马/下等马/驽马；正式风：标准五档；自定义：自定义五档文案</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="263"/>
+        <source>Horse rating chat</source>
+        <translation>上等马评论</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="265"/>
+        <source>Rate teammates by their visible rank at champion select and post the verdict to BP chat</source>
+        <translation>选人阶段根据可见段位对队友评级，并将结论发送到 BP 聊天框</translation>
+    </message>
+    <message>
+        <location filename="../../view/auxiliary_interface.py" line="271"/>
+        <source>Horse rating style</source>
+        <translation>上等马风格</translation>
+    </message>
+    <message>
         <location filename="../../view/auxiliary_interface.py" line="248"/>
         <source>Show OP.GG window automatically</source>
         <translation>自动显示 OP.GG 窗口</translation>
@@ -908,6 +943,34 @@ If champions set by lane are not available, default settings will be used.</sour
         <location filename="../../view/auxiliary_interface.py" line="186"/>
         <source>在大乱斗中自动从备选席换英雄（无CD强刷）</source>
         <translation>在大乱斗中自动从备选席换英雄（无CD强刷）</translation>
+    </message>
+</context>
+<context>
+    <name>RatingStyleSettingCard</name>
+    <message>
+        <location filename="../../components/setting_cards.py" line="776"/>
+        <source>Win %1</source>
+        <translation>胜方 %1</translation>
+    </message>
+    <message>
+        <location filename="../../components/setting_cards.py" line="778"/>
+        <source>Loss %1</source>
+        <translation>败方 %1</translation>
+    </message>
+    <message>
+        <location filename="../../components/setting_cards.py" line="781"/>
+        <source>Custom win/loss labels</source>
+        <translation>自定义胜/败方五档文案</translation>
+    </message>
+    <message>
+        <location filename="../../components/setting_cards.py" line="789"/>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <location filename="../../components/setting_cards.py" line="790"/>
+        <source>Delete</source>
+        <translation>删除</translation>
     </message>
 </context>
 <context>

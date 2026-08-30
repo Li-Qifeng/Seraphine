@@ -25,7 +25,7 @@ from app.common.config import cfg
 from app.lol.connector import connector
 from app.lol.tools import (parseGames, parseSummonerData,
                            getRecentTeammates, parseDetailRankInfo,
-                           getNameTagLineFromGame)
+                           getNameTagLineFromGame, aramStatsFromGames)
 from ..components.seraphine_interface import SeraphineInterface
 
 
@@ -198,20 +198,15 @@ class CareerInterface(SeraphineInterface):
             self.tr('LP'),
             self.tr("Highest tier"),
             self.tr("Previous end tier"),
-            self.tr("Elo"),
         ])
-        self.rankTable.horizontalHeaderItem(9).setToolTip(
-            self.tr("Hidden MMR from lzyumi (third-party). Compare with tier "
-                    "to spot smurfs. Solo / Flex / ARAM."))
 
         self.rankInfo = [[
             self.tr('Ranked Solo'),
-        ], [
+        ] + ['--'] * 8, [
             self.tr('Ranked Flex'),
-        ], [
+        ] + ['--'] * 8, [
             self.tr("大乱斗"),
-        ]]
-        self.__setEloColumn(['--', '--', '--'])
+        ] + ['--'] * 8]
 
         self.filterComboBox.addItems([
             self.tr('All'),
@@ -344,13 +339,27 @@ class CareerInterface(SeraphineInterface):
 
         self.progressRing.setVisible(enable)
 
+    def __fillAramStats(self, games):
+        """近 N 场大乱斗统计 (表格第 3 行总场/胜率/胜/负).
+
+        窗口有限 (cfg.careerGamesNumber), 非生涯累计; 窗口内无大乱斗局时保持 '--'.
+        统计经典大乱斗 (450) + 海克斯大乱斗 (2400).
+        段位/LP/最高/上赛季列无大乱斗概念, 天然 '--'.
+        """
+        row = self.rankInfo[2]
+        n = len(games.get("games", []))
+        row[0] = f"{self.tr('大乱斗')}({self.tr('近')}{n}{self.tr('场')})"
+        stats = aramStatsFromGames(games.get("games", []))
+        if not stats:
+            return
+        row[1] = str(stats["total"])
+        row[2] = stats["rate"]
+        row[3] = str(stats["wins"])
+        row[4] = str(stats["losses"])
+
     def __updateTable(self):
         for i, line in enumerate(self.rankInfo):
             row = list(line)
-            if getattr(self, 'eloColumn', None) and i < len(self.eloColumn):
-                row.append(self.eloColumn[i])
-            else:
-                row.append('--')
             for j, data in enumerate(row):
                 item = QTableWidgetItem(data)
                 item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
@@ -393,41 +402,6 @@ class CareerInterface(SeraphineInterface):
         '''
 
         setCustomStyleSheet(self.rankTable, light, dark)
-
-    def __setEloColumn(self, values: list):
-        """写入隐藏分列 (第 10 列)."""
-        self.eloColumn = list(values)
-
-    async def __updateEloColumn(self, puuid: str):
-        """异步拉取 lzyumi 隐藏分并刷新 Elo 列; 失败静默保持 '--'."""
-        from app.lol.horse_orchestrator import serverToAreaId
-        from app.lol.lzyumi import lzyumi
-
-        def fmt(v):
-            return str(v) if v is not None else '--'
-
-        try:
-            area_id = serverToAreaId(connector.server)
-            gameName = self.name.text().replace("🔒", "")
-            tagLine = self.tagLineLabel.text().lstrip("# ")
-            nickname = f"{gameName}#{tagLine}" if tagLine else gameName
-            payload = await lzyumi.searchPlayer(nickname, area_id, 10)
-            open_id = (payload.get("battleInfo") or {}).get("openId")
-
-            elo_values = ['--', '--', '--']
-            if open_id:
-                elo_info = await lzyumi.getRankEloInfo(open_id, area_id)
-                if elo_info:
-                    elo_values = [fmt(elo_info.get('solo')),
-                                  fmt(elo_info.get('flex')),
-                                  fmt(elo_info.get('aram'))]
-
-            # 期间用户可能已切到别人主页
-            if self.puuid == puuid:
-                self.__setEloColumn(elo_values)
-                self.__updateTable()
-        except Exception as e:
-            logger.warning(f"update elo column failed: {e}", "CareerInterface")
 
     def __connectSignalToSlot(self):
         self.backToMeButton.clicked.connect(self.__changeToCurrentSummoner)
@@ -644,28 +618,28 @@ class CareerInterface(SeraphineInterface):
 
         self.puuid = puuid
 
+        # parseDetailRankInfo 只返回 Solo/Flex 两行, 需要补 3 行表 (含大乱斗)
+        # ponytail: 大乱斗无排位数据, 该行仅用于展示近 N 场统计
         if 'queueMap' in rankInfo:
             self.rankInfo = parseDetailRankInfo(rankInfo)
+            self.rankInfo.append([self.tr("大乱斗")] + ['--'] * 8)
             self.copyButton.setEnabled(True)
         else:
             self.rankInfo = [[
                 self.tr('Ranked Solo'),
-            ], [
+            ] + ['--'] * 8, [
                 self.tr('Ranked Flex'),
-            ], [
+            ] + ['--'] * 8, [
                 self.tr("大乱斗"),
-            ]]
-            self.__setEloColumn(['--', '--', '--'])
+            ] + ['--'] * 8]
             self.copyButton.setEnabled(False)
 
-        if not self.isLoginSummoner():
-            for i in range(0, 2):
-                for j in [1, 2, 4]:
-                    self.rankInfo[i][j] = '--'
+        # 近 N 场大乱斗统计 (窗口 = cfg.careerGamesNumber, 非生涯累计; 无该队列局时保持 --)
+        self.__fillAramStats(games)
+
+        # 根因修复: 不再抹除他人 Solo/Flex 统计 (总场次/胜率/负场), 原有逻辑致表格大段 0/--
 
         self.__updateTable()
-        # 隐藏分列异步填充 (lzyumi, 默认开启; 失败静默保持 --)
-        asyncio.create_task(self.__updateEloColumn(puuid))
 
         if 'gameCount' in games:
             self.recent20GamesLabel.setText(
@@ -744,7 +718,12 @@ class CareerInterface(SeraphineInterface):
                     for r in ratingList:
                         if r.get('puuid') == currentPuuid:
                             grade = r.get('grade')
-                            gradeLabel = r.get('label', '')
+                            from app.lol.war_criminal import gradeLabel as _gradeLabel
+                            # label 按当前风格现算, 不再读缓存(缓存按诊断时风格存储)
+                            gradeLabel = _gradeLabel(
+                                grade if isinstance(grade, int) else 3,
+                                bool(r.get('isWin', isWin)),
+                                cfg.get(cfg.teamRatingStyle))
                             gradeEvidence = r.get('evidence') or []
                             isCurrent = True
                             break

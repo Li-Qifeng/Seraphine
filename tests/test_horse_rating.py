@@ -5,8 +5,8 @@ from app.lol import horse_rating_cache
 from app.lol.horse_rating import (
     GRADE_UNKNOWN,
     HORSE_THRESHOLDS,
-    TIER_ELO_MIDPOINTS,
     PlayerHorseProfile,
+    axis_visible_score,
     grade_from_score,
     grade_label,
     rate_horse,
@@ -15,11 +15,9 @@ from app.lol.horse_rating import (
 
 def _profile(**kw) -> PlayerHorseProfile:
     base: PlayerHorseProfile = {
-        'elo': None,
-        'recent10WinRate': None,
-        'recent10KdaAvg': None,
-        'mvpSvpCount': 0,
-        'visibleTierIdx': None,
+        'tierIdx': None,
+        'divisionIdx': None,
+        'lp': None,
     }
     base.update(kw)
     return base
@@ -30,19 +28,50 @@ def _profile(**kw) -> PlayerHorseProfile:
 # ---------------------------------------------------------------------------
 
 def test_golden_case_top_horse():
-    """elo1478 + 白金框(idx4) + 十场80%胜率 + 4.5 KDA + 3 MVP => 上等马."""
-    verdict = rate_horse(_profile(
-        elo=1478,
-        visibleTierIdx=4,
-        recent10WinRate=0.8,
-        recent10KdaAvg=4.5,
-        mvpSvpCount=3,
-    ))
+    """王者(8) + Ⅰ段 + 80LP => 上等马."""
+    verdict = rate_horse(_profile(tierIdx=8, divisionIdx=0, lp=80))
     assert verdict['score'] is not None
     assert verdict['score'] >= HORSE_THRESHOLDS[0]
     assert verdict['grade'] == '上等马'
     assert verdict['style_labels']['horse'] == '上等马'
     assert verdict['style_labels']['formal'] == '表现优异'
+    assert '段位' in verdict['reason']
+
+
+def test_low_tier_is_bottom_horse():
+    """黑铁(0) => 驽马."""
+    verdict = rate_horse(_profile(tierIdx=0, divisionIdx=3, lp=10))
+    assert verdict['score'] == 0
+    assert verdict['grade'] == '驽马'
+
+
+def test_axis_visible_score_monotonic():
+    """段位越高分越高; 同段位Ⅰ>Ⅳ; LP 高分微调."""
+    low = axis_visible_score(1, None, None)[0]
+    high = axis_visible_score(8, None, None)[0]
+    assert high > low
+    div0 = axis_visible_score(5, 0, None)[0]
+    div3 = axis_visible_score(5, 3, None)[0]
+    assert div0 > div3
+    lp_high = axis_visible_score(7, 0, 90)[0]
+    lp_low = axis_visible_score(7, 0, 10)[0]
+    assert lp_high > lp_low
+
+
+def test_axis_visible_score_missing_tier_unknown():
+    score, reason = axis_visible_score(None, None, None)
+    assert score is None
+    assert reason
+
+
+def test_axis_visible_score_promotion_hint_diamond_promotion():
+    """钻石 Ⅰ段 80LP -> 接近晋级提示."""
+    score, reason = axis_visible_score(6, 0, 80)
+    assert score is not None
+    assert '接近晋级' in reason
+    # 非 Ⅰ段不提示
+    _, reason2 = axis_visible_score(6, 1, 80)
+    assert '接近晋级' not in reason2
 
 
 # ---------------------------------------------------------------------------
@@ -81,56 +110,39 @@ def test_grade_label_styles():
     assert grade_label(None, style='formal') == '数据不足建议观察'
 
 
+def test_grade_label_custom():
+    """自定义文案: 按分数档位取 'win' 侧五档标签."""
+    from unittest.mock import patch
+
+    custom = {'win': ['H1', 'H2', 'H3', 'H4', 'H5'], 'loss': ['X'] * 5}
+    with patch('app.common.config.cfg.get', return_value=custom):
+        assert grade_label(90, style='custom') == 'H1'
+        assert grade_label(80, style='custom') == 'H1'
+        assert grade_label(70, style='custom') == 'H2'
+        assert grade_label(60, style='custom') == 'H3'
+        assert grade_label(40, style='custom') == 'H4'
+        assert grade_label(20, style='custom') == 'H5'
+
+
+def test_grade_label_custom_invalid_falls_back():
+    from unittest.mock import patch
+
+    with patch('app.common.config.cfg.get', return_value=None):
+        assert grade_label(90, style='custom') == '上等马'
+    with patch('app.common.config.cfg.get', return_value={'win': ['a']}):
+        assert grade_label(10, style='custom') == '驽马'
+
+
 # ---------------------------------------------------------------------------
 # 缺数据降级路径
 # ---------------------------------------------------------------------------
 
-def test_missing_elo_falls_back_to_axis_b():
-    """elo=None -> 只用维度 B, 权重归一, 仍给分但理由说明降级."""
-    verdict = rate_horse(_profile(
-        recent10WinRate=1.0,
-        recent10KdaAvg=6.0,
-        mvpSvpCount=5,
-    ))
-    assert verdict['score'] is not None
-    assert 60 <= verdict['score'] <= 100
-    assert verdict['grade'] == '上等马'
-    assert '仅按近期表现' in verdict['reason']
-
-
-def test_missing_recent_form_falls_back_to_axis_a():
-    """近十场全缺 -> 只用维度 A."""
-    verdict = rate_horse(_profile(elo=1900, visibleTierIdx=2))
-    assert verdict['score'] is not None
-    assert verdict['grade'] == '上等马'  # 大师分打银框 => 小号信号
-    assert '仅按隐藏分' in verdict['reason']
-
-
-def test_smurf_signal_reason():
-    """隐藏分高出段位一档以上 -> 理由里出现小号提示."""
-    verdict = rate_horse(_profile(
-        elo=TIER_ELO_MIDPOINTS[2] + 650,   # 高出约两档
-        visibleTierIdx=2,
-        recent10WinRate=0.5,
-    ))
-    assert '2档' in verdict['reason'] or '两档' in verdict['reason']
-
-
-def test_all_missing_returns_unknown():
+def test_missing_all_returns_unknown():
     verdict = rate_horse(_profile())
     assert verdict['score'] is None
     assert verdict['grade'] == GRADE_UNKNOWN
     assert verdict['style_labels'] == {}
     assert verdict['reason']
-
-
-def test_mvp_bonus_capped_at_15():
-    low = rate_horse(_profile(recent10WinRate=0.5, mvpSvpCount=3))
-    high = rate_horse(_profile(recent10WinRate=0.5, mvpSvpCount=99))
-    # 3*3=9 与 15 封顶之间应有差; 99 个也只加 15
-    mid = rate_horse(_profile(recent10WinRate=0.5, mvpSvpCount=5))
-    assert high['score'] == mid['score']
-    assert high['score'] > low['score']
 
 
 # ---------------------------------------------------------------------------

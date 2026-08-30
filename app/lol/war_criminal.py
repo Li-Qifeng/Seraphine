@@ -438,15 +438,33 @@ def gradeFromScore(score: float) -> int:
     return 5
 
 
+def _custom_team_labels(isWin: bool) -> Optional[list]:
+    """读取用户自定义评级文案 (style='custom'); 无效/未填时返回 None."""
+    try:
+        from app.common.config import cfg
+        raw = cfg.get(cfg.teamRatingCustomLabels) or {}
+        labels = raw.get('win' if isWin else 'loss') or []
+        if isinstance(labels, list) and len(labels) == 5:
+            return [str(x) for x in labels]
+    except Exception:
+        pass
+    return None
+
+
 def gradeLabel(grade: int, isWin: bool, style: str = 'tieba') -> str:
     """档位 (1-5) -> 用户可见标签文本.
 
     Args:
         grade: 1-5 (1=最高, 5=最低)
         isWin: 该玩家所在队是否获胜
-        style: 'tieba' (贴吧风, 胜败方不同) | 'horse' (马系风, 通用)
+        style: 'tieba' (贴吧风, 胜败方不同) | 'horse' (马系风, 通用) |
+               'custom' (用户自定义, 胜败方各 5 档)
     """
-    if style == 'horse':
+    if style == 'custom':
+        labels = _custom_team_labels(isWin)
+        if labels is None:
+            labels = GRADE_LABELS_TIEBA[True if isWin else False]
+    elif style == 'horse':
         labels = GRADE_LABELS_HORSE.get(isWin, GRADE_LABELS_HORSE[True])
     else:
         labels = GRADE_LABELS_TIEBA.get(isWin, GRADE_LABELS_TIEBA[True])

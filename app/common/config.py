@@ -129,14 +129,20 @@ class Config(QConfig):
                                    "EnableTeamRating", True, BoolValidator())
     teamRatingStyle = OptionsConfigItem(
         "Functions", "TeamRatingStyle", "tieba",
-        OptionsValidator(["tieba", "horse"]))
+        OptionsValidator(["tieba", "horse", "custom"]))
+    # 自定义评级文案 (style=custom 时使用): {win: [...5], loss: [...5]}
+    teamRatingCustomLabels = ConfigItem(
+        "Functions", "TeamRatingCustomLabels", "")
 
-    # 上等马赛前评级: BP 阶段经第三方数据源(隐藏分+近十场)评价队友并播报到 BP 聊天窗
+    # 上等马赛前评级: BP 阶段按可见段位评价队友并播报到 BP 聊天窗
     enableHorseRatingChat = ConfigItem(
         "Functions", "EnableHorseRatingChat", False, BoolValidator())
     horseRatingStyle = OptionsConfigItem(
         "Functions", "HorseRatingStyle", "horse",
-        OptionsValidator(["horse", "formal"]))
+        OptionsValidator(["horse", "formal", "custom"]))
+    # 自定义马评分文案 (style=custom 时使用): {win: [...5], loss: [...5]}
+    horseRatingCustomLabels = ConfigItem(
+        "Functions", "HorseRatingCustomLabels", "")
 
     enableAutoSelectTimeoutCompleted = ConfigItem("Functions",
                                                   "EnableAutoSelectTimeoutCompleted", False,

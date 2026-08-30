@@ -57,7 +57,7 @@ from app.lol.opgg import opgg
 from app.lol.static_data import static_data
 from app.lol.live_client import liveClient
 from app.lol.tools_pure import pickHonorTarget  # noqa: F401  # 保留供测试/外部调用
-from app.lol.horse_orchestrator import SendGuard, tierNameToIdx
+from app.lol.horse_orchestrator import SendGuard, divisionNameToIdx, tierNameToIdx
 
 import threading
 
@@ -1405,8 +1405,8 @@ class MainWindow(FluentWindow):
         info = await parseAllyGameInfo(cSession, currentSummonerId, queueId, useSGP=True)
         self.gameInfoInterface.updateAllySummoners(info)
 
-        # 对局页概览: 异步填充隐藏分 + 上等马评级 (默认开启, 失败静默)
-        asyncio.create_task(self.__fillEloInfoForSummoners(info))
+        # 对局页概览: 异步填充上等马评级 (默认开启, 失败静默)
+        asyncio.create_task(self.__fillHorseRatingForSummoners(info))
 
         # 上等马赛前评级: BP 阶段评价队友并播报到聊天窗 (默认关)
         if cfg.get(cfg.enableHorseRatingChat) and self._horseSendGuard.try_acquire():
@@ -1415,8 +1415,8 @@ class MainWindow(FluentWindow):
         self.checkAndSwitchTo(self.gameInfoInterface)
 
     async def __postHorseReport(self, allyInfo):
-        """构建上等马播报文案并延迟发送到 BP 聊天窗 (失败静默)."""
-        from app.lol.horse_orchestrator import buildHorseReport, serverToAreaId
+        """构建上等马播报文案并延迟发送到 BP 聊天窗 (基于可见段位, 失败静默)."""
+        from app.lol.horse_orchestrator import buildHorseReport
         try:
             summoners = [
                 {
@@ -1425,12 +1425,14 @@ class MainWindow(FluentWindow):
                     'tagLine': s.get('tagLine'),
                     'tierIdx': tierNameToIdx(
                         (s.get('rankInfo') or {}).get('solo', {}).get('tier')),
+                    'divisionIdx': divisionNameToIdx(
+                        (s.get('rankInfo') or {}).get('solo', {}).get('division')),
+                    'lp': (s.get('rankInfo') or {}).get('solo', {}).get('lp'),
                 }
                 for s in (allyInfo or {}).get('summoners', [])
                 if s.get('puuid') and s.get('puuid') != self.currentSummoner.get('puuid')
             ]
-            areaId = serverToAreaId(connector.server)
-            message = await buildHorseReport(summoners, areaId)
+            message = await buildHorseReport(summoners)
             if not message:
                 return
             await asyncio.sleep(random.uniform(2.0, 5.0))
@@ -1439,10 +1441,9 @@ class MainWindow(FluentWindow):
         except Exception as e:
             logger.warning(f"HorseRating: report failed: {e}", TAG)
 
-    async def __fillEloInfoForSummoners(self, allyInfo):
-        """对局页概览卡异步填充隐藏分 + 上等马评级 (默认开启)."""
-        from app.lol.horse_orchestrator import fetchVerdictsForTeam, serverToAreaId
-        from app.lol.lzyumi import lzyumi
+    async def __fillHorseRatingForSummoners(self, allyInfo, side='ally'):
+        """对局页概览卡异步填充上等马评级 (基于可见段位, 默认开启)."""
+        from app.lol.horse_orchestrator import fetchVerdictsForTeam
 
         summoners = [
             s for s in (allyInfo or {}).get('summoners', [])
@@ -1451,37 +1452,27 @@ class MainWindow(FluentWindow):
         if not summoners:
             return
         try:
-            areaId = serverToAreaId(connector.server)
             summaries = [
                 {'puuid': s['puuid'],
                  'gameName': s.get('name'),
                  'tagLine': s.get('tagLine'),
                  'tierIdx': tierNameToIdx(
-                     (s.get('rankInfo') or {}).get('solo', {}).get('tier'))}
+                     (s.get('rankInfo') or {}).get('solo', {}).get('tier')),
+                 'divisionIdx': divisionNameToIdx(
+                     (s.get('rankInfo') or {}).get('solo', {}).get('division')),
+                 'lp': (s.get('rankInfo') or {}).get('solo', {}).get('lp')}
                 for s in summoners]
-            verdicts = await fetchVerdictsForTeam(summaries, areaId)
+            verdicts = await fetchVerdictsForTeam(summaries)
+            team = (self.gameInfoInterface.summonersView.enemy
+                    if side == 'enemy'
+                    else self.gameInfoInterface.summonersView.ally)
             for s in summoners:
-                view = self.gameInfoInterface.summonersView.ally.items.get(
-                    s.get('summonerId'))
+                view = team.items.get(s.get('summonerId'))
                 if not view:
                     continue
-                elo = None
-                try:
-                    gameName = s.get('name') or ''
-                    tagLine = s.get('tagLine')
-                    nickname = f"{gameName}#{tagLine}" if tagLine else gameName
-                    payload = await lzyumi.searchPlayer(nickname, areaId, 10)
-                    open_id = (payload.get("battleInfo") or {}).get("openId")
-                    if open_id:
-                        elo_info = await lzyumi.getRankEloInfo(
-                            open_id, areaId)
-                        if elo_info:
-                            elo = elo_info.get('solo')
-                except Exception:
-                    elo = None
-                view.updateEloInfo(elo, verdicts.get(s['puuid'], {}))
+                view.updateEloInfo(verdicts.get(s['puuid'], {}))
         except Exception as e:
-            logger.warning(f"fill elo info failed: {e}", TAG)
+            logger.warning(f"fill horse rating failed: {e}", TAG)
 
 
     # 英雄选择时，英雄改变 / 楼层改变时触发
@@ -1560,7 +1551,7 @@ class MainWindow(FluentWindow):
             self.gameInfoInterface.allyGamesView.clear()
 
             self.gameInfoInterface.updateAllySummoners(info)
-            asyncio.create_task(self.__fillEloInfoForSummoners(info))
+            asyncio.create_task(self.__fillHorseRatingForSummoners(info))
 
         # 将敌方的召唤师基本信息绘制上去
         async def paintEnemySummonersInfo():
@@ -1569,6 +1560,9 @@ class MainWindow(FluentWindow):
 
             # 这个 info 是已经按照游戏位置排序过的了（若排位）
             self.gameInfoInterface.updateEnemySummoners(info)
+
+            # 对局页概览: 异步填充敌方上等马评级 (与友方一致, 失败静默)
+            asyncio.create_task(self.__fillHorseRatingForSummoners(info, side='enemy'))
 
         # 更新己方召唤师楼层顺序至角色顺序
         async def sortAllySummonersByGameRole():
