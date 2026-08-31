@@ -1274,6 +1274,15 @@ class LolClientConnector(QObject):
                     f"sendChampSelectMessage: conversations {convs_res.status}", TAG)
                 return False
             convs = await convs_res.json()
+            # 诊断: 实机打印对话列表, 定位 `championSelect` 对话是否真是
+            # 用户所视的 BP 聊天框. 取证后按需移除.
+            if isinstance(convs, list):
+                for c in convs:
+                    if isinstance(c, dict):
+                        logger.warning(
+                            "sendChampSelectMessage: conv "
+                            f"id={c.get('id')} type={c.get('type')} "
+                            f"name={c.get('name')}", TAG)
             conv_id = next(
                 (str(c.get("id")) for c in (convs or [])
                  if str(c.get("type", "")).lower() == "championselect"),
@@ -1282,6 +1291,8 @@ class LolClientConnector(QObject):
                 logger.warning(
                     "sendChampSelectMessage: no championSelect conversation", TAG)
                 return False
+            logger.warning(
+                f"sendChampSelectMessage: found conv_id={conv_id}", TAG)
 
             res = await self.__post(
                 f"/lol-chat/v1/conversations/{conv_id}/messages",

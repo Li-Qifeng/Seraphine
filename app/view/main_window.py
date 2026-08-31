@@ -1417,7 +1417,9 @@ class MainWindow(FluentWindow):
         self.checkAndSwitchTo(self.gameInfoInterface)
 
     def __onManualSendHorseReport(self):
-        """手动触发: 将当前己方队伍评级立即发送到 BP 聊天窗."""
+        """手动触发: 与自动发送共享每局一次守卫, 防止连点并发刷屏/竞态."""
+        if not self._horseSendGuard.try_acquire():
+            return
         info = self.gameInfoInterface._allyInfo
         if not info:
             return
@@ -1643,6 +1645,9 @@ class MainWindow(FluentWindow):
         # 停止海克斯辅助轮询
         self.hextechAssistTimer.stop()
         self.opggWindow.hextechAssistInterface.clearState()
+
+        # 一局结束: 重置赛前评级发送守卫, 下局自动发送恢复可用
+        self._horseSendGuard.reset()
 
         if not cfg.get(cfg.enableReserveGameinfo):
             self.gameInfoInterface.clear()
