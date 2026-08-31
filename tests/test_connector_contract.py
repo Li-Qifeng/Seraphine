@@ -107,6 +107,12 @@ def _patch_post(ret_val):
         new=AsyncMock(return_value=ret_val))
 
 
+def _patch_delete(ret_val):
+    return patch.object(
+        connector, '_LolClientConnector__delete',
+        new=AsyncMock(return_value=ret_val))
+
+
 # ---------------------------------------------------------------------------
 # 契约: getSummonerByPuuid -> dict | raise SummonerNotFound
 # ---------------------------------------------------------------------------
@@ -506,6 +512,60 @@ class TestSendChampSelectMessage:
 
         with _patch_get(conv_resp), _patch_post(_resp(status=200)) as mock_post:
             result = _run(mock_lcu.sendChampSelectMessage("hello"))
+
+        assert result is False
+        mock_post.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# 契约: dodge -> bool
+#   DELETE 房间成功后追加取消队列 (search/leave), 保证退房后不再留在队列中;
+#   404 视为已不在房间的幂等成功. 其余异常返回 False.
+# ---------------------------------------------------------------------------
+
+class TestDodge:
+    def test_delete_ok_also_cancels_queue(self, mock_lcu):
+        """DELETE 房间成功后, 追加 POST search/leave 取消匹配队列."""
+        delete_resp = MagicMock()
+        delete_resp.ok = True
+
+        with _patch_delete(delete_resp), \
+                _patch_post(_resp(status=204)) as mock_post:
+            result = _run(mock_lcu.dodge())
+
+        assert result is True
+        mock_post.assert_awaited_once_with(
+            "/lol-lobby/v2/lobby/matchmaking/search/leave")
+
+    def test_delete_404_is_idempotent_success(self, mock_lcu):
+        """DELETE 返回 404 (已不在房间) 视为成功, 并仍尝试取消队列."""
+        err = aiohttp.ClientResponseError(
+            status=404,
+            message="not found",
+            headers={},
+            request_info=aiohttp.RequestInfo(
+                url="http://x", method="DELETE", headers={}, real_url="http://x"),
+            history=(),
+        )
+
+        with patch.object(
+                connector, '_LolClientConnector__delete',
+                new=AsyncMock(side_effect=err)), \
+                _patch_post(_resp(status=204)) as mock_post:
+            result = _run(mock_lcu.dodge())
+
+        assert result is True
+        mock_post.assert_awaited_once_with(
+            "/lol-lobby/v2/lobby/matchmaking/search/leave")
+
+    def test_delete_fails_returns_false(self, mock_lcu):
+        """DELETE 返回 500 等其他错误时返回 False, 不尝试取消队列."""
+        delete_resp = MagicMock()
+        delete_resp.ok = False
+
+        with _patch_delete(delete_resp), \
+                _patch_post(_resp(status=204)) as mock_post:
+            result = _run(mock_lcu.dodge())
 
         assert result is False
         mock_post.assert_not_awaited()

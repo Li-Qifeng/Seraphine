@@ -1251,11 +1251,16 @@ class LolClientConnector(QObject):
         """秒退英雄选择 (同 sona: DELETE /lol-lobby/v2/lobby)."""
         try:
             res = await self.__delete("/lol-lobby/v2/lobby")
-            return res.ok
+            ok = res.ok
         except aiohttp.ClientResponseError as e:
-            return e.status == 404  # 幂等: 已不在房间视为成功
+            ok = e.status == 404  # 幂等: 已不在房间视为成功
         except Exception:
             return False
+
+        if ok:
+            # ponytail: 部分客户端 DELETE 房间不会撤销 matchmaking search, 补取消队列兜底
+            await self.leaveQueue()
+        return ok
 
     async def sendChampSelectMessage(self, message: str) -> bool:
         """向 BP 聊天窗发送一条消息.

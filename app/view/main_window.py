@@ -1431,6 +1431,7 @@ class MainWindow(FluentWindow):
         """构建上等马播报文案并延迟发送到 BP 聊天窗 (基于可见段位, 失败静默)."""
         from app.lol.horse_orchestrator import buildHorseReport
         try:
+            me = self.currentSummoner.get('puuid')
             summoners = [
                 {
                     'puuid': s.get('puuid'),
@@ -1443,18 +1444,22 @@ class MainWindow(FluentWindow):
                     'lp': (s.get('rankInfo') or {}).get('solo', {}).get('lp'),
                 }
                 for s in (allyInfo or {}).get('summoners', [])
-                if s.get('puuid') and s.get('puuid') != self.currentSummoner.get('puuid')
+                if s.get('puuid')
             ]
-            message = await buildHorseReport(summoners)
+            teammates = [s for s in summoners if s['puuid'] != me]
+            # 无队友数据时(单人自定义/队友隐藏/AI)回退到含自己, 保证播报仍能发出
+            if not teammates:
+                teammates = summoners
+            message = await buildHorseReport(teammates)
             if not message:
                 logger.warning(
                     "HorseRating: empty message; "
-                    f"summoners={len(summoners)} ally_total="
+                    f"summoners={len(teammates)} ally_total="
                     f"{len((allyInfo or {}).get('summoners', []) or [])}", TAG)
                 return
             logger.info(
                 "HorseRating: built message with "
-                f"{len(summoners)} summoners, sending", TAG)
+                f"{len(teammates)} summoners, sending", TAG)
             await asyncio.sleep(random.uniform(2.0, 5.0))
             if await connector.sendChampSelectMessage(message):
                 logger.info("HorseRating: report posted to BP chat", TAG)
