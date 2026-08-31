@@ -1419,9 +1419,11 @@ class MainWindow(FluentWindow):
     def __onManualSendHorseReport(self):
         """手动触发: 与自动发送共享每局一次守卫, 防止连点并发刷屏/竞态."""
         if not self._horseSendGuard.try_acquire():
+            logger.warning("HorseRating: manualSend blocked by per-game guard", TAG)
             return
         info = self.gameInfoInterface._allyInfo
         if not info:
+            logger.warning("HorseRating: manualSend no allyInfo", TAG)
             return
         asyncio.create_task(self.__postHorseReport(info))
 
@@ -1445,7 +1447,14 @@ class MainWindow(FluentWindow):
             ]
             message = await buildHorseReport(summoners)
             if not message:
+                logger.warning(
+                    "HorseRating: empty message; "
+                    f"summoners={len(summoners)} ally_total="
+                    f"{len((allyInfo or {}).get('summoners', []) or [])}", TAG)
                 return
+            logger.info(
+                "HorseRating: built message with "
+                f"{len(summoners)} summoners, sending", TAG)
             await asyncio.sleep(random.uniform(2.0, 5.0))
             if await connector.sendChampSelectMessage(message):
                 logger.info("HorseRating: report posted to BP chat", TAG)
