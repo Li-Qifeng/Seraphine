@@ -237,7 +237,7 @@ class AuxiliaryInterface(SeraphineInterface):
 
         # --- 全队评级组 ---
         self.enableTeamRatingCard = SwitchSettingCard(
-            Icon.TROPHY, self.tr("Team rating badges"),
+            Icon.TROPHY, self.tr("Settlement rating badge"),
             self.tr(
                 "Show a 5-tier rating badge (e.g. 神/爹/小有亮点/躺赢狗/消失) "
                 "for each teammate in game detail view"),
@@ -246,10 +246,10 @@ class AuxiliaryInterface(SeraphineInterface):
 
         self.teamRatingStyleCard = RatingStyleSettingCard(
             cfg.teamRatingStyle,
-            self.tr("Team rating style"),
+            self.tr("Settlement rating style"),
             self.tr(
                 "Tieba: 贴吧风 (win/loss separate labels); "
-                "Horse: 马系风 (上等马/中等马/下等马/纯牛马); "
+                "Horse: 马系风 (上等马/中等马/下等马/纯牛马/没有马); "
                 "Custom: 自定义胜/败方各五档文案"),
             texts=[self.tr("Tieba"), self.tr("Horse"), self.tr("Custom")],
             defaultLabels={
@@ -260,7 +260,7 @@ class AuxiliaryInterface(SeraphineInterface):
 
         # --- 上等马赛前评级组 ---
         self.enableHorseRatingChatCard = SwitchSettingCard(
-            Icon.EYES, self.tr("Horse rating chat"),
+            Icon.EYES, self.tr("Pre-match rating auto-send"),
             self.tr(
                 "Rate teammates by their visible rank at champion select and "
                 "post the verdict to BP chat"),
@@ -269,14 +269,14 @@ class AuxiliaryInterface(SeraphineInterface):
 
         self.horseRatingStyleCard = RatingStyleSettingCard(
             cfg.horseRatingStyle,
-            self.tr("Horse rating style"),
+            self.tr("Pre-match rating style"),
             self.tr(
-                "Horse: 马系风 (上等马/中上等马/中等马/下等马/驽马); "
+                "Horse: 马系风 (上等马/中等马/下等马/纯牛马/没有马); "
                 "Formal: 正式风; Custom: 自定义五档文案"),
             texts=[self.tr("Horse"), self.tr("Formal"), self.tr("Custom")],
             defaultLabels={
-                True: ['上等马', '中上等马', '中等马', '下等马', '驽马'],
-                False: ['上等马', '中上等马', '中等马', '下等马', '驽马'],
+                True: ['上等马', '中等马', '下等马', '纯牛马', '没有马'],
+                False: ['上等马', '中等马', '下等马', '纯牛马', '没有马'],
             },
             parent=self.teamRatingGroup)
 

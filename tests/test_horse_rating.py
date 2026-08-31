@@ -39,10 +39,10 @@ def test_golden_case_top_horse():
 
 
 def test_low_tier_is_bottom_horse():
-    """黑铁(0) => 驽马."""
+    """黑铁(0) => 没有马."""
     verdict = rate_horse(_profile(tierIdx=0, divisionIdx=3, lp=10))
     assert verdict['score'] == 0
-    assert verdict['grade'] == '驽马'
+    assert verdict['grade'] == '没有马'
 
 
 def test_axis_visible_score_monotonic():
@@ -81,14 +81,14 @@ def test_axis_visible_score_promotion_hint_diamond_promotion():
 @pytest.mark.parametrize('score,expected', [
     (100, '上等马'),
     (80, '上等马'),      # 边界含
-    (79.9, '中上等马'),
-    (65, '中上等马'),
-    (64.9, '中等马'),
-    (50, '中等马'),
-    (49.9, '下等马'),
-    (35, '下等马'),
-    (34.9, '驽马'),
-    (0, '驽马'),
+    (79.9, '中等马'),
+    (65, '中等马'),
+    (64.9, '下等马'),
+    (50, '下等马'),
+    (49.9, '纯牛马'),
+    (35, '纯牛马'),
+    (34.9, '没有马'),
+    (0, '没有马'),
 ])
 def test_grade_from_score_boundaries(score, expected):
     assert grade_from_score(score) == expected
@@ -98,12 +98,12 @@ def test_grade_label_styles():
     # 双风格: 同一分数不同文案
     for boundary in HORSE_THRESHOLDS:
         assert grade_label(boundary, style='horse') in (
-            '上等马', '中上等马', '中等马', '下等马')
+            '上等马', '中等马', '下等马', '纯牛马')
         assert grade_label(boundary, style='formal') in (
             '表现优异', '状态良好', '表现平平', '状态低迷')
     assert grade_label(90, style='horse') == '上等马'
     assert grade_label(90, style='formal') == '表现优异'
-    assert grade_label(20, style='horse') == '驽马'
+    assert grade_label(20, style='horse') == '没有马'
     assert grade_label(20, style='formal') == '数据不足建议观察'
     # Unknown 单独处理
     assert grade_label(None, style='horse') == '未知战马'
@@ -130,7 +130,7 @@ def test_grade_label_custom_invalid_falls_back():
     with patch('app.common.config.cfg.get', return_value=None):
         assert grade_label(90, style='custom') == '上等马'
     with patch('app.common.config.cfg.get', return_value={'win': ['a']}):
-        assert grade_label(10, style='custom') == '驽马'
+        assert grade_label(10, style='custom') == '没有马'
 
 
 # ---------------------------------------------------------------------------

@@ -62,12 +62,12 @@ def test_missing_rank_degrades_to_unknown_without_abort():
 def test_message_format_prefix_label_score():
     set_horse_verdict("puuid-1", {"score": 85, "grade": "上等马",
                                   "style_labels": {}, "reason": ""})
-    set_horse_verdict("puuid-2", {"score": 52, "grade": "中等马",
+    set_horse_verdict("puuid-2", {"score": 52, "grade": "下等马",
                                   "style_labels": {}, "reason": ""})
     msg = asyncio.run(ho.buildHorseReport(
         [_summoner("Alice", "puuid-1"), _summoner("Bob", "puuid-2")],
         style="horse"))
-    assert msg == "[Seraphine] 上等马: Alice(85分) | 中等马: Bob(52分)"
+    assert msg == "[Seraphine] 上等马: Alice(85分) | 下等马: Bob(52分)"
 
 
 def test_formal_style_switches_labels():
@@ -80,7 +80,7 @@ def test_formal_style_switches_labels():
 
 def test_default_style_reads_cfg(monkeypatch):
     monkeypatch.setattr(ho, "_current_style", lambda: "formal")
-    set_horse_verdict("puuid-1", {"score": 20, "grade": "驽马",
+    set_horse_verdict("puuid-1", {"score": 20, "grade": "没有马",
                                   "style_labels": {}, "reason": ""})
     msg = asyncio.run(ho.buildHorseReport([_summoner("Alice", "puuid-1")]))
     assert "数据不足建议观察: Alice(20分)" in msg

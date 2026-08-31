@@ -129,13 +129,13 @@ class TestGradeLabel:
         assert gradeLabel(5, False, 'tieba') == '初升东曦'
 
     def test_horse_universal(self):
-        # 马系风胜败方通用: 上等马/中上等马/中等马/下等马/纯牛马
+        # 马系风胜败方通用: 上等马/中等马/下等马/纯牛马/没有马
         for isWin in (True, False):
             assert gradeLabel(1, isWin, 'horse') == '上等马'
-            assert gradeLabel(2, isWin, 'horse') == '中上等马'
-            assert gradeLabel(3, isWin, 'horse') == '中等马'
-            assert gradeLabel(4, isWin, 'horse') == '下等马'
-            assert gradeLabel(5, isWin, 'horse') == '纯牛马'
+            assert gradeLabel(2, isWin, 'horse') == '中等马'
+            assert gradeLabel(3, isWin, 'horse') == '下等马'
+            assert gradeLabel(4, isWin, 'horse') == '纯牛马'
+            assert gradeLabel(5, isWin, 'horse') == '没有马'
 
     def test_default_style_is_tieba(self):
         # 不传 style 默认贴吧风
