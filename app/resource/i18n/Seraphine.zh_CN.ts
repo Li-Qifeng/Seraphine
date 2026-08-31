@@ -756,8 +756,8 @@ If champions set by lane are not available, default settings will be used.</sour
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="229"/>
-        <source>Team rating badges</source>
-        <translation>队友评级徽章</translation>
+        <source>Settlement rating badge</source>
+        <translation>结算评级徽章</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="229"/>
@@ -766,8 +766,8 @@ If champions set by lane are not available, default settings will be used.</sour
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="237"/>
-        <source>Team rating style</source>
-        <translation>队友评级风格</translation>
+        <source>Settlement rating style</source>
+        <translation>结算评级风格</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="237"/>
@@ -796,18 +796,18 @@ If champions set by lane are not available, default settings will be used.</sour
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="250"/>
-        <source>Tieba: 贴吧风 (win/loss separate labels); Horse: 马系风 (上等马/中等马/下等马/纯牛马); Custom: 自定义胜/败方各五档文案</source>
-        <translation>贴吧风：胜方/败方不同标签；马系风：上等马/中等马/下等马/纯牛马；自定义：胜/败方各五档文案</translation>
+        <source>Tieba: 贴吧风 (win/loss separate labels); Horse: 马系风 (上等马/中等马/下等马/纯牛马/没有马); Custom: 自定义胜/败方各五档文案</source>
+        <translation>贴吧风：胜方/败方不同标签；马系风：上等马/中等马/下等马/纯牛马/没有马；自定义：胜/败方各五档文案</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="272"/>
-        <source>Horse: 马系风 (上等马/中上等马/中等马/下等马/驽马); Formal: 正式风; Custom: 自定义五档文案</source>
-        <translation>马系风：上等马/中上等马/中等马/下等马/驽马；正式风：标准五档；自定义：自定义五档文案</translation>
+        <source>Horse: 马系风 (上等马/中等马/下等马/纯牛马/没有马); Formal: 正式风; Custom: 自定义五档文案</source>
+        <translation>马系风：上等马/中等马/下等马/纯牛马/没有马；正式风：标准五档；自定义：自定义五档文案</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="263"/>
-        <source>Horse rating chat</source>
-        <translation>上等马评论</translation>
+        <source>Pre-match rating auto-send</source>
+        <translation>赛前评级自动发送</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="265"/>
@@ -816,8 +816,8 @@ If champions set by lane are not available, default settings will be used.</sour
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="271"/>
-        <source>Horse rating style</source>
-        <translation>上等马风格</translation>
+        <source>Pre-match rating style</source>
+        <translation>赛前评级风格</translation>
     </message>
     <message>
         <location filename="../../view/auxiliary_interface.py" line="248"/>
@@ -1527,6 +1527,11 @@ If champions set by lane are not available, default settings will be used.</sour
         <location filename="../../view/game_info_interface.py" line="42"/>
         <source>Filter</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../view/game_info_interface.py" line="50"/>
+        <source>Send rating</source>
+        <translation>发送评级</translation>
     </message>
 </context>
 <context>

@@ -14,7 +14,8 @@ from ..common.qfluentwidgets import (TransparentTogglePushButton,
 from app.common.style_sheet import StyleSheet
 from app.common.config import cfg
 from app.common.signals import signalBus
-from app.lol.horse_rating import grade_label
+from app.lol.horse_rating import (GRADE_HORSE, grade_from_score, grade_label)
+from app.components.grade_badge import GradeBadge
 from app.components.champion_icon_widget import RoundIcon
 from app.components.profile_level_icon_widget import RoundLevelAvatar
 from app.components.summoner_name_button import SummonerName
@@ -28,12 +29,15 @@ from app.components.seraphine_interface import SeraphineInterface
 
 
 class GameInfoInterface(SeraphineInterface):
+    manualSendHorseReport = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.isAram = False
         self.hBoxLayout = QHBoxLayout(self)
+
+        self._allyInfo = None
 
         self.summonersView = SummonersView()
         self.summonersGamesView = QStackedWidget()
@@ -43,6 +47,8 @@ class GameInfoInterface(SeraphineInterface):
 
         self.filterButton = PushButton(self.tr("Filter"))
         self.filterButton.setFixedHeight(32)
+        self.manualSendButton = PushButton(self.tr("Send rating"))
+        self.manualSendButton.setFixedHeight(32)
         self.modeFilterWidget = ModeFilterWidget()
 
         # 保存召唤师的英雄信息
@@ -78,6 +84,8 @@ class GameInfoInterface(SeraphineInterface):
         self.filterLayout = QHBoxLayout()
         self.filterLayout.setContentsMargins(0, 0, 0, 0)
         self.filterLayout.addStretch(1)
+        self.filterLayout.addWidget(self.manualSendButton,
+                                    alignment=Qt.AlignRight)
         self.filterLayout.addWidget(self.filterButton, alignment=Qt.AlignRight)
 
         self.rightVBoxLayout.addLayout(self.filterLayout)
@@ -90,6 +98,7 @@ class GameInfoInterface(SeraphineInterface):
         self.summonersView.currentTeamChanged.connect(
             self.__onCurrentTeamChanged)
         self.filterButton.clicked.connect(self.__onFilterButtonClicked)
+        self.manualSendButton.clicked.connect(self.manualSendHorseReport.emit)
         self.modeFilterWidget.setCallback(self.__onFilterChanged)
 
     def __onFilterButtonClicked(self):
@@ -118,6 +127,7 @@ class GameInfoInterface(SeraphineInterface):
 
         self.isAram = info.get("isAram", False)
 
+        self._allyInfo = info
         self.allyChampions = info['champions']
         self.allyOrder = info['order']
 
@@ -168,6 +178,8 @@ class GameInfoInterface(SeraphineInterface):
         self.allyOrder = []
 
         self.isAram = False
+
+        self._allyInfo = None
 
         self.summonersView.ally.clear()
         self.summonersView.enemy.clear()
@@ -450,12 +462,10 @@ class SummonerInfoView(ColorAnimationFrame):
 
         self.rankFlexLp = QLabel(lp)
 
-        # 上等马赛前评级行 (基于可见段位本地计算, 异步填充)
-        self.horseLabel = QLabel('')
-        self.horseLabel.setToolTip(
-            self.tr("Pre-game rating from visible rank (tier / LP)."))
-        self.horseLabel.installEventFilter(
-            ToolTipFilter(self.horseLabel, 0, ToolTipPosition.TOP))
+        # 上等马赛前评级徽章 (基于可见段位本地计算, 异步填充)
+        self.horseBadgeBox = QHBoxLayout()
+        self.horseBadgeBox.setContentsMargins(0, 0, 0, 0)
+        self.horseBadgeBox.setSpacing(0)
 
         self.rankSolo.setToolTip(self.tr("Ranked Solo / Duo"))
         self.rankSolo.installEventFilter(
@@ -491,7 +501,7 @@ class SummonerInfoView(ColorAnimationFrame):
         self.gridLayout.addWidget(self.rankFlex, 1, 2, Qt.AlignCenter)
         self.gridLayout.addWidget(self.rankFlexLp, 1, 3, Qt.AlignCenter)
 
-        self.gridLayout.addWidget(self.horseLabel, 1, 4, Qt.AlignCenter)
+        self.gridLayout.addLayout(self.horseBadgeBox, 1, 4, Qt.AlignCenter)
 
         self.gridHBoxLayout.addSpacerItem(
             QSpacerItem(1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
@@ -534,18 +544,30 @@ class SummonerInfoView(ColorAnimationFrame):
         self.icon.updateAramInfo(info)
 
     def updateEloInfo(self, verdict: dict):
-        """填充上等马赛前评级 (基于可见段位本地计算, 异步回调)."""
+        """填充上等马赛前评级徽章 (基于可见段位本地计算, 异步回调)."""
+        self.__clearHorseBadge()
         score = (verdict or {}).get('score')
-        label = None
-        if score is not None:
-            style = str(cfg.get(cfg.horseRatingStyle))
-            label = grade_label(score, style=style)
-        if label is None:
-            label = (verdict or {}).get('grade')
-        if score is not None and label:
-            self.horseLabel.setText(f"{label} {score}")
-            self.horseLabel.setToolTip(
-                (verdict or {}).get('reason') or self.horseLabel.toolTip())
+        if score is None:
+            return
+        style = str(cfg.get(cfg.horseRatingStyle))
+        label = grade_label(score, style=style)
+        if not label:
+            return
+        grade = GRADE_HORSE.index(grade_from_score(score)) + 1
+        badge = GradeBadge(grade, label, parent=self)
+        reason = (verdict or {}).get('reason')
+        tip = f"{label} ({score}分)"
+        if reason:
+            tip = f"{tip}\n{reason}"
+        badge.setToolTip(tip)
+        self.horseBadgeBox.addWidget(badge)
+
+    def __clearHorseBadge(self):
+        for i in reversed(range(self.horseBadgeBox.count())):
+            item = self.horseBadgeBox.itemAt(i)
+            if widget := item.widget():
+                widget.deleteLater()
+            self.horseBadgeBox.removeItem(item)
 
 
 class SummonersGamesView(QFrame):

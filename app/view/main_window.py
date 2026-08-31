@@ -374,6 +374,8 @@ class MainWindow(FluentWindow):
         # From search_interface and gameinfo_interface
         signalBus.toSearchInterface.connect(self.__switchToSearchInterface)
         signalBus.toCareerInterface.connect(self.__switchToCareerInterface)
+        self.gameInfoInterface.manualSendHorseReport.connect(
+            self.__onManualSendHorseReport)
 
         # From setting_interface
         self.settingInterface.careerGamesCount.pushButton.clicked.connect(
@@ -1413,6 +1415,13 @@ class MainWindow(FluentWindow):
             asyncio.create_task(self.__postHorseReport(info))
 
         self.checkAndSwitchTo(self.gameInfoInterface)
+
+    def __onManualSendHorseReport(self):
+        """手动触发: 将当前己方队伍评级立即发送到 BP 聊天窗."""
+        info = self.gameInfoInterface._allyInfo
+        if not info:
+            return
+        asyncio.create_task(self.__postHorseReport(info))
 
     async def __postHorseReport(self, allyInfo):
         """构建上等马播报文案并延迟发送到 BP 聊天窗 (基于可见段位, 失败静默)."""
