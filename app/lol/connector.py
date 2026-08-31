@@ -1258,16 +1258,41 @@ class LolClientConnector(QObject):
             return False
 
     async def sendChampSelectMessage(self, message: str) -> bool:
-        """向 BP 聊天窗发送一条消息 (conversation id 固定为 champ-select).
+        """向 BP 聊天窗发送一条消息.
 
-        失败静默返回 False (logger.warning), 不弹窗 — 播报属锦上添花,
+        选人聊天的 conversation id 并非固定 'champ-select', 需先
+        GET /lol-chat/v1/conversations 找到 type=='championSelect' 的那条,
+        取其真实 id 再 POST — 硬编码 id 在多数客户端版本下找不到对话会失败.
+
+        失败返回 False (记 warning, 不弹窗) — 播报属锦上添花,
         不能因它打断正常流程.
         """
         try:
+            convs_res = await self.__get("/lol-chat/v1/conversations")
+            if convs_res.status != 200:
+                logger.warning(
+                    f"sendChampSelectMessage: conversations {convs_res.status}", TAG)
+                return False
+            convs = await convs_res.json()
+            conv_id = next(
+                (str(c.get("id")) for c in (convs or [])
+                 if str(c.get("type", "")).lower() == "championselect"),
+                None)
+            if not conv_id:
+                logger.warning(
+                    "sendChampSelectMessage: no championSelect conversation", TAG)
+                return False
+
             res = await self.__post(
-                "/lol-chat/v1/conversations/champ-select/messages",
+                f"/lol-chat/v1/conversations/{conv_id}/messages",
                 data={"type": "chat", "body": message})
-            return res.status in (200, 201)
+            if res.status in (200, 201):
+                logger.info("sendChampSelectMessage: posted", TAG)
+                return True
+            body = await res.text()
+            logger.warning(
+                f"sendChampSelectMessage: {res.status} {body}", TAG)
+            return False
         except Exception as e:
             logger.warning(f"sendChampSelectMessage failed: {e}", TAG)
             return False
