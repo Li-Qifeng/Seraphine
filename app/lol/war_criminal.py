@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import pathlib
+import random
 from typing import Optional, TypedDict
 
 TAG = "WarCriminal"
@@ -416,6 +417,220 @@ GRADE_LABELS_HORSE = {
     False: ['上等马', '中等马', '下等马', '纯牛马', '没有马'],
 }
 
+# ===========================================================================
+# 结算评级方案 (模板): 内置(只读, 代码常量) + 用户命名方案(存 config)
+# 每个方案 = {win:[标签×5], loss:[标签×5],
+#             winComment:[评语×5], lossComment:[评语×5], builtin:bool}
+# 评语为空串 = 悬停只显示技术证据 (不显示该档评语).
+# 方案以 "key" 存储; 内置 key 固定, 用户方案以用户输入的方案名为 key.
+# ===========================================================================
+
+# 随机选项 key (风格下拉新增; 每局在全部内置+用户方案中抽一套)
+RANDOM_TEAM_KEY = '随机'
+
+# 内置方案 key -> 中文展示名 (风格下拉显示用)
+BUILTIN_TEAM_KEYS = ('tieba', 'horse', 'dianjingxuexie',
+                     'yinyangneihan', 'wulichaodu', 'jinzhushuqi')
+DEFAULT_TEAM_KEY = 'tieba'
+BUILTIN_TEAM_DISPLAY = {
+    'tieba': '初升东曦',
+    'horse': '没有马',
+    'dianjingxuexie': '电竞纯血',
+    'yinyangneihan': '阴阳内涵',
+    'wulichaodu': '物理超度',
+    'jinzhushuqi': '尽搞畜蛆寄',
+}
+# 内置方案的默认展示名 (用于 UI 文案)
+DEFAULT_TEAM_DISPLAY = '初升东曦'
+
+
+def _builtin_team_scheme(key: str) -> dict:
+    """按内置 key 返回方案 dict (只读, 每次现构造, 无共享可变引用)."""
+    if key == 'tieba':
+        return {
+            'name': 'tieba',
+            'win': list(GRADE_LABELS_TIEBA[True]),
+            'loss': list(GRADE_LABELS_TIEBA[False]),
+            'winComment': [''] * 5,
+            'lossComment': [''] * 5,
+            'builtin': True,
+        }
+    if key == 'horse':
+        return {
+            'name': 'horse',
+            'win': list(GRADE_LABELS_HORSE[True]),
+            'loss': list(GRADE_LABELS_HORSE[False]),
+            'winComment': [''] * 5,
+            'lossComment': [''] * 5,
+            'builtin': True,
+        }
+    # 电竞纯血 (方案一)
+    if key == 'dianjingxuexie':
+        return {
+            'name': 'dianjingxuexie',
+            'win': ['通天代', '真大爹', '局内人', '纯挂件', '幽灵人'],
+            'loss': ['院长', '纯畜生', '胎盘成精', '拔网线吧', '九族消融'],
+            'winComment': [
+                '1v9顶级尽力局局长，带四头猪都能赢',
+                '关键团一锤定音，这把给你磕一个',
+                '按部就班按出技能，没犯病也没封神',
+                '主打一个陪伴，赢了但存在感为零',
+                '战后结算看ID才发现这把有你',
+            ],
+            'lossComment': [
+                '尽力了，建议直接报警抓队友',
+                '操作下饭到可以直接开席',
+                '但凡脑子发育健全点都打不出这波',
+                '对面给了多少？这把收了多少米',
+                '建议直接剥夺碳基生物呼吸权',
+            ],
+            'builtin': True,
+        }
+    # 阴阳内涵 (方案二)
+    if key == 'yinyangneihan':
+        return {
+            'name': 'yinyangneihan',
+            'win': ['佛祖降世', '顶梁柱', 'NPC', '吸血鬼', '游离态'],
+            'loss': ['人质', '假肢选手', '对面卧底', '降智光环', '人类奇迹'],
+            'winComment': [
+                '普度众生，直接渡化四个低能儿',
+                '硬核扛大梁，没你早点投了',
+                '按部就班走剧情，毫无波澜',
+                '吃三路兵线打出1000输出，纯混',
+                '人在召唤师峡谷，魂在平行宇宙',
+            ],
+            'lossComment': [
+                '被绑架了你就眨眨眼',
+                '怀疑是用脚后跟敲的键盘',
+                '最佳第六人，功勋卓著',
+                '一己之力把全队智商拉低三个档次',
+                '医学上至今无法解释你怎么活到现在的',
+            ],
+            'builtin': True,
+        }
+    # 物理超度 (方案三)
+    if key == 'wulichaodu':
+        return {
+            'name': 'wulichaodu',
+            'win': ['天神下凡', '主心骨', '填空题', '包赢哥', '摄像头'],
+            'loss': ['牢底坐穿', '小脑萎缩', '电竞慈禧', '移动ATM', '祖坟冒烟'],
+            'winComment': [
+                '砍瓜切菜，对面集体道心破碎',
+                '团战发动机，指令清晰操作在线',
+                '补齐了五人车队的空位而已',
+                '这把赢全靠你会投胎排到好队伍',
+                '全程OB录制，纯在现场看戏',
+            ],
+            'lossComment': [
+                '坐牢一整把，受尽折磨',
+                '建议赛后直接挂神经内科',
+                '割地赔款，疯狂给对面送经济',
+                '走到哪送到哪，随取随用',
+                '操作歹毒到让祖宗蒙羞',
+            ],
+            'builtin': True,
+        }
+    # 尽搞畜蛆寄 (方案四, 单字, 无评语)
+    if key == 'jinzhushuqi':
+        return {
+            'name': 'jinzhushuqi',
+            'win': ['圣', '爹', '人', '混', '鬼'],
+            'loss': ['尽', '搞', '畜', '蛆', '寄'],
+            'winComment': [''] * 5,
+            'lossComment': [''] * 5,
+            'builtin': True,
+        }
+    return _builtin_team_scheme('tieba')
+
+
+def _user_team_schemes() -> dict:
+    """读取用户命名方案: {方案名: {win:[5], loss:[5], winComment:[5]...}}."""
+    try:
+        from app.common.config import cfg
+        raw = cfg.get(cfg.teamRatingSchemes) or {}
+        if not isinstance(raw, dict):
+            raw = {}
+        out = {}
+        for name, s in raw.items():
+            if not isinstance(s, dict):
+                continue
+            win = [str(x) for x in s.get('win') or []] if isinstance(
+                s.get('win'), list) else []
+            loss = [str(x) for x in s.get('loss') or []] if isinstance(
+                s.get('loss'), list) else []
+            if len(win) != 5 or len(loss) != 5:
+                continue
+            wc = [str(x) for x in s.get('winComment') or [''] * 5]
+            lc = [str(x) for x in s.get('lossComment') or [''] * 5]
+            out[str(name)] = {
+                'name': str(name),
+                'win': win,
+                'loss': loss,
+                'winComment': (wc + [''] * 5)[:5],
+                'lossComment': (lc + [''] * 5)[:5],
+                'builtin': False,
+            }
+        # 旧版单桶自定义 (style=custom) 迁移为命名方案 '自定义'
+        legacy = cfg.get(cfg.teamRatingCustomLabels)
+        if '自定义' not in out and isinstance(legacy, dict):
+            win = [str(x) for x in legacy.get('win') or []]
+            loss = [str(x) for x in legacy.get('loss') or []]
+            if len(win) == 5 and len(loss) == 5:
+                out['自定义'] = {
+                    'name': '自定义',
+                    'win': win,
+                    'loss': loss,
+                    'winComment': [''] * 5,
+                    'lossComment': [''] * 5,
+                    'builtin': False,
+                }
+        return out
+    except Exception:
+        return {}
+
+
+def _team_scheme_by_key(key: str) -> Optional[dict]:
+    """按方案名 (内置 key 或用户方案名) 取方案; 未命中返回 None."""
+    if key in BUILTIN_TEAM_KEYS:
+        return _builtin_team_scheme(key)
+    if key == RANDOM_TEAM_KEY:
+        return None
+    return _user_team_schemes().get(key)
+
+
+def team_scheme_names() -> list:
+    """全部可选方案名 (内置 + 用户), 不含 '随机'."""
+    return list(BUILTIN_TEAM_KEYS) + sorted(_user_team_schemes().keys())
+
+
+def resolve_team_style(style: str) -> dict:
+    """把用户配置的风格值解析为具体方案 dict.
+
+    '随机' -> 从全部内置+用户方案中随机抽一套; 未命中回退默认方案.
+    旧版 'custom' 值 -> '自定义' 迁移方案 (见 _user_team_schemes).
+    """
+    if style == 'custom':
+        style = '自定义'
+    if style == RANDOM_TEAM_KEY:
+        pools = team_scheme_names()
+        if not pools:
+            pools = list(BUILTIN_TEAM_KEYS)
+        style = random.choice(pools)
+    scheme = _team_scheme_by_key(style)
+    if scheme is None:
+        scheme = _builtin_team_scheme(DEFAULT_TEAM_KEY)
+    return scheme
+
+
+def display_name_of(style: str) -> str:
+    """风格值（内置 key / 用户方案名 / 随机）-> UI 展示名."""
+    if style == RANDOM_TEAM_KEY:
+        return RANDOM_TEAM_KEY
+    scheme = _team_scheme_by_key(style)
+    if scheme is None:
+        return style
+    return BUILTIN_TEAM_DISPLAY.get(style, style)
+
 
 def gradeFromScore(score: float) -> int:
     """z-score 综合贡献分 -> 5 档评级 (1=最高, 5=最低).
@@ -438,38 +653,34 @@ def gradeFromScore(score: float) -> int:
     return 5
 
 
-def _custom_team_labels(isWin: bool) -> Optional[list]:
-    """读取用户自定义评级文案 (style='custom'); 无效/未填时返回 None."""
-    try:
-        from app.common.config import cfg
-        raw = cfg.get(cfg.teamRatingCustomLabels) or {}
-        labels = raw.get('win' if isWin else 'loss') or []
-        if isinstance(labels, list) and len(labels) == 5:
-            return [str(x) for x in labels]
-    except Exception:
-        pass
-    return None
+def _team_side(scheme: dict, isWin: bool) -> tuple:
+    """从方案取 (labels, comments) 并按档位索引取该档."""
+    labels = scheme['win' if isWin else 'loss']
+    comments = scheme['winComment' if isWin else 'lossComment']
+    return labels, comments
 
 
 def gradeLabel(grade: int, isWin: bool, style: str = 'tieba') -> str:
-    """档位 (1-5) -> 用户可见标签文本.
+    """档位 (1-5) -> 用户可见标签文本 (按方案/胜败方).
 
-    Args:
-        grade: 1-5 (1=最高, 5=最低)
-        isWin: 该玩家所在队是否获胜
-        style: 'tieba' (贴吧风, 胜败方不同) | 'horse' (马系风, 通用) |
-               'custom' (用户自定义, 胜败方各 5 档)
+    style 可为: 内置 key ('tieba'/'horse'/...)、用户方案名、或 '随机'.
+    '随机' 在此处仅作回退 (应由调用方在每局开头 resolve 为具体方案后再传入,
+    避免逐玩家重抽导致同局标签不一致).
     """
-    if style == 'custom':
-        labels = _custom_team_labels(isWin)
-        if labels is None:
-            labels = GRADE_LABELS_TIEBA[True if isWin else False]
-    elif style == 'horse':
-        labels = GRADE_LABELS_HORSE.get(isWin, GRADE_LABELS_HORSE[True])
-    else:
-        labels = GRADE_LABELS_TIEBA.get(isWin, GRADE_LABELS_TIEBA[True])
+    scheme = resolve_team_style(style)
+    labels, _ = _team_side(scheme, isWin)
     idx = max(1, min(5, grade)) - 1
     return labels[idx]
+
+
+def gradeComment(grade: int, isWin: bool, style: str = 'tieba') -> str:
+    """档位 (1-5) -> 该档评语 (悬停显示); 无评语返回 ''."""
+    scheme = resolve_team_style(style)
+    _, comments = _team_side(scheme, isWin)
+    idx = max(1, min(5, grade)) - 1
+    if not comments:
+        return ''
+    return str(comments[idx] or '')
 
 
 class TeamRatingResult(TypedDict, total=False):
@@ -522,6 +733,7 @@ async def rateEntireTeam(team: list,
             'isCurrent': (currentPuuid is not None
                           and item['puuid'] == currentPuuid),
             'evidence': item['evidence'],
+            'scheme': style,
         })
 
     return rated
@@ -559,6 +771,11 @@ async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
 
         queueId = parsed.get('queueId')
         teams = parsed.get('teams') or {}
+
+        # '随机' 风格: 每局只抽一次, 胜/败双方统一用同一套方案 (保证同局一致)
+        if ratingStyle == RANDOM_TEAM_KEY:
+            resolved = resolve_team_style(RANDOM_TEAM_KEY)
+            ratingStyle = resolved['name']
 
         winnerRating = None  # 胜方全队评级
         loserRating = None   # 败方全队评级

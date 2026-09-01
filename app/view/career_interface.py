@@ -701,10 +701,13 @@ class CareerInterface(SeraphineInterface):
         """创建战绩卡片, 若评级缓存命中则附加当前召唤师的档位徽章."""
         grade = None
         gradeLabel = ''
+        gradeComment = ''
         gradeEvidence = []
         isCurrent = False
         try:
             if cfg.get(cfg.enableTeamRating):
+                from app.lol.war_criminal import (RANDOM_TEAM_KEY, gradeLabel as _gLabel,
+                                                  gradeComment as _gComment)
                 from app.lol.war_criminal_cache import getTeamRating
                 # 判断当前召唤师所在队是胜方还是败方
                 isWin = bool(game.get('win'))
@@ -718,12 +721,13 @@ class CareerInterface(SeraphineInterface):
                     for r in ratingList:
                         if r.get('puuid') == currentPuuid:
                             grade = r.get('grade')
-                            from app.lol.war_criminal import gradeLabel as _gradeLabel
-                            # label 按当前风格现算, 不再读缓存(缓存按诊断时风格存储)
-                            gradeLabel = _gradeLabel(
-                                grade if isinstance(grade, int) else 3,
-                                bool(r.get('isWin', isWin)),
-                                cfg.get(cfg.teamRatingStyle))
+                            # label/评语按当前风格现算; 随机风格用缓存烘焙的实际方案
+                            style = cfg.get(cfg.teamRatingStyle)
+                            if style == RANDOM_TEAM_KEY:
+                                style = r.get('scheme')
+                            g = grade if isinstance(grade, int) else 3
+                            gradeLabel = _gLabel(g, bool(r.get('isWin', isWin)), style)
+                            gradeComment = _gComment(g, bool(r.get('isWin', isWin)), style)
                             gradeEvidence = r.get('evidence') or []
                             isCurrent = True
                             break
@@ -731,7 +735,8 @@ class CareerInterface(SeraphineInterface):
             pass
 
         return GameInfoBar(game, grade=grade, gradeLabel=gradeLabel,
-                           gradeEvidence=gradeEvidence, isCurrent=isCurrent)
+                       gradeEvidence=gradeEvidence, gradeComment=gradeComment,
+                       isCurrent=isCurrent)
 
     def __onfilterComboBoxChanged(self, index):
         self.gameInfoArea.delegate.vScrollBar.resetValue(0)

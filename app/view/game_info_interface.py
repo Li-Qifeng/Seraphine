@@ -544,12 +544,20 @@ class SummonerInfoView(ColorAnimationFrame):
         self.icon.updateAramInfo(info)
 
     def updateEloInfo(self, verdict: dict):
-        """填充上等马赛前评级徽章 (基于可见段位本地计算, 异步回调)."""
+        """填充上等马赛前评级徽章 (基于可见段位本地计算, 异步回调).
+
+        标签与颜色统一按分数阈值定档 (同口径, 标签/颜色/分数永远一致,
+        与 BP 聊天播报 formatHorseReport 一致).
+        """
         self.__clearHorseBadge()
         score = (verdict or {}).get('score')
         if score is None:
             return
         style = str(cfg.get(cfg.horseRatingStyle))
+        from app.lol.horse_rating import HORSE_RANDOM_KEY
+        # '随机' 风格: 用该召唤师本局缓存的实际方案 (fetchVerdictsForTeam 已烘焙)
+        if style == HORSE_RANDOM_KEY:
+            style = (verdict or {}).get('scheme') or 'horse'
         label = grade_label(score, style=style)
         if not label:
             return
@@ -690,7 +698,7 @@ class Games(QFrame):
         self.applyFilter(set())
 
     def applyFilter(self, queueIds: set):
-        """按 queueId 筛选对局; 空集合表示显示全部."""
+        """按 queueId 筛选对局; 空集合表示显示全部. 最多显示 10 条 (评级用满 20 场)."""
         # 清空现有 GameTab
         while self.gamesLayout.count():
             item = self.gamesLayout.takeAt(0)
@@ -701,14 +709,16 @@ class Games(QFrame):
         if queueIds:
             games = [g for g in games if g.get('queueId') in queueIds]
 
+        games = games[:10]
+
         for game in games:
             tab = GameTab(game)
             self.gamesLayout.addWidget(tab, stretch=1)
 
-        if len(games) < 11:
-            self.gamesLayout.addStretch(11 - len(games))
+        if len(games) < 10:
+            self.gamesLayout.addStretch(10 - len(games))
             spacing = self.gamesLayout.spacing()
-            self.gamesLayout.addSpacing(spacing * (11 - len(games)))
+            self.gamesLayout.addSpacing(spacing * (10 - len(games)))
 
     @asyncSlot()
     async def __onSummonerNameClicked(self):

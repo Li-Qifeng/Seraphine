@@ -1240,26 +1240,24 @@ class LolClientConnector(QObject):
 
         return await res.read()
 
-    async def leaveQueue(self) -> bool:
-        try:
-            res = await self.__post("/lol-lobby/v2/lobby/matchmaking/search/leave")
-            return res.status == 204
-        except Exception:
-            return False
-
     async def dodge(self) -> bool:
-        """秒退英雄选择 (同 sona: DELETE /lol-lobby/v2/lobby)."""
+        """秒退英雄选择 (自定义/排位). 逐字移植 Sona dodgeChampSelect():
+        仅 DELETE /lol-lobby/v2/lobby, 404 视为幂等成功; 其余端点(如
+        .../champ-select/v1/session/quit) 实测 no-op, 弃用.
+        """
+        tag = "Dodge"
         try:
             res = await self.__delete("/lol-lobby/v2/lobby")
-            ok = res.ok
-        except aiohttp.ClientResponseError as e:
-            ok = e.status == 404  # 幂等: 已不在房间视为成功
-        except Exception:
-            return False
-
-        if ok:
-            # ponytail: 部分客户端 DELETE 房间不会撤销 matchmaking search, 补取消队列兜底
-            await self.leaveQueue()
+            # __delete 不 raise_for_status: 真实 404 走正常返回, 在此判幂等
+            if res.status == 404:
+                ok = True
+                logger.info("dodge: delete lobby 404 idempotent", tag)
+            else:
+                ok = res.ok
+                logger.info(f"dodge: delete lobby status={res.status}", tag)
+        except Exception as e:
+            logger.warning(f"dodge: delete lobby failed: {e}", tag)
+            ok = False
         return ok
 
     async def sendChampSelectMessage(self, message: str) -> bool:

@@ -124,23 +124,25 @@ class Config(QConfig):
     autoHonorDelay = RangeConfigItem(
         "Functions", "AutoHonorDelay", 0, RangeValidator(0, 5))
 
-    # 全队 5 档评级 (胜方/败方各一套贴吧风标签, 或马系风通用标签)
+    # 全队 5 档评级 (胜方/败方各一套, 内置+用户命名方案模板)
     enableTeamRating = ConfigItem("Functions",
                                    "EnableTeamRating", True, BoolValidator())
-    teamRatingStyle = OptionsConfigItem(
-        "Functions", "TeamRatingStyle", "tieba",
-        OptionsValidator(["tieba", "horse", "custom"]))
-    # 自定义评级文案 (style=custom 时使用): {win: [...5], loss: [...5]}
+    # 结算评级风格: 内置方案 key | 用户方案名 | '随机'
+    teamRatingStyle = ConfigItem("Functions", "TeamRatingStyle", "tieba")
+    # 用户命名方案: {方案名: {win:[5], loss:[5], winComment:[5], lossComment:[5]}}
+    teamRatingSchemes = ConfigItem("Functions", "TeamRatingSchemes", {})
+    # 兼容旧版单桶自定义文案 (style=custom 时使用): {win: [...5], loss: [...5]}
     teamRatingCustomLabels = ConfigItem(
         "Functions", "TeamRatingCustomLabels", "")
 
     # 上等马赛前评级: BP 阶段按可见段位评价队友并播报到 BP 聊天窗
     enableHorseRatingChat = ConfigItem(
         "Functions", "EnableHorseRatingChat", False, BoolValidator())
-    horseRatingStyle = OptionsConfigItem(
-        "Functions", "HorseRatingStyle", "horse",
-        OptionsValidator(["horse", "formal", "custom"]))
-    # 自定义马评分文案 (style=custom 时使用): {win: [...5], loss: [...5]}
+    # 马评分风格: 内置方案 key ('horse'=纯牛马) | 用户方案名 | '随机'
+    horseRatingStyle = ConfigItem("Functions", "HorseRatingStyle", "horse")
+    # 用户命名马评分方案: {方案名: {win: [6 标签]}}
+    horseRatingSchemes = ConfigItem("Functions", "HorseRatingSchemes", {})
+    # 兼容旧版单桶自定义马评分文案 (style=custom 时使用): {win: [...6]}
     horseRatingCustomLabels = ConfigItem(
         "Functions", "HorseRatingCustomLabels", "")
 

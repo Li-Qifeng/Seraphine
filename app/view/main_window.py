@@ -107,6 +107,9 @@ class MainWindow(FluentWindow):
     fetchNoticeFailed = pyqtSignal()
     showUpdateDot = pyqtSignal()
 
+    # 秒退确认后回到 async 执行 (确认框在同步上下文弹出, 见 __showDodgeConfirmBox)
+    dodgeConfirmed = pyqtSignal()
+
     def __init__(self):
         super().__init__()
 
@@ -138,6 +141,8 @@ class MainWindow(FluentWindow):
         self._updateDot = None
         # 上等马播报: 每局每通道最多一次的守卫
         self._horseSendGuard = SendGuard()
+        # 本局实际使用的马评分方案 (随机风格时进局只抽一次, 全局共享)
+        self._horseResolvedStyle = None
 
         logger.critical("Seraphine listerners started", TAG)
 
@@ -392,6 +397,7 @@ class MainWindow(FluentWindow):
         self.checkUpToDate.connect(self.__onCheckUpToDate)
         self.fetchNoticeFailed.connect(self.__onFetchNoticeFailed)
         self.showUpdateDot.connect(self._showUpdateDot)
+        self.dodgeConfirmed.connect(self.__doDodge)
         self.stackedWidget.currentChanged.connect(
             self.__onCurrentStackedChanged)
         self.mainWindowHide.connect(self.__onWindowHide)
@@ -1407,12 +1413,18 @@ class MainWindow(FluentWindow):
         info = await parseAllyGameInfo(cSession, currentSummonerId, queueId, useSGP=True)
         self.gameInfoInterface.updateAllySummoners(info)
 
+        # 随机风格进局只 resolve 一次: UI 徽章与 BP 播报同局共用同一套方案
+        from app.lol.horse_rating import resolve_horse_style
+        self._horseResolvedStyle = resolve_horse_style(
+            str(cfg.get(cfg.horseRatingStyle)))
+
         # 对局页概览: 异步填充上等马评级 (默认开启, 失败静默)
-        asyncio.create_task(self.__fillHorseRatingForSummoners(info))
+        asyncio.create_task(
+            self.__fillHorseRatingForSummoners(info, queue_id=queueId))
 
         # 上等马赛前评级: BP 阶段评价队友并播报到聊天窗 (默认关)
         if cfg.get(cfg.enableHorseRatingChat) and self._horseSendGuard.try_acquire():
-            asyncio.create_task(self.__postHorseReport(info))
+            asyncio.create_task(self.__postHorseReport(info, queue_id=queueId))
 
         self.checkAndSwitchTo(self.gameInfoInterface)
 
@@ -1425,10 +1437,17 @@ class MainWindow(FluentWindow):
         if not info:
             logger.warning("HorseRating: manualSend no allyInfo", TAG)
             return
-        asyncio.create_task(self.__postHorseReport(info))
+        asyncio.create_task(
+            self.__postHorseReport(
+                info, queue_id=getattr(self.championSelection, 'queueId', None)))
 
-    async def __postHorseReport(self, allyInfo):
-        """构建上等马播报文案并延迟发送到 BP 聊天窗 (基于可见段位, 失败静默)."""
+    async def __postHorseReport(self, allyInfo, queue_id=None, style=None):
+        """构建上等马播报文案并延迟发送到 BP 聊天窗 (基于可见段位, 失败静默).
+
+        queue_id 非空时战绩统计只按该模式组过滤 (排位/大乱斗等).
+        style 为本局已 resolve 的方案 key (None 时用 __onChampionSelectBegin
+        烘焙的 self._horseResolvedStyle, 保证与 UI 徽章同局同方案).
+        """
         from app.lol.horse_orchestrator import buildHorseReport
         try:
             me = self.currentSummoner.get('puuid')
@@ -1442,6 +1461,8 @@ class MainWindow(FluentWindow):
                     'divisionIdx': divisionNameToIdx(
                         (s.get('rankInfo') or {}).get('solo', {}).get('division')),
                     'lp': (s.get('rankInfo') or {}).get('solo', {}).get('lp'),
+                    'gamesInfo': s.get('gamesInfo'),
+                    'kda': s.get('kda'),
                 }
                 for s in (allyInfo or {}).get('summoners', [])
                 if s.get('puuid')
@@ -1450,7 +1471,9 @@ class MainWindow(FluentWindow):
             # 无队友数据时(单人自定义/队友隐藏/AI)回退到含自己, 保证播报仍能发出
             if not teammates:
                 teammates = summoners
-            message = await buildHorseReport(teammates)
+            message = await buildHorseReport(
+                teammates, style=style or self._horseResolvedStyle,
+                queue_id=queue_id)
             if not message:
                 logger.warning(
                     "HorseRating: empty message; "
@@ -1466,13 +1489,18 @@ class MainWindow(FluentWindow):
         except Exception as e:
             logger.warning(f"HorseRating: report failed: {e}", TAG)
 
-    async def __fillHorseRatingForSummoners(self, allyInfo, side='ally'):
-        """对局页概览卡异步填充上等马评级 (基于可见段位, 默认开启)."""
+    async def __fillHorseRatingForSummoners(self, allyInfo, side='ally', queue_id=None,
+                                            style=None):
+        """对局页概览卡异步填充上等马评级 (默认开启). 大乱斗/海克斯只看 KDA.
+
+        style 为本局已 resolve 的方案 key (None 时用 __onChampionSelectBegin
+        烘焙的 self._horseResolvedStyle, 与 BP 播报同局共用同一套方案).
+        """
         from app.lol.horse_orchestrator import fetchVerdictsForTeam
 
         summoners = [
             s for s in (allyInfo or {}).get('summoners', [])
-            if s.get('puuid') and s.get('rankInfo')
+            if s.get('puuid')
         ]
         if not summoners:
             return
@@ -1485,9 +1513,12 @@ class MainWindow(FluentWindow):
                      (s.get('rankInfo') or {}).get('solo', {}).get('tier')),
                  'divisionIdx': divisionNameToIdx(
                      (s.get('rankInfo') or {}).get('solo', {}).get('division')),
-                 'lp': (s.get('rankInfo') or {}).get('solo', {}).get('lp')}
+                 'lp': (s.get('rankInfo') or {}).get('solo', {}).get('lp'),
+                 'gamesInfo': s.get('gamesInfo'),
+                 'kda': s.get('kda')}
                 for s in summoners]
-            verdicts = await fetchVerdictsForTeam(summaries)
+            verdicts = await fetchVerdictsForTeam(
+                summaries, queue_id=queue_id, style=style or self._horseResolvedStyle)
             team = (self.gameInfoInterface.summonersView.enemy
                     if side == 'enemy'
                     else self.gameInfoInterface.summonersView.ally)
@@ -1496,6 +1527,12 @@ class MainWindow(FluentWindow):
                 if not view:
                     continue
                 view.updateEloInfo(verdicts.get(s['puuid'], {}))
+            shown = sum(1 for s in summoners
+                        if (verdicts.get(s['puuid']) or {}).get('score') is not None)
+            logger.info(
+                f"HorseRating: {side} overview badges {shown}/{len(summoners)} "
+                f"(total ally {len((allyInfo or {}).get('summoners', []) or [])})",
+                TAG)
         except Exception as e:
             logger.warning(f"fill horse rating failed: {e}", TAG)
 
@@ -1576,7 +1613,8 @@ class MainWindow(FluentWindow):
             self.gameInfoInterface.allyGamesView.clear()
 
             self.gameInfoInterface.updateAllySummoners(info)
-            asyncio.create_task(self.__fillHorseRatingForSummoners(info))
+            asyncio.create_task(
+                self.__fillHorseRatingForSummoners(info, queue_id=queueId))
 
         # 将敌方的召唤师基本信息绘制上去
         async def paintEnemySummonersInfo():
@@ -1587,7 +1625,8 @@ class MainWindow(FluentWindow):
             self.gameInfoInterface.updateEnemySummoners(info)
 
             # 对局页概览: 异步填充敌方上等马评级 (与友方一致, 失败静默)
-            asyncio.create_task(self.__fillHorseRatingForSummoners(info, side='enemy'))
+            asyncio.create_task(
+                self.__fillHorseRatingForSummoners(info, side='enemy', queue_id=queueId))
 
         # 更新己方召唤师楼层顺序至角色顺序
         async def sortAllySummonersByGameRole():
@@ -2122,14 +2161,42 @@ class MainWindow(FluentWindow):
 
     @asyncSlot()
     async def __onDodgeButtonClicked(self):
-        if self.isClientProcessRunning:
-            ok = await connector.dodge()
-            if ok:
-                InfoBar.success("", self.tr("已秒退"), duration=2000,
-                                parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
-            else:
-                InfoBar.warning("", self.tr("当前不在队列中"), duration=2000,
-                                parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+        if not self.isClientProcessRunning:
+            return
+
+        # Sona 契约: 秒退会吃逃跑惩罚, 调用方须先校验 ChampSelect 阶段
+        # 并取得用户确认 — 见 sona champselect-quit-button.ts
+        try:
+            phase = await connector.getGameStatus()
+        except Exception:
+            phase = None
+        if phase != 'ChampSelect':
+            InfoBar.warning("", self.tr("当前不在英雄选择阶段"), duration=2000,
+                            parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+            return
+
+        # 弹框必须退出协程栈后进行: exec() 直接在 async 路径中
+        # 会阻塞事件循环 (见上方 game-analysis 的前车之鉴)
+        QTimer.singleShot(0, self.__showDodgeConfirmBox)
+
+    def __showDodgeConfirmBox(self):
+        msgBox = MessageBox(self.tr("确认秒退？"),
+                            self.tr("秒退将立即退出英雄选择，短时间内无法匹配，并可能扣除信誉分"),
+                            self.window())
+        msgBox.yesButton.setText(self.tr("确认秒退"))
+        msgBox.cancelButton.setText(self.tr("取消"))
+        if msgBox.exec():
+            self.dodgeConfirmed.emit()
+
+    @asyncSlot()
+    async def __doDodge(self):
+        ok = await connector.dodge()
+        if ok:
+            InfoBar.success("", self.tr("已秒退"), duration=2000,
+                            parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+        else:
+            InfoBar.warning("", self.tr("秒退失败"), duration=2000,
+                            parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
 
     @asyncSlot()
     async def __onFixLCUButtonClicked(self):

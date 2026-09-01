@@ -519,14 +519,14 @@ class TestSendChampSelectMessage:
 
 # ---------------------------------------------------------------------------
 # 契约: dodge -> bool
-#   DELETE 房间成功后追加取消队列 (search/leave), 保证退房后不再留在队列中;
-#   404 视为已不在房间的幂等成功. 其余异常返回 False.
+#   逐字移植 Sona dodgeChampSelect: 仅 DELETE /lol-lobby/v2/lobby;
+#   DELETE 404 视为已不在房间的幂等成功. 其余异常返回 False.
 # ---------------------------------------------------------------------------
 
 class TestDodge:
-    def test_delete_ok_also_cancels_queue(self, mock_lcu):
-        """DELETE 房间成功后, 追加 POST search/leave 取消匹配队列."""
-        delete_resp = MagicMock()
+    def test_delete_ok_returns_true(self, mock_lcu):
+        """DELETE 房间成功 (200/204) -> True, 不再追加任何端点."""
+        delete_resp = _resp(status=204)
         delete_resp.ok = True
 
         with _patch_delete(delete_resp), \
@@ -534,38 +534,29 @@ class TestDodge:
             result = _run(mock_lcu.dodge())
 
         assert result is True
-        mock_post.assert_awaited_once_with(
-            "/lol-lobby/v2/lobby/matchmaking/search/leave")
+        mock_post.assert_not_awaited()
 
     def test_delete_404_is_idempotent_success(self, mock_lcu):
-        """DELETE 返回 404 (已不在房间) 视为成功, 并仍尝试取消队列."""
-        err = aiohttp.ClientResponseError(
-            status=404,
-            message="not found",
-            headers={},
-            request_info=aiohttp.RequestInfo(
-                url="http://x", method="DELETE", headers={}, real_url="http://x"),
-            history=(),
-        )
+        """DELETE 返回 404 (已不在房间) 视为成功.
 
-        with patch.object(
-                connector, '_LolClientConnector__delete',
-                new=AsyncMock(side_effect=err)), \
-                _patch_post(_resp(status=204)) as mock_post:
+        客户端正常返回 response (不抛 ClientResponseError), 404 由
+        dodge() 直接判幂等成功.
+        """
+        delete_resp = _resp(status=404)
+        delete_resp.ok = False
+
+        with _patch_delete(delete_resp) as mock_del:
             result = _run(mock_lcu.dodge())
 
         assert result is True
-        mock_post.assert_awaited_once_with(
-            "/lol-lobby/v2/lobby/matchmaking/search/leave")
+        mock_del.assert_awaited_once_with("/lol-lobby/v2/lobby")
 
     def test_delete_fails_returns_false(self, mock_lcu):
-        """DELETE 返回 500 等其他错误时返回 False, 不尝试取消队列."""
-        delete_resp = MagicMock()
+        """DELETE 返回 500 等其他错误时返回 False."""
+        delete_resp = _resp(status=500)
         delete_resp.ok = False
 
-        with _patch_delete(delete_resp), \
-                _patch_post(_resp(status=204)) as mock_post:
+        with _patch_delete(delete_resp):
             result = _run(mock_lcu.dodge())
 
         assert result is False
-        mock_post.assert_not_awaited()

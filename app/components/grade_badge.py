@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel
 
-from app.common.qfluentwidgets import isDarkTheme
+from app.common.qfluentwidgets import ToolTipFilter, ToolTipPosition, isDarkTheme
 from app.lol.war_criminal_ui import (GRADE_BADGE_COLORS, METRIC_NAMES,
                                      format_metric_value, severity_comment)
 
@@ -9,11 +9,12 @@ class GradeBadge(QFrame):
     _COLORS = GRADE_BADGE_COLORS
 
     def __init__(self, grade: int, label: str, isCurrent: bool = False,
-                 evidence: list = None, parent=None):
+                 evidence: list = None, comment: str = None, parent=None):
         super().__init__(parent)
         self.grade = grade
         self.label = label
         self.isCurrent = isCurrent
+        self.comment = comment
 
         self.hBoxLayout = QHBoxLayout(self)
         self.hBoxLayout.setContentsMargins(6, 1, 6, 1)
@@ -26,10 +27,19 @@ class GradeBadge(QFrame):
 
         self._applyStyle()
 
-        if evidence:
-            tip = self._formatEvidence(evidence)
-            if tip:
-                self.setToolTip(tip)
+        tip = self._formatTooltip(comment, evidence)
+        if tip:
+            self.setToolTip(tip)
+            self.installEventFilter(ToolTipFilter(
+                self, 0, ToolTipPosition.TOP))
+
+    @staticmethod
+    def _formatTooltip(comment: str, evidence: list) -> str:
+        """评语(可选)置于首行, 空行后跟技术证据; 无评语时仅证据."""
+        ev = GradeBadge._formatEvidence(evidence)
+        if comment:
+            return comment + ('\n\n' + ev if ev else '')
+        return ev
 
     def _applyStyle(self):
         palette = self._COLORS.get(self.grade, self._COLORS[3])

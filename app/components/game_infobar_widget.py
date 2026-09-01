@@ -330,7 +330,8 @@ class AugmentRow(QFrame):
 class GameInfoBar(ColorAnimationFrame):
     def __init__(self, game: dict = None, parent: QWidget = None,
                  grade: int = None, gradeLabel: str = '',
-                 gradeEvidence: list = None, isCurrent: bool = False):
+                 gradeEvidence: list = None, gradeComment: str = None,
+                 isCurrent: bool = False):
         if game['remake']:
             type = 'remake'
         elif game['win']:
@@ -342,6 +343,7 @@ class GameInfoBar(ColorAnimationFrame):
         self.grade = grade
         self.gradeLabel = gradeLabel
         self.gradeEvidence = gradeEvidence or []
+        self.gradeComment = gradeComment
         self.isCurrent = isCurrent
 
         super().__init__(type=type, parent=parent)
@@ -409,4 +411,4 @@ class GameInfoBar(ColorAnimationFrame):
             self.hBoxLayout.addSpacing(8)
             self.hBoxLayout.addWidget(
                 GradeBadge(self.grade, self.gradeLabel, self.isCurrent,
-                           self.gradeEvidence))
+                           self.gradeEvidence, self.gradeComment))

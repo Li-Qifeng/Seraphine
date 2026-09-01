@@ -860,17 +860,20 @@ class SummonerInfoBar(QFrame):
         self.gradeBadge = None
         if ratingInfo:
             from app.components.grade_badge import GradeBadge
-            from app.lol.war_criminal import gradeLabel as _gradeLabel
-            # label 按当前风格现算, 不再读缓存(缓存按诊断时风格存储)
+            from app.lol.war_criminal import (RANDOM_TEAM_KEY, gradeLabel as _gLabel,
+                                              gradeComment as _gComment)
+            # label/评语按当前风格现算; 随机风格用缓存烘焙的实际方案
             grade = ratingInfo.get('grade') or 3
+            style = cfg.get(cfg.teamRatingStyle)
+            if style == RANDOM_TEAM_KEY:
+                style = ratingInfo.get('scheme')
+            isWin = bool(ratingInfo.get('isWin', False))
             self.gradeBadge = GradeBadge(
                 grade=grade,
-                label=_gradeLabel(
-                    grade,
-                    bool(ratingInfo.get('isWin', False)),
-                    cfg.get(cfg.teamRatingStyle)),
+                label=_gLabel(grade, isWin, style),
                 isCurrent=ratingInfo.get('isCurrent', False),
-                evidence=ratingInfo.get('evidence'))
+                evidence=ratingInfo.get('evidence'),
+                comment=_gComment(grade, isWin, style))
 
         self.__initWidget(summoner)
         self.__initLayout()

@@ -748,38 +748,55 @@ class QueueFilterCard(ExpandGroupSettingCard):
 
 
 class RatingStyleSettingCard(ExpandGroupSettingCard):
-    """评级文案风格设置卡: 头部 ComboBox 选风格, 选 'custom' 时展开
-    胜方/败方各 5 档文案编辑器, 点保存写入配置, 删除恢复默认.
-    未选 custom 时不显示展开按钮, 头部点击不展开.
+    """评级文案风格设置卡: 头部 ComboBox 选方案, 内置方案(只读) / 用户命名
+    方案(可编辑) / 随机(每局从全部方案抽一套) / 新增方案.
 
-    与 ComboBoxSettingCard 不同, 本卡把 ComboBox 放进头部 (header),
-    展开区 (view) 承载自定义文案编辑, 契合"对局信息过滤"式的内嵌页面.
+    展开区 (view) 承载当前方案的标签(+评语)编辑器:
+    - 全队评级 (cfg.teamRatingStyle): 胜方/败方各 5 档标签 + 评语
+    - 马评分 (cfg.horseRatingStyle): 按分数 6 档标签 (无胜负/评语)
+
+    内置方案仅代码常量 (不可删改); 用户方案存 cfg.teamRatingSchemes /
+    cfg.horseRatingSchemes 命名 space, 可新建/改名/编辑/删除.
     """
 
-    def __init__(self, configItem, title, content=None, texts=None,
-                 defaultLabels=None, icon=Icon.SCALEFIT, parent=None):
+    # 下拉特殊项 userData 标记
+    _NEW_MARKER = '__new__'
+
+    def __init__(self, configItem, title, content=None, icon=Icon.SCALEFIT,
+                 parent=None):
         """Args:
-        configItem:   风格 ConfigItem (如 cfg.teamRatingStyle, 含 'custom' 选项)
-        defaultLabels: 预设标签 {isWin: [5 档]}, 用于自定义为空时的占位/初始化
-        texts:         ComboBox 文本列表, 与 configItem.options 对齐
+        configItem: 风格 ConfigItem (cfg.teamRatingStyle 或 cfg.horseRatingStyle)
         """
         super().__init__(icon, title, content, parent)
         self.configItem = configItem
-        self.defaultLabels = defaultLabels or {}
+        self.isTeam = configItem is cfg.teamRatingStyle
+        self.rowCount = 5 if self.isTeam else 6
 
         self.comboBox = ComboBox(self)
-        for option, text in zip(configItem.options, texts or []):
-            self.comboBox.addItem(text, userData=option)
+        self.nameEdit = LineEdit(self)
+        self.nameHint = QLabel(self.tr("方案名"))
+        self.nameHint.setObjectName("ratingViewTitle")
+        self.templateCombo = ComboBox(self)
+        self.templateHint = QLabel(self.tr("模板"))
+        self._pendingNew = False
 
-        self.winEdits = [LineEdit(self) for _ in range(5)]
-        self.lossEdits = [LineEdit(self) for _ in range(5)]
-        self.winHints = [QLabel(self.tr("Win %1").replace("%1", str(i + 1)))
-                         for i in range(5)]
-        self.lossHints = [QLabel(self.tr("Loss %1").replace("%1", str(i + 1)))
-                          for i in range(5)]
-
-        self.titleLabel = QLabel(self.tr("Custom win/loss labels"))
-        self.titleLabel.setObjectName("ratingViewTitle")
+        if self.isTeam:
+            self.winEdits = [LineEdit(self) for _ in range(5)]
+            self.lossEdits = [LineEdit(self) for _ in range(5)]
+            self.winComEdits = [LineEdit(self) for _ in range(5)]
+            self.lossComEdits = [LineEdit(self) for _ in range(5)]
+            self.winHints = [QLabel(self.tr("Win %1").replace("%1", str(i + 1)))
+                             for i in range(5)]
+            self.lossHints = [QLabel(self.tr("Loss %1").replace("%1", str(i + 1)))
+                              for i in range(5)]
+            self.winComHints = [QLabel(self.tr("评语%1").replace("%1", str(i + 1)))
+                                for i in range(5)]
+            self.lossComHints = [QLabel(self.tr("评语%1").replace("%1", str(i + 1)))
+                                 for i in range(5)]
+        else:
+            self.labelEdits = [LineEdit(self) for _ in range(6)]
+            self.labelHints = [QLabel(self.tr("档%1").replace("%1", str(i + 1)))
+                               for i in range(6)]
 
         self.inputWidget = QWidget(self.view)
         self.inputLayout = QGridLayout(self.inputWidget)
@@ -793,19 +810,32 @@ class RatingStyleSettingCard(ExpandGroupSettingCard):
         self.__initWidget()
 
     def __initLayout(self):
-        self.titleWidget = QWidget(self.view)
-        self.titleLayout = QHBoxLayout(self.titleWidget)
-        self.titleLayout.setContentsMargins(48, 18, 44, 0)
-        self.titleLayout.addWidget(self.titleLabel)
+        self.nameWidget = QWidget(self.view)
+        self.nameLayout = QHBoxLayout(self.nameWidget)
+        self.nameLayout.setContentsMargins(48, 18, 44, 0)
+        self.nameLayout.addWidget(self.nameHint)
+        self.nameLayout.addWidget(self.nameEdit)
+        self.nameLayout.addSpacing(12)
+        self.nameLayout.addWidget(self.templateHint)
+        self.nameLayout.addWidget(self.templateCombo)
 
-        for i in range(5):
-            self.inputLayout.addWidget(self.winHints[i], i, 0, Qt.AlignRight)
-        for i in range(5):
-            self.inputLayout.addWidget(self.lossHints[i], i, 2, Qt.AlignRight)
-        for i in range(5):
-            self.inputLayout.addWidget(self.winEdits[i], i, 1, Qt.AlignLeft)
-        for i in range(5):
-            self.inputLayout.addWidget(self.lossEdits[i], i, 3, Qt.AlignLeft)
+        if self.isTeam:
+            # 左右两栏: 左=胜方5档(标签+评语), 右=败方5档
+            for i in range(5):
+                self.inputLayout.addWidget(self.winHints[i], i, 0, Qt.AlignRight)
+                self.inputLayout.addWidget(self.winEdits[i], i, 1, Qt.AlignLeft)
+                self.inputLayout.addWidget(self.winComHints[i], i, 2, Qt.AlignRight)
+                self.inputLayout.addWidget(self.winComEdits[i], i, 3, Qt.AlignLeft)
+                self.inputLayout.addWidget(self.lossHints[i], i, 5, Qt.AlignRight)
+                self.inputLayout.addWidget(self.lossEdits[i], i, 6, Qt.AlignLeft)
+                self.inputLayout.addWidget(self.lossComHints[i], i, 7, Qt.AlignRight)
+                self.inputLayout.addWidget(self.lossComEdits[i], i, 8, Qt.AlignLeft)
+            self.inputLayout.setColumnMinimumWidth(4, 48)
+        else:
+            # 赛前评分: 6 组 [档N 提示+输入] 单行横排
+            for i in range(6):
+                self.inputLayout.addWidget(self.labelHints[i], 0, 2 * i, Qt.AlignRight)
+                self.inputLayout.addWidget(self.labelEdits[i], 0, 2 * i + 1, Qt.AlignLeft)
 
         self.inputLayout.setHorizontalSpacing(19)
         self.inputLayout.setVerticalSpacing(12)
@@ -819,98 +849,304 @@ class RatingStyleSettingCard(ExpandGroupSettingCard):
 
         self.viewLayout.setSpacing(0)
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
-        self.addGroupWidget(self.titleWidget)
+        self.addGroupWidget(self.nameWidget)
         self.addGroupWidget(self.inputWidget)
         self.addGroupWidget(self.buttonWidget)
 
     def __initWidget(self):
-        self.comboBox.setCurrentIndex(
-            self.configItem.options.index(qconfig.get(self.configItem)))
+        self.__reloadCombo()
         self.comboBox.currentIndexChanged.connect(self.__onCurrentIndexChanged)
+        self.__rebuildTemplateCombo()
+        self.templateCombo.currentIndexChanged.connect(self.__onTemplateChanged)
 
         self.saveButton.clicked.connect(self.__onSaveClicked)
-
         self.deleteButton.clicked.connect(self.__onDeleteClicked)
 
         self.addWidget(self.comboBox)
-        self.__applyCustomState()
+        self.__applyState()
 
+    # ------------------------------------------------------------------
+    # 方案来源 (按本卡所属系统分派)
+    # ------------------------------------------------------------------
+    def __isRandom(self, key) -> bool:
+        if self.isTeam:
+            from app.lol.war_criminal import RANDOM_TEAM_KEY
+            return key == RANDOM_TEAM_KEY
+        from app.lol.horse_rating import HORSE_RANDOM_KEY
+        return key == HORSE_RANDOM_KEY
+
+    def __schemeNames(self) -> list:
+        if self.isTeam:
+            from app.lol.war_criminal import team_scheme_names
+            return team_scheme_names()
+        from app.lol.horse_rating import horse_scheme_names
+        return horse_scheme_names()
+
+    def __isBuiltin(self, key) -> bool:
+        if self.isTeam:
+            from app.lol.war_criminal import BUILTIN_TEAM_KEYS
+            return key in BUILTIN_TEAM_KEYS
+        from app.lol.horse_rating import HORSE_BUILTIN_KEY
+        return key == HORSE_BUILTIN_KEY
+
+    def __builtinKeys(self) -> list:
+        if self.isTeam:
+            from app.lol.war_criminal import BUILTIN_TEAM_KEYS
+            return list(BUILTIN_TEAM_KEYS)
+        from app.lol.horse_rating import HORSE_BUILTIN_KEY
+        return [HORSE_BUILTIN_KEY]
+
+    def __displayName(self, key) -> str:
+        if self.isTeam:
+            from app.lol.war_criminal import display_name_of
+            return display_name_of(key)
+        from app.lol.horse_rating import horse_display_name
+        return horse_display_name(key)
+
+    def __userSchemes(self) -> dict:
+        if self.isTeam:
+            from app.lol.war_criminal import _user_team_schemes
+            return _user_team_schemes()
+        from app.lol.horse_rating import _user_horse_schemes
+        return _user_horse_schemes()
+
+    def __styleConfig(self):
+        if self.isTeam:
+            from app.common.config import cfg
+            return cfg, cfg.teamRatingSchemes
+        from app.common.config import cfg
+        return cfg, cfg.horseRatingSchemes
+
+    def __randomLabel(self) -> str:
+        if self.isTeam:
+            from app.lol.war_criminal import RANDOM_TEAM_KEY
+            return RANDOM_TEAM_KEY
+        from app.lol.horse_rating import HORSE_RANDOM_KEY
+        return HORSE_RANDOM_KEY
+
+    def __effectiveOption(self) -> str:
+        """当前配置风格值; 旧版 'custom' 别名映射为 '自定义' 迁移方案."""
+        opt = qconfig.get(self.configItem)
+        return '自定义' if opt == 'custom' else opt
+
+    # ------------------------------------------------------------------
+    # 下拉构造 / 状态应用
+    # ------------------------------------------------------------------
+    def __reloadCombo(self):
+        self.comboBox.blockSignals(True)
+        self.comboBox.clear()
+        for key in self.__schemeNames():
+            self.comboBox.addItem(self.__displayName(key), userData=key)
+        self.comboBox.addItem(self.tr(self.__randomLabel()), userData=self.__randomLabel())
+        self.comboBox.addItem(self.tr("新增方案"), userData=self._NEW_MARKER)
+
+        cur = self.__effectiveOption()
+        idx = self.__findIndex(cur)
+        self.comboBox.setCurrentIndex(idx)
+        self.comboBox.blockSignals(False)
+
+    def __findIndex(self, key) -> int:
+        for i in range(self.comboBox.count()):
+            if self.comboBox.itemData(i) == key:
+                return i
+        return 0
+
+    def __onCurrentIndexChanged(self, index):
+        option = self.comboBox.itemData(index)
+        # 新增方案: 进入内嵌创作态 (选中即展开, 保存才落盘)
+        if option == self._NEW_MARKER:
+            self.__enterNew()
+            return
+        self._pendingNew = False
+        qconfig.set(self.configItem, option)
+        self.__applyState()
+
+    def __applyState(self):
+        option = self.__effectiveOption()
+        isCompose = self._pendingNew
+        isEditable = isCompose or option in self.__userSchemes()
+
+        self.card.expandButton.setVisible(isEditable)
+
+        self.nameEdit.setVisible(isEditable)
+        self.nameHint.setVisible(isEditable)
+        self.templateCombo.setVisible(isEditable)
+        self.templateHint.setVisible(isEditable)
+        self.__setEditsEnabled(isEditable)
+        self.saveButton.setEnabled(isEditable)
+        self.deleteButton.setEnabled(isEditable)
+
+        if isCompose:
+            self.saveButton.setText(self.tr("创建"))
+            self._expandIfVisible()
+            return
+
+        self.saveButton.setText(self.tr("保存"))
+        if isEditable:
+            self.nameEdit.setText(self.__displayName(option))
+            self.__loadScheme(option)
+            self._expandIfVisible()
+        else:
+            self.setExpand(False)
+
+    def _expandIfVisible(self):
+        if self.isVisible():
+            self._adjustViewSize()
+            self.setExpand(True)
+
+    def __setEditsEnabled(self, enabled: bool):
+        if self.isTeam:
+            for e in (self.winEdits + self.lossEdits
+                      + self.winComEdits + self.lossComEdits):
+                e.setEnabled(enabled)
+        else:
+            for e in self.labelEdits:
+                e.setEnabled(enabled)
+
+    def __enterNew(self):
+        """进入内嵌创作态: 自动命名 + 以默认内置方案为基底, 不落盘."""
+        self._pendingNew = True
+        self.templateCombo.blockSignals(True)
+        self.templateCombo.setCurrentIndex(0)
+        self.templateCombo.blockSignals(False)
+        self.nameEdit.setText(self.__nextNewName())
+        self.__loadTemplate(self.__builtinKeys()[0])
+        self.__applyState()
+        self.nameEdit.setFocus()
+        self.nameEdit.selectAll()
+
+    def __nextNewName(self) -> str:
+        used = set(self.__schemeNames())
+        name = self.tr("自定义")
+        i = 0
+        while name in used:
+            i += 1
+            name = f"{self.tr('自定义')}{i}"
+        return name
+
+    def __rebuildTemplateCombo(self):
+        self.templateCombo.blockSignals(True)
+        self.templateCombo.clear()
+        for key in self.__builtinKeys():
+            self.templateCombo.addItem(self.__displayName(key), userData=key)
+        self.templateCombo.setCurrentIndex(0)
+        self.templateCombo.blockSignals(False)
+
+    def __onTemplateChanged(self, index):
+        key = self.templateCombo.itemData(index)
+        if key is not None:
+            self.__loadTemplate(key)
+
+    def __loadTemplate(self, key: str):
+        """以内置方案为基底填充编辑区 (仅修改表单, 不落盘)."""
+        if self.isTeam:
+            from app.lol.war_criminal import _builtin_team_scheme
+            base = _builtin_team_scheme(key)
+            for i in range(5):
+                self.winEdits[i].setText(str(base['win'][i]))
+                self.lossEdits[i].setText(str(base['loss'][i]))
+                self.winComEdits[i].setText(str(base['winComment'][i]))
+                self.lossComEdits[i].setText(str(base['lossComment'][i]))
+        else:
+            from app.lol.horse_rating import _horse_scheme
+            for i, label in enumerate(_horse_scheme(key)):
+                self.labelEdits[i].setText(str(label))
+
+    # ------------------------------------------------------------------
+    # 方案内容读写 (用户方案)
+    # ------------------------------------------------------------------
+    def __loadScheme(self, name: str):
+        schemes = self.__userSchemes()
+        s = schemes.get(name) or {}
+        if self.isTeam:
+            win = s.get('win') or [''] * 5
+            loss = s.get('loss') or [''] * 5
+            wc = s.get('winComment') or [''] * 5
+            lc = s.get('lossComment') or [''] * 5
+            for i in range(5):
+                self.winEdits[i].setText(str(win[i]) if i < len(win) else '')
+                self.lossEdits[i].setText(str(loss[i]) if i < len(loss) else '')
+                self.winComEdits[i].setText(str(wc[i]) if i < len(wc) else '')
+                self.lossComEdits[i].setText(str(lc[i]) if i < len(lc) else '')
+        else:
+            labels = s.get('win') or [''] * 6
+            for i in range(6):
+                self.labelEdits[i].setText(str(labels[i]) if i < len(labels) else '')
+
+    def __gatherScheme(self) -> dict:
+        if self.isTeam:
+            return {
+                'win': [e.text() for e in self.winEdits],
+                'loss': [e.text() for e in self.lossEdits],
+                'winComment': [e.text() for e in self.winComEdits],
+                'lossComment': [e.text() for e in self.lossComEdits],
+            }
+        return {'win': [e.text() for e in self.labelEdits]}
+
+    def __onSaveClicked(self):
+        current = self.__effectiveOption()
+        name = (self.nameEdit.text() or "").strip()
+        if not name:
+            from app.common.qfluentwidgets import InfoBar, InfoBarPosition
+            InfoBar.warning(self.tr("方案名为空"), self.tr("请输入方案名后保存"),
+                            parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+            return
+        if name in self.__schemeNames() and name != current:
+            from app.common.qfluentwidgets import InfoBar, InfoBarPosition
+            InfoBar.error(self.tr("方案名重复"), self.tr("该名称已被使用"),
+                          parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+            return
+
+        _, schemecfg = self.__styleConfig()
+        schemes = dict(qconfig.get(schemecfg) or {})
+        if not self._pendingNew and name != current:
+            schemes.pop(current, None)
+        schemes[name] = self.__gatherScheme()
+        qconfig.set(schemecfg, schemes)
+        qconfig.set(self.configItem, name)
+        self._pendingNew = False
+        self.__reloadCombo()
+        self.comboBox.setCurrentIndex(self.__findIndex(name))
+
+        from app.common.qfluentwidgets import InfoBar, InfoBarPosition
+        InfoBar.success(self.tr("已保存"), self.tr("方案已更新"),
+                        parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+
+    def __onDeleteClicked(self):
+        if self._pendingNew:
+            # 创作态: 放弃 -> 回跳到当前配置方案
+            self._pendingNew = False
+            self.comboBox.setCurrentIndex(self.__findIndex(self.__effectiveOption()))
+            return
+        name = self.__effectiveOption()
+        if name not in self.__userSchemes():
+            return
+        _, schemecfg = self.__styleConfig()
+        schemes = dict(qconfig.get(schemecfg) or {})
+        schemes.pop(name, None)
+        qconfig.set(schemecfg, schemes)
+        qconfig.set(self.configItem, self.configItem.defaultValue)
+        self.__reloadCombo()
+        # __reloadCombo 内 blockSignals 已定位到 defaultValue 项;
+        # 这里仅刷新按钮/编辑区状态, 不再裸触发 currentIndexChanged
+        self.comboBox.blockSignals(True)
+        self.comboBox.setCurrentIndex(self.__findIndex(self.__effectiveOption()))
+        self.comboBox.blockSignals(False)
+        self.__applyState()
+
+    # 保持既有外观/尺寸行为
     def showEvent(self, e):
-        """构造期(setExpand)拿不到可靠的 view 尺寸: 高度不足 -> 胜/败 5 行显示不全,
-        动画状态也易残留(下拉框点击后表现异常). 延迟到真实几何后再展开."""
         super().showEvent(e)
-        if qconfig.get(self.configItem) == 'custom':
+        if self._pendingNew or self.__effectiveOption() in self.__userSchemes():
             self._adjustViewSize()
             self.setExpand(True)
 
     def toggleExpand(self):
-        if qconfig.get(self.configItem) == 'custom':
+        option = self.__effectiveOption()
+        if self._pendingNew or option in self.__userSchemes():
             super().toggleExpand()
         else:
             self.setExpand(False)
-
-    def __onCurrentIndexChanged(self, index):
-        option = self.configItem.options[index]
-        qconfig.set(self.configItem, option)
-        self.__applyCustomState()
-
-    def __applyCustomState(self):
-        isCustom = qconfig.get(self.configItem) == 'custom'
-        self.card.expandButton.setVisible(isCustom)
-        if isCustom:
-            self.__loadCustomLabels()
-            if self.isVisible():
-                self._adjustViewSize()
-                self.setExpand(True)
-        else:
-            self.setExpand(False)
-
-    def __loadCustomLabels(self):
-        """自定义文案回填; 未配置/损坏时用默认标签作为可编辑基."""
-        raw = qconfig.get(cfg.teamRatingCustomLabels if
-                          self.configItem is cfg.teamRatingStyle
-                          else cfg.horseRatingCustomLabels)
-        try:
-            win = (raw or {}).get('win') or []
-            loss = (raw or {}).get('loss') or []
-            win = [str(x) for x in win] if isinstance(win, list) else []
-            loss = [str(x) for x in loss] if isinstance(loss, list) else []
-            winValid = len(win) == 5
-            lossValid = len(loss) == 5
-        except AttributeError:
-            win, loss, winValid, lossValid = [], [], False, False
-
-        if not winValid:
-            win = list((self.defaultLabels.get(True) or [""] * 5))
-        if not lossValid:
-            loss = list((self.defaultLabels.get(False) or [""] * 5))
-
-        for edit, text in zip(self.winEdits, win):
-            edit.setText(text)
-        for edit, text in zip(self.lossEdits, loss):
-            edit.setText(text)
-
-    def __onSaveClicked(self):
-        self.__saveCustomLabels()
-
-    def __saveCustomLabels(self):
-        item = (cfg.teamRatingCustomLabels if
-                self.configItem is cfg.teamRatingStyle
-                else cfg.horseRatingCustomLabels)
-        qconfig.set(item, {
-            'win': [e.text() for e in self.winEdits],
-            'loss': [e.text() for e in self.lossEdits],
-        })
-
-    def __onDeleteClicked(self):
-        item = (cfg.teamRatingCustomLabels if
-                self.configItem is cfg.teamRatingStyle
-                else cfg.horseRatingCustomLabels)
-        qconfig.set(item, item.defaultValue)
-        qconfig.set(self.configItem, self.configItem.defaultValue)
-        self.comboBox.setCurrentIndex(
-            self.configItem.options.index(self.configItem.defaultValue))
-        self.__applyCustomState()
 
 
 class TeamColorSettingCard(ExpandGroupSettingCard):

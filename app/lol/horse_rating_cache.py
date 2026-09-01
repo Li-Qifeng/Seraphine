@@ -4,6 +4,7 @@
 TTL 600 秒过期, 过期后 get 返回 None (赛前画像变化较快, 不持久化).
 模仿 war_criminal_cache.py 的接口风格.
 """
+import copy
 import time
 from typing import Optional
 
@@ -29,7 +30,11 @@ def set_horse_verdict(puuid: Optional[str],
 
 
 def get_horse_verdict(puuid: Optional[str]) -> Optional[HorseVerdict]:
-    """查询一个玩家的评级结果. 未命中或已过期 (TTL 600s) 返回 None."""
+    """查询一个玩家的评级结果. 未命中或已过期 (TTL 600s) 返回 None.
+
+    返回深拷贝: 调用方 (orchestrator) 会往 verdict 上打 scheme 等
+    批次字段, 引用直出会把这些字段永久写回缓存.
+    """
     if not puuid:
         return None
     entry = _cache.get(str(puuid))
@@ -38,7 +43,7 @@ def get_horse_verdict(puuid: Optional[str]) -> Optional[HorseVerdict]:
     if time.time() - entry['ts'] > HORSE_CACHE_TTL_SECONDS:
         del _cache[str(puuid)]
         return None
-    return entry['verdict']
+    return copy.deepcopy(entry['verdict'])
 
 
 def clear():

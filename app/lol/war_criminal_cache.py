@@ -24,6 +24,7 @@ class PlayerRating(TypedDict, total=False):
     isWin: bool
     isCurrent: bool    # 是否当前召唤师
     evidence: list
+    scheme: Optional[str]  # 实际使用的方案名 (随机风格时为抽中的具体方案)
 
 
 _cache: dict = {}

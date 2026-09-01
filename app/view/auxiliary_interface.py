@@ -5,7 +5,6 @@ from app.common.qfluentwidgets import SettingCardGroup, SwitchSettingCard
 from app.common.style_sheet import StyleSheet
 from app.components.seraphine_interface import SeraphineInterface
 from app.components.setting_cards import QueueFilterCard, RatingStyleSettingCard
-from app.lol.war_criminal import GRADE_LABELS_TIEBA
 from app.view.auxiliary_cards import (
     OnlineStatusCard,
     ProfileBackgroundCard,
@@ -96,7 +95,7 @@ class AuxiliaryInterface(SeraphineInterface):
         )
         self.leaveQueueCard = LeaveQueueCard(
             self.tr("秒退"),
-            self.tr("离开队列或退出英雄选择"),
+            self.tr("英雄选择阶段退出当前对局（需确认，会受秒退惩罚）"),
             self.toolsGroup
         )
 
@@ -248,14 +247,9 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.teamRatingStyle,
             self.tr("Settlement rating style"),
             self.tr(
-                "Tieba: 贴吧风 (win/loss separate labels); "
-                "Horse: 马系风 (上等马/中等马/下等马/纯牛马/没有马); "
-                "Custom: 自定义胜/败方各五档文案"),
-            texts=[self.tr("Tieba"), self.tr("Horse"), self.tr("Custom")],
-            defaultLabels={
-                True: GRADE_LABELS_TIEBA[True],
-                False: GRADE_LABELS_TIEBA[False],
-            },
+                "内置方案: 初升东曦 / 没有马 / 电竞纯血 / 阴阳内涵 / 物理超度 "
+                "/ 尽搞畜蛆寄 (胜负各五档标签, 前三套带括号评语); "
+                "随机: 每局从全部方案中抽一套; 可新增命名自定义方案"),
             parent=self.teamRatingGroup)
 
         # --- 上等马赛前评级组 ---
@@ -271,13 +265,8 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.horseRatingStyle,
             self.tr("Pre-match rating style"),
             self.tr(
-                "Horse: 马系风 (上等马/中等马/下等马/纯牛马/没有马); "
-                "Formal: 正式风; Custom: 自定义五档文案"),
-            texts=[self.tr("Horse"), self.tr("Formal"), self.tr("Custom")],
-            defaultLabels={
-                True: ['上等马', '中等马', '下等马', '纯牛马', '没有马'],
-                False: ['上等马', '中等马', '下等马', '纯牛马', '没有马'],
-            },
+                "内置方案: 纯牛马 (按分档六档标签); "
+                "随机: 每局从全部方案中抽一套; 可新增命名自定义方案"),
             parent=self.teamRatingGroup)
 
         # --- OPGG 助手组 ---

@@ -919,7 +919,7 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 | 评级结果缓存 | `app\lol\war_criminal_cache.py`（`setVerdict`/`getTeamRating`） |
 | 海克斯强化基线 | `app\lol\augment_baseline.py`（`getHextechAugmentScore`） |
 | 英雄 OPGG 胜率基线 | `app\lol\champion_baseline.py`（`getChampionBaselineWinrate`） |
-| 上等马赛前评级 | `app\lol\horse_rating.py`（`rateHorse`/5 档阈值）+ `horse_rating_cache.py` + `horse_orchestrator.py`（BP 播报编排） |
+| 上等马赛前评级 | `app\lol\horse_rating.py`（`rateHorse`/6 档阈值）+ `horse_rating_cache.py` + `horse_orchestrator.py`（BP 播报编排，对齐 hh-lol-prophet 逐行+档位+得分+KDA 格式） |
 | lzyumi 第三方数据源 | `app\lol\lzyumi.py`（隐藏分/近十场，带签名与 TTL 缓存）+ `tools_lzyumi.py`（签名/解析纯函数） |
 | 海克斯强化推荐 | `app\lol\augment_recommender.py` + `app\lol\augment_live.py` |
 | Live Client 数据（对局中实时数据） | `app\lol\live_client.py`（`liveClient`，经 `signalBus.liveGameDataUpdated` 推送） |
