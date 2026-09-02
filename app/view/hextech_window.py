@@ -300,6 +300,9 @@ class HextechWindow(OpggWindowBase):
 
         try:
             await connector.benchSwap(championId)
+            # 手动选择代表用户最终意图: 置幂等标志压制本局后续愿望单自动抢,
+            # 否则下一帧 autoBenchGrab 会用愿望单英雄换掉刚手动抢到的英雄
+            self.championSelection.isHextechGrabbed = True
             self.selectInterface.markGrabbed(championId)
             self.selectInterface.setStatus(self.tr("已换：{}").format(name))
             logger.info(f"hextech: swapped to {championId}", TAG)

@@ -1073,9 +1073,6 @@ class MainWindow(FluentWindow):
             if not self.isGaming:
                 await self.__onGameStart()
             isGaming = True
-        elif status == 'None':
-            title = self.tr("Idle")
-            self._user_declined_this_session = False
         elif status == 'WaitingForStatus':
             title = self.tr("Waiting for status")
         elif status in ('PreEndOfGame', 'EndOfGame'):
@@ -1181,31 +1178,43 @@ class MainWindow(FluentWindow):
         if self._user_declined_this_session:
             return
 
-        status = await connector.getReadyCheckStatus()
-        if status.get("errorCode"):
-            return
-        if status.get('playerResponse') == 'Declined':
-            self._user_declined_this_session = True
-            return
+        try:
+            status = await connector.getReadyCheckStatus()
+            if status.get("errorCode"):
+                return
+            if status.get('playerResponse') == 'Declined':
+                self._user_declined_this_session = True
+                return
 
-        await connector.acceptMatchMaking()
+            await connector.acceptMatchMaking()
+        except Exception as e:
+            # LCU 掉线等: 下一次 ReadyCheck 会重置状态重试, 这里只记日志
+            logger.warning(f"auto accept failed: {e}", TAG)
 
     @asyncSlot(dict)
     async def __onReadyCheckChanged(self, data):
-        if data.get('playerResponse') == 'Declined':
+        declined = data.get('playerResponse') == 'Declined'
+        if declined:
             self._user_declined_this_session = True
             if self._accept_task and not self._accept_task.done():
                 self._accept_task.cancel()
                 self._accept_task = None
-        if data.get('state') == 'InProgress' and cfg.get(cfg.autoAcceptDeclineEnabled):
+        # 已拒绝后按钮无意义 (拒绝是终态, 再点 decline 无效), 不再显示
+        if (data.get('state') == 'InProgress'
+                and not declined
+                and cfg.get(cfg.autoAcceptDeclineEnabled)):
             self.declineAction.setVisible(True)
         else:
             self.declineAction.setVisible(False)
 
     async def __declineMatchMaking(self):
-        if not self._accepted_this_ready_check:
+        # 不依赖 _accepted_this_ready_check (该标志仅自动接受开启时设置):
+        # 只开"接受后可拒绝"关自动接受时, 反悔按钮同样有效
+        try:
+            await connector.declineMatchMaking()
+        except Exception as e:
+            logger.warning(f"decline match making failed: {e}", TAG)
             return
-        await connector.declineMatchMaking()
         self._user_declined_this_session = True
         if self._accept_task and not self._accept_task.done():
             self._accept_task.cancel()
