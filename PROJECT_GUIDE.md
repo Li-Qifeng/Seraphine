@@ -3,7 +3,7 @@
 > 本文档面向**二次开发者**，聚焦于：架构与实现原理深析、二次开发规范、已知问题与技术债。
 > 安装、卸载、FAQ、免责声明、致谢等内容请参见 [`readme.md`](./readme.md)。
 >
-> **当前适用版本**：`v1.2.13`（`app/common/config.py:270`）
+> **当前适用版本**：`v1.3.0`（`app/common/config.py:285`）
 > **原作者 / 年份**：Zzaphkiel / 2023
 > **当前维护者**：Li-Qifeng（[Li-Qifeng/Seraphine](https://github.com/Li-Qifeng/Seraphine)）—— 本仓库为 [Zzaphkiel/Seraphine](https://github.com/Zzaphkiel/Seraphine) 的二次开发版本
 > **许可证**：GPLv3（禁止商用）
@@ -992,4 +992,4 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 ---
 
-*本文档基于 v1.2.13 源码梳理。代码变更时请同步更新对应章节，并在版本升级时更新顶部「适用版本」。*
+*本文档基于 v1.3.0 源码梳理。代码变更时请同步更新对应章节，并在版本升级时更新顶部「适用版本」。*
