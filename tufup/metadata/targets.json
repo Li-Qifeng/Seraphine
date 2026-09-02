@@ -2,12 +2,12 @@
  "signatures": [
   {
    "keyid": "5614cb68f92ba685376dd1942c1599283e36c418f2ca7f424f0ce8ae02f9138a",
-   "sig": "a81772ce806ab543002b9383e50ce8ed932d42bf0257cafe54e1eccb99200d247c0879d48d73ca8fdb66f0b65938a6b56852fdd3d3f8016283917a5c84984108"
+   "sig": "14ad82b74e2712d1d277affb9f4afc07bf10f3ce81528a991a5eb92e590c1a931ab95e510a4979ea5d44c916a28677cc20738a3d38d260072727b98faeaedf02"
   }
  ],
  "signed": {
   "_type": "targets",
-  "expires": "2026-09-09T13:06:22Z",
+  "expires": "2026-09-09T13:32:00Z",
   "spec_version": "1.0.31",
   "targets": {
    "Seraphine-1.2.0.tar.gz": {
@@ -151,6 +151,32 @@
      "sha256": "f998473523f1a22715237e206bb99bdca195d0d09d2414bb64dd95716da4c17c"
     },
     "length": 59654842
+   },
+   "Seraphine-1.2.14.patch": {
+    "custom": {
+     "tufup": {
+      "tar_hash": "ed6cddd09792f39f8c548c289e04079c7da64e544fb904a7866252755f37af6a",
+      "tar_hash_algorithm": "sha256",
+      "tar_size": 139161600
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "afa62201be767bf96840015df13fef877dc83e143e2f0da9ad60dbef0fe44b27"
+    },
+    "length": 230986
+   },
+   "Seraphine-1.2.14.tar.gz": {
+    "custom": {
+     "tufup": {
+      "required": false
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "d9862406451e0b4329119d2da9e576b24be1c4ad807ad018902f8b6f9a7500c0"
+    },
+    "length": 59656285
    },
    "Seraphine-1.2.2.patch": {
     "custom": {
@@ -361,6 +387,6 @@
     "length": 59532802
    }
   },
-  "version": 15
+  "version": 16
  }
 }
