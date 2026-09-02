@@ -12,6 +12,8 @@ import types
 from unittest.mock import MagicMock, patch
 
 # === 在 import tufup_updater 前 mock app.common.config (sandbox 无 PyQt5) ===
+_real_app_common_config = sys.modules.get("app.common.config")
+_real_app_common_logger = sys.modules.get("app.common.logger")
 _mock_config = types.ModuleType("app.common.config")
 _mock_config.VERSION = "1.1.9"
 _mock_config.LOCAL_PATH = "/tmp/mock_seraphine"
@@ -26,6 +28,13 @@ sys.modules["app.common.logger"] = _logger_module
 
 
 from app.common import tufup_updater  # noqa: E402
+
+# tufup_updater 已顶层绑定 mock 的 VERSION/LOCAL_PATH/logger; 恢复 sys.modules
+# 为导入前的真实模块, 避免污染后续测试的 app.common.config/logger 导入.
+if _real_app_common_config is not None:
+    sys.modules["app.common.config"] = _real_app_common_config
+if _real_app_common_logger is not None:
+    sys.modules["app.common.logger"] = _real_app_common_logger
 
 
 class TestGetAppInstallDir:

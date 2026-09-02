@@ -29,9 +29,13 @@ import app.lol.champion_baseline  # noqa: E402, F401
 
 from app.lol.war_criminal import (  # noqa: E402
     ParticipantStats,
+    RANDOM_TEAM_KEY,
     rateEntireTeam,
     gradeFromScore,
     gradeLabel,
+    gradeComment,
+    resolve_team_style,
+    team_scheme_names,
     _kda,
     _zScore,
     _roleOf,
@@ -293,6 +297,71 @@ class TestGradeLabel:
     def test_grade_out_of_range_clamped(self):
         assert gradeLabel(0, True, 'tieba') == '神'
         assert gradeLabel(99, True, 'tieba') == '消失'
+
+    def test_user_scheme_win_and_loss(self):
+        """用户命名方案: 胜/败方各五档标签 + 括号评语."""
+        from unittest.mock import patch
+        custom = {
+            '我的方案': {
+                'win': ['W1', 'W2', 'W3', 'W4', 'W5'],
+                'loss': ['L1', 'L2', 'L3', 'L4', 'L5'],
+                'winComment': ['C1', 'C2', 'C3', 'C4', 'C5'],
+                'lossComment': ['D1', 'D2', 'D3', 'D4', 'D5'],
+            }
+        }
+        with patch('app.lol.war_criminal._user_team_schemes',
+                   return_value=custom):
+            for g, expect in zip(range(1, 6), custom['我的方案']['win']):
+                assert gradeLabel(g, True, '我的方案') == expect
+                assert gradeComment(g, True, '我的方案') == \
+                    custom['我的方案']['winComment'][g - 1]
+            for g, expect in zip(range(1, 6), custom['我的方案']['loss']):
+                assert gradeLabel(g, False, '我的方案') == expect
+                assert gradeComment(g, False, '我的方案') == \
+                    custom['我的方案']['lossComment'][g - 1]
+
+    def test_unknown_style_falls_back_to_default(self):
+        """未知方案名/损坏数据回退贴吧默认."""
+        assert gradeLabel(1, True, '不存在的方案') == '神'
+        assert gradeLabel(5, False, '不存在的方案') == '初升东曦'
+
+    def test_builtin_comments_nonempty_and_fourth_empty(self):
+        """前三套内置评语非空; 尽搞畜蛆寄无评语 -> 悬停走技术证据."""
+        for key in ('dianjingxuexie', 'yinyangneihan', 'wulichaodu'):
+            for isWin in (True, False):
+                assert gradeComment(1, isWin, key) != ''
+                assert gradeComment(5, isWin, key) != ''
+        assert gradeComment(1, True, 'jinzhushuqi') == ''
+        assert gradeComment(5, False, 'jinzhushuqi') == ''
+
+    def test_random_resolve_returns_concrete_scheme(self):
+        """随机风格 -> 解析为内置+用户池中一套具体 5 档方案 (同局统一)."""
+        for _ in range(50):
+            scheme = resolve_team_style(RANDOM_TEAM_KEY)
+            assert len(scheme['win']) == 5
+            assert len(scheme['loss']) == 5
+            assert scheme['name'] in team_scheme_names()
+
+    def test_legacy_custom_migrates_to_named_scheme(self):
+        """旧版单桶自定义 (style=custom) 自动迁移为命名方案 '自定义'."""
+        from unittest.mock import patch
+        from app.common.config import cfg
+        from app.lol.war_criminal import _user_team_schemes
+        legacy = {'win': ['A', 'B', 'C', 'D', 'E'],
+                  'loss': ['a', 'b', 'c', 'd', 'e']}
+
+        def fake_get(item):
+            if item is cfg.teamRatingCustomLabels:
+                return legacy
+            return {}
+
+        with patch('app.common.config.cfg.get', side_effect=fake_get):
+            schemes = _user_team_schemes()
+            assert '自定义' in schemes
+            assert schemes['自定义']['win'] == legacy['win']
+            assert schemes['自定义']['loss'] == legacy['loss']
+            assert gradeLabel(1, True, '自定义') == 'A'
+            assert gradeLabel(5, False, '自定义') == 'e'
 
 
 class TestGradeFromScore:

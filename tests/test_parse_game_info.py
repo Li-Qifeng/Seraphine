@@ -443,3 +443,81 @@ class TestSGPPath:
         assert sgp_calls == []
         assert parse_calls == [2]
         assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# parseAllyGameInfo: SGP 只解析出本人时回退 LCU 补全队友
+# ---------------------------------------------------------------------------
+
+def test_parse_ally_sgp_sparse_falls_back_to_lcu():
+    """SGP 因队友 puuid 缺失/HIDDEN 只返回本人 (len=1) 时, 用 LCU 接口补全队友."""
+    from unittest.mock import patch as _patch
+    from app.lol.tools import parseAllyGameInfo
+
+    session = {
+        'myTeam': [_player(1, champion_id=10),
+                   _player(2, champion_id=20),
+                   _player(3, champion_id=30)],
+    }
+    # 真实对局 myTeam 的 participant 带 cellId (楼层), 保证 sort 有可比键
+    for i, p in enumerate(session['myTeam']):
+        p['cellId'] = i + 1
+    parse_calls = []
+
+    async def mock_sgp(item, qid, csid):
+        # SGP 只成功解析本人 (summonerId=1), 队友返回 None
+        return {'summonerId': 1, 'championId': 10, 'selectedPosition': None,
+                'cellId': item.get('cellId')} \
+            if item['summonerId'] == 1 else None
+
+    async def mock_parse(item, qid, csid):
+        parse_calls.append(item['summonerId'])
+        return {'summonerId': item['summonerId'],
+                'championId': item['championId'],
+                'selectedPosition': item.get('selectedPosition'),
+                'cellId': item.get('cellId')}
+
+    with _patch("app.lol.tools.getSummonerGamesInfoViaSGP", new=mock_sgp), \
+            _patch("app.lol.tools.parseSummonerGameInfo", new=mock_parse), \
+            _patch("app.lol.tools.connector.isInTencent", return_value=True):
+        result = _run(parseAllyGameInfo(session, 1, 440, useSGP=True))
+
+    # SGP 稀疏 (1 人) -> 回退 LCU 补全, 得到全部 3 人
+    assert result is not None
+    assert len(result['summoners']) == 3
+    assert sorted(parse_calls) == [1, 2, 3]
+
+
+def test_parse_ally_sgp_complete_keeps_sgp():
+    """SGP 完整 (>=2) 时不回退, 不再额外调用 LCU parse."""
+    from unittest.mock import patch as _patch
+    from app.lol.tools import parseAllyGameInfo
+
+    session = {
+        'myTeam': [_player(1, champion_id=10), _player(2, champion_id=20)],
+    }
+    for i, p in enumerate(session['myTeam']):
+        p['cellId'] = i + 1
+    parse_calls = []
+
+    async def mock_sgp(item, qid, csid):
+        return {'summonerId': item['summonerId'],
+                'championId': item['championId'],
+                'selectedPosition': item.get('selectedPosition'),
+                'cellId': item.get('cellId')}
+
+    async def mock_parse(item, qid, csid):
+        parse_calls.append(item['summonerId'])
+        return {'summonerId': item['summonerId'],
+                'championId': item['championId'],
+                'selectedPosition': item.get('selectedPosition'),
+                'cellId': item.get('cellId')}
+
+    with _patch("app.lol.tools.getSummonerGamesInfoViaSGP", new=mock_sgp), \
+            _patch("app.lol.tools.parseSummonerGameInfo", new=mock_parse), \
+            _patch("app.lol.tools.connector.isInTencent", return_value=True):
+        result = _run(parseAllyGameInfo(session, 1, 440, useSGP=True))
+
+    assert result is not None
+    assert len(result['summoners']) == 2
+    assert parse_calls == []  # 不回退, 不调用 LCU

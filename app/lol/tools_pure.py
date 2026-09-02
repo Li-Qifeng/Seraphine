@@ -109,6 +109,28 @@ def parseGames(games, targetId=0):
     return hitGames, kills, deaths, assists, wins, losses
 
 
+def aramStatsFromGames(games, queue_ids=(450, 2400)) -> Optional[dict]:
+    """按队列统计窗口内场数/胜率; 无该类对局时返回 None.
+
+    games 为 parseSummonerData 产物 (含 'win'/'queueId'/'remake' 的 dict 列表).
+    默认合并经典大乱斗 (450) 与海克斯大乱斗 (2400); 也可传单个 queueId.
+    """
+    wins = losses = 0
+    for qid in queue_ids:
+        _, _, _, _, w, lost = parseGames(games, qid)
+        wins += w
+        losses += lost
+    if wins + losses == 0:
+        return None
+    total = wins + losses
+    return {
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "rate": f"{wins / total * 100:.1f}%",
+    }
+
+
 def _extractHonorCandidates(eogStats: Optional[dict]) -> list:
     """从 ballot 提取 honor 候选列表.
 

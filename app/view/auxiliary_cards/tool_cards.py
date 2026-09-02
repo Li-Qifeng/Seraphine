@@ -1,11 +1,11 @@
 import os
 import stat
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout
 from qasync import asyncSlot
 from app.common.config import cfg
 from app.common.icons import Icon
-from app.common.qfluentwidgets import SettingCard, LineEdit, PushButton, ComboBox, SwitchButton, IndicatorPosition, InfoBar, InfoBarPosition, ExpandGroupSettingCard
+from app.common.qfluentwidgets import SettingCard, LineEdit, PushButton, ComboBox, SwitchButton, IndicatorPosition, InfoBar, InfoBarPosition, ExpandGroupSettingCard, MessageBox
 from app.lol.connector import connector
 from app.lol.exceptions import *
 from app.lol.tools import fixLCUWindowViaExe
@@ -44,6 +44,8 @@ class RestartClientCard(SettingCard):
         await connector.restartClient()
 
 class LeaveQueueCard(SettingCard):
+    # 秒退确认后回到 async 执行 (确认框在同步上下文弹出, 见 __showConfirmBox)
+    dodgeConfirmed = pyqtSignal()
 
     def __init__(self, title, content, parent):
         super().__init__(Icon.EXIT, title, content, parent)
@@ -54,15 +56,41 @@ class LeaveQueueCard(SettingCard):
         self.hBoxLayout.addSpacing(16)
 
         self.pushButton.clicked.connect(self.__onButtonClicked)
+        self.dodgeConfirmed.connect(self.__doDodge)
 
     @asyncSlot()
     async def __onButtonClicked(self):
+        # Sona 契约: 秒退会吃逃跑惩罚, 调用方须先校验 ChampSelect 阶段
+        # 并取得用户确认 — 见 sona champselect-quit-button.ts
+        try:
+            phase = await connector.getGameStatus()
+        except Exception:
+            phase = None
+        if phase != 'ChampSelect':
+            InfoBar.warning("", self.tr("当前不在英雄选择阶段"), duration=2000,
+                            parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
+            return
+
+        # 弹框必须退出协程栈后进行: exec() 直接在 async 路径中会阻塞事件循环
+        QTimer.singleShot(0, self.__showConfirmBox)
+
+    def __showConfirmBox(self):
+        msgBox = MessageBox(self.tr("确认秒退？"),
+                            self.tr("秒退将立即退出英雄选择，短时间内无法匹配，并可能扣除信誉分"),
+                            self.window())
+        msgBox.yesButton.setText(self.tr("确认秒退"))
+        msgBox.cancelButton.setText(self.tr("取消"))
+        if msgBox.exec():
+            self.dodgeConfirmed.emit()
+
+    @asyncSlot()
+    async def __doDodge(self):
         ok = await connector.dodge()
         if ok:
             InfoBar.success("", self.tr("已秒退"), duration=2000,
                             parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
         else:
-            InfoBar.warning("", self.tr("当前不在队列中"), duration=2000,
+            InfoBar.warning("", self.tr("秒退失败"), duration=2000,
                             parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
 
 class CreatePracticeLobbyCard(ExpandGroupSettingCard):

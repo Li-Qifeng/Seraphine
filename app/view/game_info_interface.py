@@ -12,7 +12,10 @@ from ..common.qfluentwidgets import (TransparentTogglePushButton,
                                      PushButton, Flyout)
 
 from app.common.style_sheet import StyleSheet
+from app.common.config import cfg
 from app.common.signals import signalBus
+from app.lol.horse_rating import (GRADE_HORSE, grade_from_score, grade_label)
+from app.components.grade_badge import GradeBadge
 from app.components.champion_icon_widget import RoundIcon
 from app.components.profile_level_icon_widget import RoundLevelAvatar
 from app.components.summoner_name_button import SummonerName
@@ -26,12 +29,15 @@ from app.components.seraphine_interface import SeraphineInterface
 
 
 class GameInfoInterface(SeraphineInterface):
+    manualSendHorseReport = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.isAram = False
         self.hBoxLayout = QHBoxLayout(self)
+
+        self._allyInfo = None
 
         self.summonersView = SummonersView()
         self.summonersGamesView = QStackedWidget()
@@ -41,6 +47,8 @@ class GameInfoInterface(SeraphineInterface):
 
         self.filterButton = PushButton(self.tr("Filter"))
         self.filterButton.setFixedHeight(32)
+        self.manualSendButton = PushButton(self.tr("Send rating"))
+        self.manualSendButton.setFixedHeight(32)
         self.modeFilterWidget = ModeFilterWidget()
 
         # 保存召唤师的英雄信息
@@ -76,6 +84,8 @@ class GameInfoInterface(SeraphineInterface):
         self.filterLayout = QHBoxLayout()
         self.filterLayout.setContentsMargins(0, 0, 0, 0)
         self.filterLayout.addStretch(1)
+        self.filterLayout.addWidget(self.manualSendButton,
+                                    alignment=Qt.AlignRight)
         self.filterLayout.addWidget(self.filterButton, alignment=Qt.AlignRight)
 
         self.rightVBoxLayout.addLayout(self.filterLayout)
@@ -88,6 +98,7 @@ class GameInfoInterface(SeraphineInterface):
         self.summonersView.currentTeamChanged.connect(
             self.__onCurrentTeamChanged)
         self.filterButton.clicked.connect(self.__onFilterButtonClicked)
+        self.manualSendButton.clicked.connect(self.manualSendHorseReport.emit)
         self.modeFilterWidget.setCallback(self.__onFilterChanged)
 
     def __onFilterButtonClicked(self):
@@ -116,6 +127,7 @@ class GameInfoInterface(SeraphineInterface):
 
         self.isAram = info.get("isAram", False)
 
+        self._allyInfo = info
         self.allyChampions = info['champions']
         self.allyOrder = info['order']
 
@@ -166,6 +178,8 @@ class GameInfoInterface(SeraphineInterface):
         self.allyOrder = []
 
         self.isAram = False
+
+        self._allyInfo = None
 
         self.summonersView.ally.clear()
         self.summonersView.enemy.clear()
@@ -448,6 +462,11 @@ class SummonerInfoView(ColorAnimationFrame):
 
         self.rankFlexLp = QLabel(lp)
 
+        # 上等马赛前评级徽章 (基于可见段位本地计算, 异步填充)
+        self.horseBadgeBox = QHBoxLayout()
+        self.horseBadgeBox.setContentsMargins(0, 0, 0, 0)
+        self.horseBadgeBox.setSpacing(0)
+
         self.rankSolo.setToolTip(self.tr("Ranked Solo / Duo"))
         self.rankSolo.installEventFilter(
             ToolTipFilter(self.rankSolo, 0, ToolTipPosition.TOP))
@@ -481,6 +500,8 @@ class SummonerInfoView(ColorAnimationFrame):
         self.gridLayout.addWidget(self.rankFlexIcon, 1, 1, Qt.AlignCenter)
         self.gridLayout.addWidget(self.rankFlex, 1, 2, Qt.AlignCenter)
         self.gridLayout.addWidget(self.rankFlexLp, 1, 3, Qt.AlignCenter)
+
+        self.gridLayout.addLayout(self.horseBadgeBox, 1, 4, Qt.AlignCenter)
 
         self.gridHBoxLayout.addSpacerItem(
             QSpacerItem(1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
@@ -521,6 +542,40 @@ class SummonerInfoView(ColorAnimationFrame):
 
     def updateAramInfo(self, info):
         self.icon.updateAramInfo(info)
+
+    def updateEloInfo(self, verdict: dict):
+        """填充上等马赛前评级徽章 (基于可见段位本地计算, 异步回调).
+
+        标签与颜色统一按分数阈值定档 (同口径, 标签/颜色/分数永远一致,
+        与 BP 聊天播报 formatHorseReport 一致).
+        """
+        self.__clearHorseBadge()
+        score = (verdict or {}).get('score')
+        if score is None:
+            return
+        style = str(cfg.get(cfg.horseRatingStyle))
+        from app.lol.horse_rating import HORSE_RANDOM_KEY
+        # '随机' 风格: 用该召唤师本局缓存的实际方案 (fetchVerdictsForTeam 已烘焙)
+        if style == HORSE_RANDOM_KEY:
+            style = (verdict or {}).get('scheme') or 'horse'
+        label = grade_label(score, style=style)
+        if not label:
+            return
+        grade = GRADE_HORSE.index(grade_from_score(score)) + 1
+        badge = GradeBadge(grade, label, parent=self)
+        reason = (verdict or {}).get('reason')
+        tip = f"{label} ({score}分)"
+        if reason:
+            tip = f"{tip}\n{reason}"
+        badge.setToolTip(tip)
+        self.horseBadgeBox.addWidget(badge)
+
+    def __clearHorseBadge(self):
+        for i in reversed(range(self.horseBadgeBox.count())):
+            item = self.horseBadgeBox.itemAt(i)
+            if widget := item.widget():
+                widget.deleteLater()
+            self.horseBadgeBox.removeItem(item)
 
 
 class SummonersGamesView(QFrame):
@@ -643,7 +698,7 @@ class Games(QFrame):
         self.applyFilter(set())
 
     def applyFilter(self, queueIds: set):
-        """按 queueId 筛选对局; 空集合表示显示全部."""
+        """按 queueId 筛选对局; 空集合表示显示全部. 最多显示 10 条 (评级用满 20 场)."""
         # 清空现有 GameTab
         while self.gamesLayout.count():
             item = self.gamesLayout.takeAt(0)
@@ -654,14 +709,16 @@ class Games(QFrame):
         if queueIds:
             games = [g for g in games if g.get('queueId') in queueIds]
 
+        games = games[:10]
+
         for game in games:
             tab = GameTab(game)
             self.gamesLayout.addWidget(tab, stretch=1)
 
-        if len(games) < 11:
-            self.gamesLayout.addStretch(11 - len(games))
+        if len(games) < 10:
+            self.gamesLayout.addStretch(10 - len(games))
             spacing = self.gamesLayout.spacing()
-            self.gamesLayout.addSpacing(spacing * (11 - len(games)))
+            self.gamesLayout.addSpacing(spacing * (10 - len(games)))
 
     @asyncSlot()
     async def __onSummonerNameClicked(self):

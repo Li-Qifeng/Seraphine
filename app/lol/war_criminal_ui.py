@@ -6,6 +6,7 @@ GRADE_ACCENT = {
     3: '#90A4AE',
     4: '#FF9100',
     5: '#FF1744',
+    6: '#CE93D8',  # 赛前评级第 6 档 (牛马): 深紫, 与结算 5 档共用此表
 }
 
 # (light_fg_current, light_bg_current, light_border_current,
@@ -33,6 +34,11 @@ GRADE_BADGE_COLORS = {
         '#B71C1C', 'rgba(213,0,0,0.10)', '#FF1744',
         '#ffffff', '#D50000', '#EF9A9A',
         '#EF9A9A', 'rgba(239,154,154,0.14)', '#EF9A9A'),
+    # 第 6 档 (赛前评级"牛马"): 深紫, 比第 5 档红色更深一档
+    6: ('#ffffff', '#8E24AA', '#4A0F5E',
+        '#6A1B9A', 'rgba(142,36,170,0.12)', '#AB47BC',
+        '#ffffff', '#8E24AA', '#CE93D8',
+        '#CE93D8', 'rgba(206,147,216,0.14)', '#CE93D8'),
 }
 
 METRIC_NAMES = {

@@ -1240,21 +1240,75 @@ class LolClientConnector(QObject):
 
         return await res.read()
 
-    async def leaveQueue(self) -> bool:
-        try:
-            res = await self.__post("/lol-lobby/v2/lobby/matchmaking/search/leave")
-            return res.status == 204
-        except Exception:
-            return False
-
     async def dodge(self) -> bool:
-        """秒退英雄选择 (同 sona: DELETE /lol-lobby/v2/lobby)."""
+        """秒退英雄选择 (自定义/排位). 逐字移植 Sona dodgeChampSelect():
+        仅 DELETE /lol-lobby/v2/lobby, 404 视为幂等成功; 其余端点(如
+        .../champ-select/v1/session/quit) 实测 no-op, 弃用.
+        """
+        tag = "Dodge"
         try:
             res = await self.__delete("/lol-lobby/v2/lobby")
-            return res.ok
-        except aiohttp.ClientResponseError as e:
-            return e.status == 404  # 幂等: 已不在房间视为成功
-        except Exception:
+            # __delete 不 raise_for_status: 真实 404 走正常返回, 在此判幂等
+            if res.status == 404:
+                ok = True
+                logger.info("dodge: delete lobby 404 idempotent", tag)
+            else:
+                ok = res.ok
+                logger.info(f"dodge: delete lobby status={res.status}", tag)
+        except Exception as e:
+            logger.warning(f"dodge: delete lobby failed: {e}", tag)
+            ok = False
+        return ok
+
+    async def sendChampSelectMessage(self, message: str) -> bool:
+        """向 BP 聊天窗发送一条消息.
+
+        选人聊天的 conversation id 并非固定 'champ-select', 需先
+        GET /lol-chat/v1/conversations 找到 type=='championSelect' 的那条,
+        取其真实 id 再 POST — 硬编码 id 在多数客户端版本下找不到对话会失败.
+
+        失败返回 False (记 warning, 不弹窗) — 播报属锦上添花,
+        不能因它打断正常流程.
+        """
+        try:
+            convs_res = await self.__get("/lol-chat/v1/conversations")
+            if convs_res.status != 200:
+                logger.warning(
+                    f"sendChampSelectMessage: conversations {convs_res.status}", TAG)
+                return False
+            convs = await convs_res.json()
+            # 诊断: 实机打印对话列表, 定位 `championSelect` 对话是否真是
+            # 用户所视的 BP 聊天框. 取证后按需移除.
+            if isinstance(convs, list):
+                for c in convs:
+                    if isinstance(c, dict):
+                        logger.warning(
+                            "sendChampSelectMessage: conv "
+                            f"id={c.get('id')} type={c.get('type')} "
+                            f"name={c.get('name')}", TAG)
+            conv_id = next(
+                (str(c.get("id")) for c in (convs or [])
+                 if str(c.get("type", "")).lower() == "championselect"),
+                None)
+            if not conv_id:
+                logger.warning(
+                    "sendChampSelectMessage: no championSelect conversation", TAG)
+                return False
+            logger.warning(
+                f"sendChampSelectMessage: found conv_id={conv_id}", TAG)
+
+            res = await self.__post(
+                f"/lol-chat/v1/conversations/{conv_id}/messages",
+                data={"type": "chat", "body": message})
+            if res.status in (200, 201):
+                logger.info("sendChampSelectMessage: posted", TAG)
+                return True
+            body = await res.text()
+            logger.warning(
+                f"sendChampSelectMessage: {res.status} {body}", TAG)
+            return False
+        except Exception as e:
+            logger.warning(f"sendChampSelectMessage failed: {e}", TAG)
             return False
 
     async def getFriends(self) -> list:

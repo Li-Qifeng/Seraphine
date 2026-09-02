@@ -1,11 +1,10 @@
 import asyncio
 from app.common.config import cfg
 from app.common.icons import Icon
-from app.common.qfluentwidgets import (SettingCardGroup, SwitchSettingCard,
-                                        ComboBoxSettingCard)
+from app.common.qfluentwidgets import SettingCardGroup, SwitchSettingCard
 from app.common.style_sheet import StyleSheet
 from app.components.seraphine_interface import SeraphineInterface
-from app.components.setting_cards import QueueFilterCard
+from app.components.setting_cards import QueueFilterCard, RatingStyleSettingCard
 from app.view.auxiliary_cards import (
     OnlineStatusCard,
     ProfileBackgroundCard,
@@ -96,7 +95,7 @@ class AuxiliaryInterface(SeraphineInterface):
         )
         self.leaveQueueCard = LeaveQueueCard(
             self.tr("秒退"),
-            self.tr("离开队列或退出英雄选择"),
+            self.tr("英雄选择阶段退出当前对局（需确认，会受秒退惩罚）"),
             self.toolsGroup
         )
 
@@ -237,21 +236,37 @@ class AuxiliaryInterface(SeraphineInterface):
 
         # --- 全队评级组 ---
         self.enableTeamRatingCard = SwitchSettingCard(
-            Icon.TROPHY, self.tr("Team rating badges"),
+            Icon.TROPHY, self.tr("Settlement rating badge"),
             self.tr(
                 "Show a 5-tier rating badge (e.g. 神/爹/小有亮点/躺赢狗/消失) "
                 "for each teammate in game detail view"),
             cfg.enableTeamRating,
             parent=self.teamRatingGroup)
 
-        self.teamRatingStyleCard = ComboBoxSettingCard(
+        self.teamRatingStyleCard = RatingStyleSettingCard(
             cfg.teamRatingStyle,
-            Icon.SCALEFIT,
-            self.tr("Team rating style"),
+            self.tr("Settlement rating style"),
             self.tr(
-                "Tieba: 贴吧风 (win/loss separate labels); "
-                "Horse: 马系风 (上等马/中等马/下等马/纯牛马)"),
-            texts=[self.tr("Tieba"), self.tr("Horse")],
+                "内置方案: 初升东曦 / 没有马 / 电竞纯血 / 阴阳内涵 / 物理超度 "
+                "/ 尽搞畜蛆寄 (胜负各五档标签, 前三套带括号评语); "
+                "随机: 每局从全部方案中抽一套; 可新增命名自定义方案"),
+            parent=self.teamRatingGroup)
+
+        # --- 上等马赛前评级组 ---
+        self.enableHorseRatingChatCard = SwitchSettingCard(
+            Icon.EYES, self.tr("Pre-match rating auto-send"),
+            self.tr(
+                "Rate teammates by their visible rank at champion select and "
+                "post the verdict to BP chat"),
+            cfg.enableHorseRatingChat,
+            parent=self.teamRatingGroup)
+
+        self.horseRatingStyleCard = RatingStyleSettingCard(
+            cfg.horseRatingStyle,
+            self.tr("Pre-match rating style"),
+            self.tr(
+                "内置方案: 纯牛马 (按分档六档标签); "
+                "随机: 每局从全部方案中抽一套; 可新增命名自定义方案"),
             parent=self.teamRatingGroup)
 
         # --- OPGG 助手组 ---
@@ -336,6 +351,8 @@ class AuxiliaryInterface(SeraphineInterface):
         # 全队评级
         self.teamRatingGroup.addSettingCard(self.enableTeamRatingCard)
         self.teamRatingGroup.addSettingCard(self.teamRatingStyleCard)
+        self.teamRatingGroup.addSettingCard(self.enableHorseRatingChatCard)
+        self.teamRatingGroup.addSettingCard(self.horseRatingStyleCard)
 
         # OPGG 助手
         self.opggGroup.addSettingCard(self.autoShowOpggCard)

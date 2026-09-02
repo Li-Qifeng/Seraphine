@@ -124,12 +124,27 @@ class Config(QConfig):
     autoHonorDelay = RangeConfigItem(
         "Functions", "AutoHonorDelay", 0, RangeValidator(0, 5))
 
-    # 全队 5 档评级 (胜方/败方各一套贴吧风标签, 或马系风通用标签)
+    # 全队 5 档评级 (胜方/败方各一套, 内置+用户命名方案模板)
     enableTeamRating = ConfigItem("Functions",
                                    "EnableTeamRating", True, BoolValidator())
-    teamRatingStyle = OptionsConfigItem(
-        "Functions", "TeamRatingStyle", "tieba",
-        OptionsValidator(["tieba", "horse"]))
+    # 结算评级风格: 内置方案 key | 用户方案名 | '随机'
+    teamRatingStyle = ConfigItem("Functions", "TeamRatingStyle", "tieba")
+    # 用户命名方案: {方案名: {win:[5], loss:[5], winComment:[5], lossComment:[5]}}
+    teamRatingSchemes = ConfigItem("Functions", "TeamRatingSchemes", {})
+    # 兼容旧版单桶自定义文案 (style=custom 时使用): {win: [...5], loss: [...5]}
+    teamRatingCustomLabels = ConfigItem(
+        "Functions", "TeamRatingCustomLabels", "")
+
+    # 上等马赛前评级: BP 阶段按可见段位评价队友并播报到 BP 聊天窗
+    enableHorseRatingChat = ConfigItem(
+        "Functions", "EnableHorseRatingChat", False, BoolValidator())
+    # 马评分风格: 内置方案 key ('horse'=纯牛马) | 用户方案名 | '随机'
+    horseRatingStyle = ConfigItem("Functions", "HorseRatingStyle", "horse")
+    # 用户命名马评分方案: {方案名: {win: [6 标签]}}
+    horseRatingSchemes = ConfigItem("Functions", "HorseRatingSchemes", {})
+    # 兼容旧版单桶自定义马评分文案 (style=custom 时使用): {win: [...6]}
+    horseRatingCustomLabels = ConfigItem(
+        "Functions", "HorseRatingCustomLabels", "")
 
     enableAutoSelectTimeoutCompleted = ConfigItem("Functions",
                                                   "EnableAutoSelectTimeoutCompleted", False,
@@ -267,7 +282,7 @@ AUTHOR = "Zzaphkiel"
 # 二次开发维护者信息 (fork 维护者署名, 与原作者 AUTHOR 区分)
 MAINTAINER = "Li-Qifeng"
 MAINTAINER_URL = "https://github.com/Li-Qifeng/Seraphine"
-VERSION = os.environ.get("SERAPHINE_DEV_VERSION") or "1.2.12"  # 开发/发布分支提交触发 CI
+VERSION = os.environ.get("SERAPHINE_DEV_VERSION") or "1.2.13"  # 开发/发布分支提交触发 CI
 BETA = None
 # 以下 URL 指向当前维护者的 fork 仓库 (接管 Release / Issue 反馈)
 FEEDBACK_URL = "https://github.com/Li-Qifeng/Seraphine/issues?q=is%3Aissue"

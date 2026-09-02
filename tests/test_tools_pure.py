@@ -20,6 +20,7 @@ from app.lol.tools_pure import (
     parseSummonerOrder,
     sortedSummonersByGameRole,
     parseGames,
+    aramStatsFromGames,
     parseRankInfo,
     parseDetailRankInfo,
 )
@@ -168,6 +169,47 @@ class TestParseGames:
         hit, kills, deaths, assists, wins, losses = parseGames([])
         assert hit == []
         assert (kills, deaths, assists, wins, losses) == (0, 0, 0, 0, 0)
+
+
+class TestAramStatsFromGames:
+    @pytest.fixture
+    def games(self):
+        return [
+            {'queueId': 450, 'remake': False, 'kills': 2, 'deaths': 0, 'assists': 1, 'win': True},
+            {'queueId': 450, 'remake': False, 'kills': 3, 'deaths': 0, 'assists': 2, 'win': True},
+            {'queueId': 450, 'remake': False, 'kills': 1, 'deaths': 0, 'assists': 0, 'win': False},
+            {'queueId': 420, 'remake': False, 'kills': 9, 'deaths': 0, 'assists': 0, 'win': True},
+            {'queueId': 450, 'remake': True, 'kills': 0, 'deaths': 0, 'assists': 0, 'win': True},
+        ]
+
+    def test_aram_window(self, games):
+        stats = aramStatsFromGames(games)
+        assert stats == {
+            "total": 3, "wins": 2, "losses": 1, "rate": "66.7%",
+        }
+
+    def test_no_aram_games(self, games):
+        only_ranked = [g for g in games if g['queueId'] != 450]
+        assert aramStatsFromGames(only_ranked) is None
+
+    def test_empty(self):
+        assert aramStatsFromGames([]) is None
+
+    def test_hextech_2400_counted_with_450(self, games):
+        games.append({'queueId': 2400, 'remake': False, 'kills': 5, 'deaths': 0, 'assists': 2, 'win': True})
+        stats = aramStatsFromGames(games)
+        assert stats == {
+            "total": 4, "wins": 3, "losses": 1, "rate": "75.0%",
+        }
+
+    def test_only_hextech_2400(self):
+        games = [{'queueId': 2400, 'remake': False, 'kills': 1, 'deaths': 0, 'assists': 0, 'win': False}]
+        stats = aramStatsFromGames(games)
+        assert stats == {"total": 1, "wins": 0, "losses": 1, "rate": "0.0%"}
+
+    def test_queue_ids_override(self, games):
+        stats = aramStatsFromGames(games, queue_ids=(420,))
+        assert stats == {"total": 1, "wins": 1, "losses": 0, "rate": "100.0%"}
 
 
 class TestParseRankInfo:

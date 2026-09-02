@@ -3,7 +3,7 @@
 > 本文档面向**二次开发者**，聚焦于：架构与实现原理深析、二次开发规范、已知问题与技术债。
 > 安装、卸载、FAQ、免责声明、致谢等内容请参见 [`readme.md`](./readme.md)。
 >
-> **当前适用版本**：`v1.2.12`（`app/common/config.py:270`）
+> **当前适用版本**：`v1.2.13`（`app/common/config.py:270`）
 > **原作者 / 年份**：Zzaphkiel / 2023
 > **当前维护者**：Li-Qifeng（[Li-Qifeng/Seraphine](https://github.com/Li-Qifeng/Seraphine)）—— 本仓库为 [Zzaphkiel/Seraphine](https://github.com/Zzaphkiel/Seraphine) 的二次开发版本
 > **许可证**：GPLv3（禁止商用）
@@ -893,7 +893,7 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 > 已完成方向：GameInfo 按队列模式筛选（`mode_filter_widget.py` 已接入 `GameInfoInterface`）；自定义模式 <5 人重载守卫（`main_window.py`）；rollAndSwapBack 删除（海克斯大乱斗无摇骰子）；team1/team2 预组队高亮色开放用户自定义（`TeamColorSettingCard`，cfg 项 `team1Color`/`team2Color`，经 `signalBus.customColorChanged` 触发刷新）；`getLoginSummonerByPid` 异步化改造；CI ruff lint 收紧为强制阻断 + 161 个历史错误清零；`JsonManager` + `opgg.py` 类型注解补全；`parseGameInfoByGameflowSession` 契约测试建立 + §5.1 FIXME（自定义模式名单泄露）修复；**结算后自动点赞**（`tools_pure.pickHonorTarget` 4 策略 + `connector.getEogStats/submitHonor`，cfg 项 `enableAutoHonor`/`autoHonorStrategy`/`autoHonorDelay`）；**全队 5 档评级**（`war_criminal.py` z-score 算法 + `grade_badge.py` UI + OPGG 胜率/海克斯强化基线，cfg 项 `enableTeamRating`/`teamRatingStyle`）。
 >
-> v1.2.x 追加：关机消息吞掉并答复 TRUE 根治"应用阻止关机"（`ShutdownFilter` 原生事件过滤器 + `test_shutdown_filter.py` 回归测试）；未知召唤师技能兜底（KeyError 714 雪球）+ 未知 queueId 兜底；JSON int-key 缓存修复；TeamRadar 与 SGP 字段兜底（perk/stats/timeline `.get()` 默认值）；生涯页 LCU 优先 SGP fallback + `parseGameData` puuid 匹配；`sendMediaPlayPause` 改 SendInput 结构体重写；大乱斗抢人窗口第二局残留数据强制刷新；Apple Design 风格 UI polish（design tokens、QSS 一致性、动效参数）；导航栏更新红点 badge（QLabel 替代 DotInfoBadge，见 P0）。
+> v1.2.x 追加：关机消息吞掉并答复 TRUE 根治"应用阻止关机"（`ShutdownFilter` 原生事件过滤器 + `test_shutdown_filter.py` 回归测试）；未知召唤师技能兜底（KeyError 714 雪球）+ 未知 queueId 兜底；JSON int-key 缓存修复；TeamRadar 与 SGP 字段兜底（perk/stats/timeline `.get()` 默认值）；生涯页 LCU 优先 SGP fallback + `parseGameData` puuid 匹配；`sendMediaPlayPause` 改 SendInput 结构体重写；大乱斗抢人窗口第二局残留数据强制刷新；Apple Design 风格 UI polish（design tokens、QSS 一致性、动效参数）；导航栏更新红点 badge（QLabel 替代 DotInfoBadge，见 P0）；**上等马赛前评级 + BP 聊天播报**（lzyumi 隐藏分/近十场数据源 + 两轴加权评分 40%/60%、马系/正式双风格、`sendChampSelectMessage` 播报，默认关闭，cfg 项 `enableHorseRatingChat`/`horseRatingStyle`）。
 
 ---
 
@@ -919,6 +919,8 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 | 评级结果缓存 | `app\lol\war_criminal_cache.py`（`setVerdict`/`getTeamRating`） |
 | 海克斯强化基线 | `app\lol\augment_baseline.py`（`getHextechAugmentScore`） |
 | 英雄 OPGG 胜率基线 | `app\lol\champion_baseline.py`（`getChampionBaselineWinrate`） |
+| 上等马赛前评级 | `app\lol\horse_rating.py`（`rateHorse`/6 档阈值）+ `horse_rating_cache.py` + `horse_orchestrator.py`（BP 播报编排，对齐 hh-lol-prophet 逐行+档位+得分+KDA 格式） |
+| lzyumi 第三方数据源 | `app\lol\lzyumi.py`（隐藏分/近十场，带签名与 TTL 缓存）+ `tools_lzyumi.py`（签名/解析纯函数） |
 | 海克斯强化推荐 | `app\lol\augment_recommender.py` + `app\lol\augment_live.py` |
 | Live Client 数据（对局中实时数据） | `app\lol\live_client.py`（`liveClient`，经 `signalBus.liveGameDataUpdated` 推送） |
 | 持久化缓存 | `app\lol\persistent_cache.py` |
@@ -990,4 +992,4 @@ README FAQ 已明确：**英雄联盟客户端未提供**以下数据，Seraphin
 
 ---
 
-*本文档基于 v1.2.12 源码梳理。代码变更时请同步更新对应章节，并在版本升级时更新顶部「适用版本」。*
+*本文档基于 v1.2.13 源码梳理。代码变更时请同步更新对应章节，并在版本升级时更新顶部「适用版本」。*

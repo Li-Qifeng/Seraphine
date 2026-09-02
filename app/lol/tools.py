@@ -21,6 +21,7 @@ from .tools_pure import (
     separateTeams,
     sortedSummonersByGameRole,
     parseGames,
+    aramStatsFromGames,  # noqa: F401  re-export
     parseSummonerOrder,  # noqa: F401  re-export for app.view.game_info_interface
 )
 from .tools_pure import (
@@ -735,6 +736,23 @@ async def parseAllyGameInfo(session, currentSummonerId, queueID, useSGP=False) -
                      for item in session['myTeam']]
             summoners = await asyncio.gather(*tasks)
 
+        # SGP 常因队友 puuid 缺失/HIDDEN 只解析出本人 -> 用 LCU 接口补全队友
+        if len([s for s in summoners if s]) < 2 and len(session['myTeam']) >= 2:
+            try:
+                lcu_summoners = await asyncio.gather(*[
+                    parseSummonerGameInfo(item, queueID, currentSummonerId)
+                    for item in session['myTeam']])
+            except Exception:
+                lcu_summoners = []
+            if len([s for s in lcu_summoners if s]) > len(
+                    [s for s in summoners if s]):
+                logger.info(
+                    "parseAllyGameInfo: SGP sparse "
+                    f"({len([s for s in summoners if s])}/{len(session['myTeam'])}), "
+                    f"use LCU teammates ({len([s for s in lcu_summoners if s])})",
+                    "tools")
+                summoners = lcu_summoners
+
     else:
         tasks = [parseSummonerGameInfo(item, queueID, currentSummonerId)
                  for item in session['myTeam']]
@@ -919,7 +937,7 @@ async def parseSummonerGameInfo(item, queueId, currentSummonerId) -> Optional[Te
 
     try:
         origGamesInfo = await connector.getSummonerGamesByPuuid(
-            puuid, 0, 14)
+            puuid, 0, 19)
 
         queueFilterList = cfg.get(cfg.queueFilter)
         queueIds = queueFilterList.get(f"{queueId}")
@@ -927,8 +945,8 @@ async def parseSummonerGameInfo(item, queueId, currentSummonerId) -> Optional[Te
             origGamesInfo["games"] = [
                 game for game in origGamesInfo["games"] if game["queueId"] in queueIds]
 
-            begIdx = 15
-            while len(origGamesInfo["games"]) < 11 and begIdx <= 70:
+            begIdx = 20
+            while len(origGamesInfo["games"]) < 20 and begIdx <= 70:
                 endIdx = begIdx + 5
                 new = (await connector.getSummonerGamesByPuuid(puuid, begIdx, endIdx))["games"]
 
@@ -941,7 +959,7 @@ async def parseSummonerGameInfo(item, queueId, currentSummonerId) -> Optional[Te
         gamesInfo = []
     else:
         tasks = [parseGameData(game, puuid)
-                 for game in origGamesInfo["games"][:11]]
+                 for game in origGamesInfo["games"][:20]]
         gamesInfo = await asyncio.gather(*tasks)
 
     _, kill, deaths, assists, _, _ = parseGames(gamesInfo)
@@ -1014,7 +1032,7 @@ async def getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId) -> Option
     rankInfo = parseRankInfoFromSGP(origRankInfo)
 
     try:
-        origGamesInfo = await connector.getSummonerGamesByPuuidViaSGP(puuid, 0, 14)
+        origGamesInfo = await connector.getSummonerGamesByPuuidViaSGP(puuid, 0, 19)
 
         queueFilterList = cfg.get(cfg.queueFilter)
         queueIds = queueFilterList.get(f"{queueID}")
@@ -1022,8 +1040,8 @@ async def getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId) -> Option
             origGamesInfo["games"] = [
                 game for game in origGamesInfo["games"] if game['json']["queueId"] in queueIds]
 
-            begIdx = 15
-            while len(origGamesInfo["games"]) < 11 and begIdx <= 70:
+            begIdx = 20
+            while len(origGamesInfo["games"]) < 20 and begIdx <= 70:
                 endIdx = begIdx + 10
                 new = (await connector.getSummonerGamesByPuuidViaSGP(puuid, begIdx, endIdx))["games"]
 
@@ -1039,7 +1057,7 @@ async def getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId) -> Option
             origGamesInfo['games'][0], puuid)
 
         tasks = [parseGamesDataFromSGP(game, puuid)
-                 for game in origGamesInfo["games"][:11]]
+                 for game in origGamesInfo["games"][:20]]
         gamesInfo = await asyncio.gather(*tasks)
 
     _, kill, deaths, assists, _, _ = parseGames(gamesInfo)

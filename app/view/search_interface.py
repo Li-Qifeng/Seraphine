@@ -858,13 +858,22 @@ class SummonerInfoBar(QFrame):
 
         # 全队 5 档评级徽章: 每个玩家都显示自己的档位
         self.gradeBadge = None
-        if ratingInfo and ratingInfo.get('label'):
+        if ratingInfo:
             from app.components.grade_badge import GradeBadge
+            from app.lol.war_criminal import (RANDOM_TEAM_KEY, gradeLabel as _gLabel,
+                                              gradeComment as _gComment)
+            # label/评语按当前风格现算; 随机风格用缓存烘焙的实际方案
+            grade = ratingInfo.get('grade') or 3
+            style = cfg.get(cfg.teamRatingStyle)
+            if style == RANDOM_TEAM_KEY:
+                style = ratingInfo.get('scheme')
+            isWin = bool(ratingInfo.get('isWin', False))
             self.gradeBadge = GradeBadge(
-                grade=ratingInfo.get('grade', 3),
-                label=ratingInfo.get('label', ''),
+                grade=grade,
+                label=_gLabel(grade, isWin, style),
                 isCurrent=ratingInfo.get('isCurrent', False),
-                evidence=ratingInfo.get('evidence'))
+                evidence=ratingInfo.get('evidence'),
+                comment=_gComment(grade, isWin, style))
 
         self.__initWidget(summoner)
         self.__initLayout()

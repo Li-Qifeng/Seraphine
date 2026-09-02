@@ -25,7 +25,7 @@ from app.common.config import cfg
 from app.lol.connector import connector
 from app.lol.tools import (parseGames, parseSummonerData,
                            getRecentTeammates, parseDetailRankInfo,
-                           getNameTagLineFromGame)
+                           getNameTagLineFromGame, aramStatsFromGames)
 from ..components.seraphine_interface import SeraphineInterface
 
 
@@ -184,7 +184,7 @@ class CareerInterface(SeraphineInterface):
 
         self.recentTeamButton.setEnabled(True)
 
-        self.rankTable.setRowCount(2)
+        self.rankTable.setRowCount(3)
         self.rankTable.setColumnCount(9)
         self.rankTable.verticalHeader().hide()
         self.rankTable.setWordWrap(False)
@@ -202,9 +202,11 @@ class CareerInterface(SeraphineInterface):
 
         self.rankInfo = [[
             self.tr('Ranked Solo'),
-        ], [
+        ] + ['--'] * 8, [
             self.tr('Ranked Flex'),
-        ]]
+        ] + ['--'] * 8, [
+            self.tr("大乱斗"),
+        ] + ['--'] * 8]
 
         self.filterComboBox.addItems([
             self.tr('All'),
@@ -337,9 +339,28 @@ class CareerInterface(SeraphineInterface):
 
         self.progressRing.setVisible(enable)
 
+    def __fillAramStats(self, games):
+        """近 N 场大乱斗统计 (表格第 3 行总场/胜率/胜/负).
+
+        窗口有限 (cfg.careerGamesNumber), 非生涯累计; 窗口内无大乱斗局时保持 '--'.
+        统计经典大乱斗 (450) + 海克斯大乱斗 (2400).
+        段位/LP/最高/上赛季列无大乱斗概念, 天然 '--'.
+        """
+        row = self.rankInfo[2]
+        n = len(games.get("games", []))
+        row[0] = f"{self.tr('大乱斗')}({self.tr('近')}{n}{self.tr('场')})"
+        stats = aramStatsFromGames(games.get("games", []))
+        if not stats:
+            return
+        row[1] = str(stats["total"])
+        row[2] = stats["rate"]
+        row[3] = str(stats["wins"])
+        row[4] = str(stats["losses"])
+
     def __updateTable(self):
         for i, line in enumerate(self.rankInfo):
-            for j, data in enumerate(line):
+            row = list(line)
+            for j, data in enumerate(row):
                 item = QTableWidgetItem(data)
                 item.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
@@ -597,21 +618,26 @@ class CareerInterface(SeraphineInterface):
 
         self.puuid = puuid
 
+        # parseDetailRankInfo 只返回 Solo/Flex 两行, 需要补 3 行表 (含大乱斗)
+        # ponytail: 大乱斗无排位数据, 该行仅用于展示近 N 场统计
         if 'queueMap' in rankInfo:
             self.rankInfo = parseDetailRankInfo(rankInfo)
+            self.rankInfo.append([self.tr("大乱斗")] + ['--'] * 8)
             self.copyButton.setEnabled(True)
         else:
             self.rankInfo = [[
                 self.tr('Ranked Solo'),
-            ], [
+            ] + ['--'] * 8, [
                 self.tr('Ranked Flex'),
-            ]]
+            ] + ['--'] * 8, [
+                self.tr("大乱斗"),
+            ] + ['--'] * 8]
             self.copyButton.setEnabled(False)
 
-        if not self.isLoginSummoner():
-            for i in range(0, 2):
-                for j in [1, 2, 4]:
-                    self.rankInfo[i][j] = '--'
+        # 近 N 场大乱斗统计 (窗口 = cfg.careerGamesNumber, 非生涯累计; 无该队列局时保持 --)
+        self.__fillAramStats(games)
+
+        # 根因修复: 不再抹除他人 Solo/Flex 统计 (总场次/胜率/负场), 原有逻辑致表格大段 0/--
 
         self.__updateTable()
 
@@ -675,10 +701,13 @@ class CareerInterface(SeraphineInterface):
         """创建战绩卡片, 若评级缓存命中则附加当前召唤师的档位徽章."""
         grade = None
         gradeLabel = ''
+        gradeComment = ''
         gradeEvidence = []
         isCurrent = False
         try:
             if cfg.get(cfg.enableTeamRating):
+                from app.lol.war_criminal import (RANDOM_TEAM_KEY, gradeLabel as _gLabel,
+                                                  gradeComment as _gComment)
                 from app.lol.war_criminal_cache import getTeamRating
                 # 判断当前召唤师所在队是胜方还是败方
                 isWin = bool(game.get('win'))
@@ -692,7 +721,13 @@ class CareerInterface(SeraphineInterface):
                     for r in ratingList:
                         if r.get('puuid') == currentPuuid:
                             grade = r.get('grade')
-                            gradeLabel = r.get('label', '')
+                            # label/评语按当前风格现算; 随机风格用缓存烘焙的实际方案
+                            style = cfg.get(cfg.teamRatingStyle)
+                            if style == RANDOM_TEAM_KEY:
+                                style = r.get('scheme')
+                            g = grade if isinstance(grade, int) else 3
+                            gradeLabel = _gLabel(g, bool(r.get('isWin', isWin)), style)
+                            gradeComment = _gComment(g, bool(r.get('isWin', isWin)), style)
                             gradeEvidence = r.get('evidence') or []
                             isCurrent = True
                             break
@@ -700,7 +735,8 @@ class CareerInterface(SeraphineInterface):
             pass
 
         return GameInfoBar(game, grade=grade, gradeLabel=gradeLabel,
-                           gradeEvidence=gradeEvidence, isCurrent=isCurrent)
+                       gradeEvidence=gradeEvidence, gradeComment=gradeComment,
+                       isCurrent=isCurrent)
 
     def __onfilterComboBoxChanged(self, index):
         self.gameInfoArea.delegate.vScrollBar.resetValue(0)

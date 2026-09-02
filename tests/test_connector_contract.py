@@ -107,6 +107,12 @@ def _patch_post(ret_val):
         new=AsyncMock(return_value=ret_val))
 
 
+def _patch_delete(ret_val):
+    return patch.object(
+        connector, '_LolClientConnector__delete',
+        new=AsyncMock(return_value=ret_val))
+
+
 # ---------------------------------------------------------------------------
 # 契约: getSummonerByPuuid -> dict | raise SummonerNotFound
 # ---------------------------------------------------------------------------
@@ -452,3 +458,105 @@ class Test429RateLimited:
 
         with pytest.raises(RateLimited):
             _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 4))
+
+
+# ---------------------------------------------------------------------------
+# 契约: sendChampSelectMessage -> bool
+#   先 GET /lol-chat/v1/conversations 找 type==championSelect 的真实对话 id,
+#   再 POST 到该对话. 找不到对话 / 非 2xx 时返回 False.
+# ---------------------------------------------------------------------------
+
+class TestSendChampSelectMessage:
+    def test_posts_to_real_championselect_conversation(self, mock_lcu):
+        """存在 championSelect 对话时, 用其真实 id 发消息."""
+        convs = [
+            {"id": "111", "type": "group", "name": "x"},
+            {"id": "champ-real", "type": "championSelect", "name": "y"},
+        ]
+        conv_resp = _resp(json_data=convs, status=200)
+        post_resp = _resp(status=201)
+
+        with _patch_get(conv_resp), _patch_post(post_resp) as mock_post:
+            result = _run(mock_lcu.sendChampSelectMessage("hello"))
+
+        assert result is True
+        mock_post.assert_awaited_once_with(
+            "/lol-chat/v1/conversations/champ-real/messages",
+            data={"type": "chat", "body": "hello"})
+
+    def test_no_championselect_conversation_returns_false(self, mock_lcu):
+        """没有 championSelect 对话 (不在选人阶段) 时不发送并返回 False."""
+        convs = [{"id": "111", "type": "group", "name": "x"}]
+        conv_resp = _resp(json_data=convs, status=200)
+
+        with _patch_get(conv_resp), _patch_post(_resp(status=200)) as mock_post:
+            result = _run(mock_lcu.sendChampSelectMessage("hello"))
+
+        assert result is False
+        mock_post.assert_not_awaited()
+
+    def test_post_non_2xx_returns_false(self, mock_lcu):
+        """POST 返回非 200/201 时返回 False (不抛异常)."""
+        convs = [{"id": "cid", "type": "championSelect", "name": "y"}]
+        conv_resp = _resp(json_data=convs, status=200)
+        post_resp = _resp(status=404, text_data="not found")
+
+        with _patch_get(conv_resp), _patch_post(post_resp):
+            result = _run(mock_lcu.sendChampSelectMessage("hello"))
+
+        assert result is False
+
+    def test_conversations_get_error_returns_false(self, mock_lcu):
+        """GET conversations 非 200 时返回 False."""
+        conv_resp = _resp(json_data=[], status=503)
+
+        with _patch_get(conv_resp), _patch_post(_resp(status=200)) as mock_post:
+            result = _run(mock_lcu.sendChampSelectMessage("hello"))
+
+        assert result is False
+        mock_post.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# 契约: dodge -> bool
+#   逐字移植 Sona dodgeChampSelect: 仅 DELETE /lol-lobby/v2/lobby;
+#   DELETE 404 视为已不在房间的幂等成功. 其余异常返回 False.
+# ---------------------------------------------------------------------------
+
+class TestDodge:
+    def test_delete_ok_returns_true(self, mock_lcu):
+        """DELETE 房间成功 (200/204) -> True, 不再追加任何端点."""
+        delete_resp = _resp(status=204)
+        delete_resp.ok = True
+
+        with _patch_delete(delete_resp), \
+                _patch_post(_resp(status=204)) as mock_post:
+            result = _run(mock_lcu.dodge())
+
+        assert result is True
+        mock_post.assert_not_awaited()
+
+    def test_delete_404_is_idempotent_success(self, mock_lcu):
+        """DELETE 返回 404 (已不在房间) 视为成功.
+
+        客户端正常返回 response (不抛 ClientResponseError), 404 由
+        dodge() 直接判幂等成功.
+        """
+        delete_resp = _resp(status=404)
+        delete_resp.ok = False
+
+        with _patch_delete(delete_resp) as mock_del:
+            result = _run(mock_lcu.dodge())
+
+        assert result is True
+        mock_del.assert_awaited_once_with("/lol-lobby/v2/lobby")
+
+    def test_delete_fails_returns_false(self, mock_lcu):
+        """DELETE 返回 500 等其他错误时返回 False."""
+        delete_resp = _resp(status=500)
+        delete_resp.ok = False
+
+        with _patch_delete(delete_resp):
+            result = _run(mock_lcu.dodge())
+
+        assert result is False
