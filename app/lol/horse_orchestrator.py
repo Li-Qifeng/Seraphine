@@ -6,6 +6,8 @@
 不依赖任何第三方数据源 — 数据全来自 LCU 对局接口的 rankInfo.
 不负责发送 — 发送由 main_window 调 connector.sendChampSelectMessage 完成.
 """
+from __future__ import annotations  # 兼容 Python 3.8: 延迟求值 list[...] / dict[...] 注解
+
 import asyncio
 import random
 from typing import Optional
