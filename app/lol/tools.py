@@ -82,9 +82,21 @@ def translateTier(orig: str, short=False) -> str:
 async def getRecentTeammates(games, puuid):
     summoners = {}
 
-    for game in games:
-        gameId = game['gameId']
-        game = await connector.getGameDetailByGameId(gameId)
+    # 并发拉取对局详情: 串行时 N 场 = N 个串行请求, gather 后由 connector 的
+    # semaphore 统一限流; 单场失败跳过, 不拖垮整个最近队友面板
+    async def _safe_detail(game):
+        try:
+            return await connector.getGameDetailByGameId(game['gameId'])
+        except Exception as e:
+            logger.warning(
+                f"getRecentTeammates: skipping game {game.get('gameId')} "
+                f"({type(e).__name__}: {e})", "tools")
+            return None
+
+    for game in await asyncio.gather(
+            *[_safe_detail(g) for g in games]):
+        if game is None:
+            continue
         teammates = getTeammates(game, puuid)
 
         for p in teammates['summoners']:
@@ -156,13 +168,21 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
                     f"parseSummonerData: games is {type(raw_games).__name__}, "
                     f"expected list", "tools")
                 raw_games = []
-            for game in raw_games:
+            # 并发解析: 每场对局内部有 ~12 个串行图标 await (英雄/技能/装备/符文),
+            # 逐场 await 时 20 场 ≈ 240 个串行请求. gather 后由 connector 的
+            # semaphore 统一限流, 图标绝大多数磁盘缓存命中, 实际网络请求极少
+            async def _safe_parse(game):
                 try:
-                    info = await parseGameData(game, summoner['puuid'])
+                    return await parseGameData(game, summoner['puuid'])
                 except Exception as e:
                     logger.warning(
                         f"parseSummonerData: skipping malformed game "
                         f"({type(e).__name__}: {e})", "tools")
+                    return None
+
+            for info in await asyncio.gather(
+                    *[_safe_parse(game) for game in raw_games]):
+                if info is None:
                     continue
                 if time.time() - info["timeStamp"] / 1000 > 60 * 60 * 24 * 365:
                     continue
@@ -829,7 +849,9 @@ async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSG
                  for summoner in summoners}
     order = [summoner['summonerId'] for summoner in summoners]
 
-    return {'summoners': summoners, 'champions': champions, 'order': order}
+    # ARAM/ARAM Mayhem: 对局页头像 hover 显示平衡 Buff (AramFlyoutView)
+    return {'summoners': summoners, 'champions': champions, 'order': order,
+            'isAram': queueId in (450, 2400)}
 
 
 def getAllyOrderByGameRole(session, currentSummonerId):

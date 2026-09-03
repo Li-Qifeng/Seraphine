@@ -14,6 +14,9 @@ class SignalBus(QObject):
 
     # connector:
     lcuApiExceptionRaised = pyqtSignal(str, object)
+    # LCU 冷启动时 match-history 返回不完整数据, connector 后台重查
+    # 成功后广播该信号 (str=puuid), 生涯/搜索页监听并自动重刷
+    matchHistoryRecovered = pyqtSignal(str)
     # LCU 未就绪 (lcuSess is None) 时仍有请求发送, 由 @retry 统一拦截后发射,
     # UI 层接收并显示"客户端未连接"提示, 不再抛 ReferenceError 给上层
     lcuNotConnected = pyqtSignal()

@@ -20,7 +20,8 @@ import aiohttp
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.lol.connector import connector
+from app.lol.connector import connector, _parse_retry_after
+from app.common.signals import signalBus
 from app.lol.exceptions import (
     RateLimited,
     SummonerNotFound,
@@ -416,6 +417,29 @@ class TestStartMatchmaking:
 # 契约: 429 RateLimited — __get 检测 429 并抛出 RateLimited, @retry 重试后最终向上抛
 # ---------------------------------------------------------------------------
 
+class TestParseRetryAfter:
+    """契约: Retry-After 解析 — 整数/浮点/缺失/非法值."""
+
+    def test_integer_string(self):
+        assert _parse_retry_after("5") == 5
+
+    def test_float_string(self):
+        # LCU 正常返回整数秒, 但浮点值 (如网关返回 "0.5") 需按原值解析
+        assert _parse_retry_after("0.1") == 0.1
+        assert _parse_retry_after("2.5") == 2.5
+
+    def test_missing_or_empty_falls_back_to_5(self):
+        assert _parse_retry_after(None) == 5
+        assert _parse_retry_after("") == 5
+
+    def test_invalid_value_falls_back_to_5(self):
+        assert _parse_retry_after("soon") == 5
+
+    def test_clamped_to_bounds(self):
+        assert _parse_retry_after("120") == 60
+        assert _parse_retry_after("0") == 0
+
+
 class Test429RateLimited:
     def test_get_429_raises_ratelimited_after_retry_exhausted(self, mock_lcu):
         """__get 返回 429 时抛出 RateLimited, @retry 用完重试次数后向上抛."""
@@ -458,6 +482,134 @@ class Test429RateLimited:
 
         with pytest.raises(RateLimited):
             _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 4))
+
+
+# ---------------------------------------------------------------------------
+# 契约: LCU 冷启动 stale match-history -> 返回部分数据 + 后台恢复
+# ---------------------------------------------------------------------------
+
+def _games_resp(count, gameCount=None):
+    """构造 LCU match-history 容器响应: {"games": {"gameCount": N, "games": [...]}}"""
+    if gameCount is None:
+        gameCount = count
+    return {"games": {
+        "gameCount": gameCount,
+        "games": [{"gameId": i} for i in range(count)],
+    }}
+
+
+class TestStaleMatchHistoryRecovery:
+    def _cleanup(self):
+        for task in list(connector._staleRecoveryTasks.values()):
+            task.cancel()
+        connector._staleRecoveryTasks.clear()
+        connector._gamesFastCache = None
+        connector.__dict__.pop('_STALE_RECOVERY_INTERVAL', None)
+
+    def _fast_sleep(self):
+        """把 connector 模块里的 asyncio.sleep 置空, 加速 stale 重试与恢复探测."""
+        return patch('app.lol.connector.asyncio.sleep',
+                     new=AsyncMock(return_value=None))
+
+    def test_stale_partial_returns_data_and_schedules_recovery(self, mock_lcu):
+        """冷启动场景: 请求 20 条只返回 2 条 (gameCount 也是 2).
+
+        契约: 不阻塞 UI -- 单次请求后立即返回部分数据, 同时调度后台恢复任务.
+        (不直接检查 _staleRecoveryTasks: asyncio.run 退出时会取消后台任务
+        并将其从注册表移除, 这里用 spy 验证调度动作本身)"""
+        schedule_mock = MagicMock(return_value=None)
+        with patch.object(
+                connector, '_LolClientConnector__scheduleStaleRecovery',
+                new=schedule_mock), \
+                _patch_get(_resp(json_data=_games_resp(2))):
+            result = _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
+        assert result["gameCount"] == 2
+        assert len(result["games"]) == 2
+        schedule_mock.assert_called_once_with("abc", 0, 19)
+        self._cleanup()
+
+    def test_full_result_does_not_schedule_recovery(self, mock_lcu):
+        """返回足量数据时不调度后台恢复."""
+        with _patch_get(_resp(json_data=_games_resp(20))):
+            result = _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
+        assert len(result["games"]) == 20
+        assert "abc" not in connector._staleRecoveryTasks
+        self._cleanup()
+
+    def test_recovery_emits_signal_and_updates_fast_cache(self, mock_lcu):
+        """后台探测拿到足量数据 -> 刷新 fast cache + 广播 matchHistoryRecovered.
+
+        conftest 把 PyQt5 stub 成 MagicMock, 真实信号无法收发,
+        这里直接 mock 信号属性验证 emit 调用契约."""
+        sig_mock = MagicMock()
+        get_mock = AsyncMock(side_effect=[
+            _resp(json_data=_games_resp(2)),    # 首次请求 (stale)
+            _resp(json_data=_games_resp(20)),  # 恢复探测
+        ])
+        with patch.object(connector, '_LolClientConnector__get', new=get_mock), \
+                patch.object(signalBus, 'matchHistoryRecovered', new=sig_mock), \
+                self._fast_sleep():
+            async def scenario():
+                result = await connector.getSummonerGamesByPuuid(
+                    "abc", 0, 19)
+                task = connector._staleRecoveryTasks.get("abc")
+                assert task is not None
+                await task  # 等待恢复循环完成
+                return result
+
+            result = _run(scenario())
+
+        assert len(result["games"]) == 2  # 首次仍返回部分数据
+        sig_mock.emit.assert_called_once_with("abc")
+        # fast cache 已被恢复后的完整数据刷新
+        c_puuid, c_beg, c_end, c_data, _ = connector._gamesFastCache
+        assert c_puuid == "abc"
+        assert (c_beg, c_end) == (0, 19)
+        assert len(c_data["games"]) == 20
+
+    def test_recovery_stops_for_genuinely_small_accounts(self, mock_lcu):
+        """探测发现 gameCount 与条数一致 (账号真的只有几局) -> 停止且不广播."""
+        sig_mock = MagicMock()
+        get_mock = AsyncMock(side_effect=[
+            _resp(json_data=_games_resp(2)),  # 首次请求 (stale)
+            _resp(json_data=_games_resp(3)),  # 探测: 3 局且 gameCount=3
+        ])
+        with patch.object(connector, '_LolClientConnector__get', new=get_mock), \
+                patch.object(signalBus, 'matchHistoryRecovered', new=sig_mock), \
+                self._fast_sleep():
+            async def scenario():
+                await connector.getSummonerGamesByPuuid("abc", 0, 19)
+                task = connector._staleRecoveryTasks.get("abc")
+                assert task is not None
+                await task
+
+            _run(scenario())
+
+        sig_mock.emit.assert_not_called()
+
+    def test_recovery_stops_when_lcu_disconnected(self, mock_lcu):
+        """探测期间 LCU 断开 (ReferenceError) -> 静默放弃恢复."""
+        sig_mock = MagicMock()
+        get_mock = AsyncMock(side_effect=[
+            _resp(json_data=_games_resp(2)),    # 首次请求 (stale)
+            ReferenceError("lcu gone"),        # 探测: LCU 已断开
+            _resp(json_data=_games_resp(20)),  # 不应被请求
+        ])
+        with patch.object(connector, '_LolClientConnector__get', new=get_mock), \
+                patch.object(signalBus, 'matchHistoryRecovered', new=sig_mock), \
+                self._fast_sleep():
+            async def scenario():
+                await connector.getSummonerGamesByPuuid("abc", 0, 19)
+                task = connector._staleRecoveryTasks.get("abc")
+                assert task is not None
+                await task
+
+            _run(scenario())
+
+        sig_mock.emit.assert_not_called()
+        assert get_mock.call_count == 2  # 断开后不再探测
 
 
 # ---------------------------------------------------------------------------

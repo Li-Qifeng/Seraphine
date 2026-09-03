@@ -83,7 +83,7 @@ class Config(QConfig):
 
     careerGamesNumber = RangeConfigItem("Functions", "CareerGamesNumber", 20,
                                         RangeValidator(10, 100))
-    apiConcurrencyNumber = RangeConfigItem("Functions", "ApiConcurrencyNumber", 1,
+    apiConcurrencyNumber = RangeConfigItem("Functions", "ApiConcurrencyNumber", 5,
                                            RangeValidator(1, 100), restart=True)
 
     showTierInGameInfo = ConfigItem("Functions", "ShowTierInGameInfo", False,
@@ -145,6 +145,10 @@ class Config(QConfig):
     # 兼容旧版单桶自定义马评分文案 (style=custom 时使用): {win: [...6]}
     horseRatingCustomLabels = ConfigItem(
         "Functions", "HorseRatingCustomLabels", "")
+
+    # 红蓝方播报: BP 阶段向聊天窗播报本局所在阵营 (蓝方/红方)
+    enableSideChat = ConfigItem(
+        "Functions", "EnableSideChat", False, BoolValidator())
 
     enableAutoSelectTimeoutCompleted = ConfigItem("Functions",
                                                   "EnableAutoSelectTimeoutCompleted", False,

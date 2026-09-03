@@ -2092,6 +2092,16 @@ If champions set by lane are not available, default settings will be used.</sour
         <translation>英雄选择</translation>
     </message>
     <message>
+        <location filename="../../view/main_window.py" line="1517"/>
+        <source>We are on the blue side</source>
+        <translation>我方为蓝色方</translation>
+    </message>
+    <message>
+        <location filename="../../view/main_window.py" line="1518"/>
+        <source>We are on the red side</source>
+        <translation>我方为红色方</translation>
+    </message>
+    <message>
         <location filename="../../view/main_window.py" line="1070"/>
         <source>Gaming</source>
         <translation>游戏中</translation>

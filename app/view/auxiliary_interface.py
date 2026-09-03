@@ -234,6 +234,12 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.showTierInGameInfo,
             parent=self.gameInfoGroup)
 
+        self.sideChatCard = SwitchSettingCard(
+            Icon.MEGAPHONE, self.tr("红蓝方聊天播报"),
+            self.tr("选人阶段在聊天室播报本局所在阵营 (蓝方/红方)"),
+            cfg.enableSideChat,
+            parent=self.gameInfoGroup)
+
         # --- 全队评级组 ---
         self.enableTeamRatingCard = SwitchSettingCard(
             Icon.TROPHY, self.tr("Settlement rating badge"),
@@ -347,6 +353,7 @@ class AuxiliaryInterface(SeraphineInterface):
         self.gameInfoGroup.addSettingCard(self.queueFilterCard)
         self.gameInfoGroup.addSettingCard(self.autoClearGameinfoCard)
         self.gameInfoGroup.addSettingCard(self.gameInfoShowTierCard)
+        self.gameInfoGroup.addSettingCard(self.sideChatCard)
 
         # 全队评级
         self.teamRatingGroup.addSettingCard(self.enableTeamRatingCard)

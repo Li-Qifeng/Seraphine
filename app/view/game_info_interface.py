@@ -144,7 +144,9 @@ class GameInfoInterface(SeraphineInterface):
         if not info or len(info['summoners']) > 5:
             return
 
-        self.summonersView.enemy.updateSummoners(info['summoners'])
+        # 敌方头像也展示 ARAM 平衡 Buff (对齐 Sona: 全员可 hover 查看平衡调整)
+        self.summonersView.enemy.updateSummoners(
+            info['summoners'], info.get("isAram", False))
         self.enemyGamesView.updateSummoners(info['summoners'])
 
         self.summonersView.allyButton.setVisible(True)

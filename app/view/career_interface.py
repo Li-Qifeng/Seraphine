@@ -416,6 +416,17 @@ class CareerInterface(SeraphineInterface):
         self.recentTeamButton.clicked.connect(
             self.__onRecentTeammatesButtonClicked)
 
+        # LCU 冷启动 stale cache 后台恢复成功: 若正在展示该召唤师则自动重刷,
+        # 避免生涯页停留在冷启动时拿到的残缺战绩 (如只有 2 条)
+        signalBus.matchHistoryRecovered.connect(self.__onMatchHistoryRecovered)
+
+    @asyncSlot(str)
+    async def __onMatchHistoryRecovered(self, puuid: str):
+        if puuid and puuid == self.puuid:
+            logger.info(
+                "match history recovered, refresh career", "CareerInterface")
+            await self.refresh()
+
     async def updateNameIconExp(self, info):
         if not self.isLoginSummoner():
             return

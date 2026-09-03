@@ -141,6 +141,8 @@ class MainWindow(FluentWindow):
         self._updateDot = None
         # 上等马播报: 每局每通道最多一次的守卫
         self._horseSendGuard = SendGuard()
+        # 红蓝方播报: 每局最多一次的守卫
+        self._sideChatGuard = SendGuard()
         # 本局实际使用的马评分方案 (随机风格时进局只抽一次, 全局共享)
         self._horseResolvedStyle = None
 
@@ -1047,6 +1049,7 @@ class MainWindow(FluentWindow):
             await self.__onGameEnd()
         elif status == 'ChampSelect':
             title = self.tr("Selecting Champions")
+            side = None
 
             # 在标题添加所处队伍 (getMapSide 偶发失败不应阻断选英雄流程)
             try:
@@ -1060,6 +1063,11 @@ class MainWindow(FluentWindow):
                     title = title + " - " + mapSide
             except Exception as e:
                 logger.warning(f"getMapSide failed, skipping: {e}", TAG)
+
+            # 红蓝方聊天播报: 与标题共用一次 getMapSide 结果, 每局最多一次
+            if side in ('blue', 'red') and cfg.get(cfg.enableSideChat) \
+                    and self._sideChatGuard.try_acquire():
+                asyncio.create_task(self.__postSideChat(side))
 
             await self.__onChampionSelectBegin()
         elif status == 'GameStart':
@@ -1498,6 +1506,21 @@ class MainWindow(FluentWindow):
         except Exception as e:
             logger.warning(f"HorseRating: report failed: {e}", TAG)
 
+    async def __postSideChat(self, side: str):
+        """红蓝方聊天播报: 延迟发送到 BP 聊天窗, 失败静默 (锦上添花).
+
+        随机延迟 1.5~3s: 等 championSelect conversation 建立完成,
+        同时避免秒发消息的机械感.
+        """
+        try:
+            await asyncio.sleep(random.uniform(1.5, 3.0))
+            message = self.tr("We are on the blue side") if side == 'blue' \
+                else self.tr("We are on the red side")
+            if await connector.sendChampSelectMessage(message):
+                logger.info(f"SideChat: posted '{side}'", TAG)
+        except Exception as e:
+            logger.warning(f"SideChat: post failed: {e}", TAG)
+
     async def __fillHorseRatingForSummoners(self, allyInfo, side='ally', queue_id=None,
                                             style=None):
         """对局页概览卡异步填充上等马评级 (默认开启). 大乱斗/海克斯只看 KDA.
@@ -1710,6 +1733,7 @@ class MainWindow(FluentWindow):
 
         # 一局结束: 重置赛前评级发送守卫, 下局自动发送恢复可用
         self._horseSendGuard.reset()
+        self._sideChatGuard.reset()
 
         if not cfg.get(cfg.enableReserveGameinfo):
             self.gameInfoInterface.clear()

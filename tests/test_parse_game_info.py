@@ -204,9 +204,12 @@ class TestReturnStructure:
         with _patch_parse():
             result = _run(parseGameInfoByGameflowSession(session, 1, 'ally'))
 
-        assert set(result.keys()) == {'summoners', 'champions', 'order'}
+        # isAram: queueId=420 为排位, 非大乱斗
+        assert set(result.keys()) == {'summoners', 'champions',
+                                      'order', 'isAram'}
         assert result['champions'] == {1: 10, 2: 20}
         assert result['order'] == [1, 2]
+        assert result['isAram'] is False
 
     def test_none_results_filtered_from_summoners(self):
         # parseSummonerGameInfo 对 summonerId=2 返回 None (例如 nameVisibilityType=HIDDEN)

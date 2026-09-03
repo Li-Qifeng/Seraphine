@@ -1337,6 +1337,17 @@ class SearchInterface(SeraphineInterface):
 
         signalBus.gameTabClicked.connect(self.__onGameTabClicked)
 
+        # LCU 冷启动 stale cache 后台恢复成功: 若正在展示该召唤师则自动重刷,
+        # 避免搜索页停留在冷启动时拿到的残缺战绩 (如只有 2 条)
+        signalBus.matchHistoryRecovered.connect(self.__onMatchHistoryRecovered)
+
+    @asyncSlot(str)
+    async def __onMatchHistoryRecovered(self, puuid: str):
+        if puuid and self.puuid == puuid:
+            logger.info(
+                "match history recovered, refresh search page", TAG)
+            await self.searchAndShowFirstPage(force=True)
+
     def __showSummonerNotFoundMsg(self):
         InfoBar.error(
             title=self.tr("Summoner not found"),

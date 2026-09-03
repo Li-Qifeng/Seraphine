@@ -57,30 +57,28 @@ def _parse_retry_after(value):
     if not value:
         return 5
     try:
-        v = int(value)
-        return max(1, min(v, 60))
+        # LCU/SGP 正常返回整数秒, 但需兼容浮点字符串 (如 "0.1");
+        # 按服务端指示的原值 sleep, 上下限截断防异常值
+        v = float(value)
+        return max(0, min(v, 60))
     except (ValueError, TypeError):
         return 5
 
 
 def retry(count=5, retry_sep=0):
     def decorator(func):
+        # 装饰时缓存一次参数签名, 避免每次调用重复 inspect
+        _param_names = list(inspect.signature(func).parameters.keys())
+        _has_self = bool(_param_names) and _param_names[0] == "self"
+        if _has_self:
+            _param_names = _param_names[1:]
+
         async def wrapper(*args, **kwargs):
-            logger.info("call %s" % func.__name__, TAG)
-
-            # 获取函数的参数信息
-            func_params = inspect.signature(func).parameters
-            param_names = list(func_params.keys())
-
-            tmp_args = args
-            if param_names[0] == "self":
-                # args[0] 是 self(connector) 的实例, 兼容静态方法
-                param_names = param_names[1:]
-                tmp_args = args[1:]
+            logger.debug("call %s" % func.__name__, TAG)
 
             # 构建参数字典，将参数名与对应的实参值一一对应
             params_dict = {param: arg for param,
-                           arg in zip(param_names, tmp_args)}
+                           arg in zip(_param_names, args[1:] if _has_self else args)}
 
             logger.debug(f"args = {params_dict}|kwargs = {kwargs}", TAG)
             # logger.debug(f"args = {args[1:]}|kwargs = {kwargs}", TAG)
@@ -157,7 +155,7 @@ def retry(count=5, retry_sep=0):
             with connector.dqLock:
                 req_obj.response = res
 
-            logger.info(f"exit {func.__name__}", TAG)
+            logger.debug(f"exit {func.__name__}", TAG)
             logger.debug(f"result = {res}", TAG)
 
             return res
@@ -263,6 +261,10 @@ class LolClientConnector(QObject):
         self._gamesFastCache = None
         self._gamesCacheTTL = 5.0  # 秒
 
+        # LCU 冷启动 stale cache 后台恢复任务注册表: {puuid: asyncio.Task}
+        # 防止同一 puuid 重复调度恢复循环
+        self._staleRecoveryTasks = {}
+
         # 状态锁: 保护 start/close 临界区, 防止多客户端切换时
         # close 与 start 并发执行 (例如 lolClientEnded 与 lolClientChanged
         # 信号触发的 task 在 asyncio 事件循环中交错).
@@ -352,6 +354,10 @@ class LolClientConnector(QObject):
 
             if self.sgpSess:
                 await self.sgpSess.close()
+
+            # 取消未完成的 stale cache 后台恢复任务
+            for task in self._staleRecoveryTasks.values():
+                task.cancel()
 
             self.__init__()
 
@@ -501,17 +507,23 @@ class LolClientConnector(QObject):
         raise RetryMaximumAttempts("Exceeded maximum retry attempts.")
 
     @retry()
+    async def _downloadAsset(self, url: str, dest: str) -> Optional[str]:
+        """通用资源下载 (带重试/限流). 磁盘已命中的路径不要走这里."""
+        res = await self.__get(url)
+
+        with open(dest, "wb") as f:
+            f.write(await res.read())
+
+        return dest
+
     async def getRuneIcon(self, runeId) -> str:
         if runeId == 0:
             return "app/resource/images/rune-0.png"
 
         icon = f"app/resource/game/rune icons/{runeId}.png"
         if not os.path.exists(icon):
-            path = self.manager.getRuneIconPath(runeId)
-            res = await self.__get(path)
-
-            with open(icon, "wb") as f:
-                f.write(await res.read())
+            return await self._downloadAsset(
+                self.manager.getRuneIconPath(runeId), icon)
 
         return icon
 
@@ -530,7 +542,6 @@ class LolClientConnector(QObject):
         res = await self.__get("/data-store/v1/install-dir")
         return await res.json()
 
-    @retry()
     async def getProfileIcon(self, iconId) -> str:
         icon = f"./app/resource/game/profile icons/{iconId}.jpg"
 
@@ -540,14 +551,10 @@ class LolClientConnector(QObject):
                 path = self.manager.getSummonerProfileIconPath(iconId)
             else:
                 path = f"/lol-game-data/assets/v1/profile-icons/{iconId}.jpg"
-            res = await self.__get(path)
-
-            with open(icon, "wb") as f:
-                f.write(await res.read())
+            return await self._downloadAsset(path, icon)
 
         return icon
 
-    @retry()
     async def getItemIcon(self, iconId) -> str:
         if iconId == 0:
             return "app/resource/images/item-0.png"
@@ -559,14 +566,10 @@ class LolClientConnector(QObject):
                 path = self.manager.getItemIconPath(iconId)
             else:
                 path = f"/lol-game-data/assets/v1/items/{iconId}.png"
-            res = await self.__get(path)
-
-            with open(icon, "wb") as f:
-                f.write(await res.read())
+            return await self._downloadAsset(path, icon)
 
         return icon
 
-    @retry()
     async def getAugmentIcon(self, augmentId) -> str:
         icon = f"app/resource/game/augment icons/{augmentId}.png"
 
@@ -575,14 +578,10 @@ class LolClientConnector(QObject):
                 path = self.manager.getAugmentsIconPath(augmentId)
             else:
                 path = f"/lol-game-data/assets/v1/cherry-augments/{augmentId}/icon.png"
-            res = await self.__get(path)
-
-            with open(icon, "wb") as f:
-                f.write(await res.read())
+            return await self._downloadAsset(path, icon)
 
         return icon
 
-    @retry()
     async def getChampionSplashes(self, skinInfo, isCentered: bool) -> str:
         """
         :param skinInfo:
@@ -608,14 +607,10 @@ class LolClientConnector(QObject):
             url = skinInfo["uncenteredSplashPath"]
 
         if not os.path.exists(image):
-            res = await self.__get(url)
-
-            with open(image, "wb") as f:
-                f.write(await res.read())
+            return await self._downloadAsset(url, image)
 
         return image
 
-    @retry()
     async def getSummonerSpellIcon(self, spellId) -> str:
         icon = f"app/resource/game/summoner spell icons/{spellId}.png"
 
@@ -624,14 +619,10 @@ class LolClientConnector(QObject):
                 path = self.manager.getSummonerSpellIconPath(spellId)
             else:
                 path = f"/lol-game-data/assets/v1/summoner-spells/{spellId}.png"
-            res = await self.__get(path)
-
-            with open(icon, "wb") as f:
-                f.write(await res.read())
+            return await self._downloadAsset(path, icon)
 
         return icon
 
-    @retry()
     async def getChampionIcon(self, championId) -> str:
         """
         @param championId:
@@ -649,10 +640,7 @@ class LolClientConnector(QObject):
                 path = self.manager.getChampionIconPath(championId)
             else:
                 path = f"/lol-game-data/assets/v1/champion-icons/{championId}.png"
-            res = await self.__get(path)
-
-            with open(icon, "wb") as f:
-                f.write(await res.read())
+            return await self._downloadAsset(path, icon)
 
         return icon
 
@@ -723,6 +711,11 @@ class LolClientConnector(QObject):
             这里在返回条数明显少于请求数 (gameCount >> 实际返回数) 时重试最多
             3 次, 每次间隔 2 秒.
 
+            LCU 冷启动 (客户端刚启动) 时 match-history 缓存同步可能需要数十秒
+            到数分钟, 快速重试也无济于事. 此时先返回部分数据让 UI 渲染,
+            同时调度后台恢复循环 (见 __recoverStaleMatchHistory), 数据恢复后
+            通过 signalBus.matchHistoryRecovered 广播, 生涯/搜索页自动重刷.
+
             注意: LCU 返回空但无异常 (gameCount=0) 时直接返回, 不做额外重试.
             因为 LCU 的 match-history 可能持续为空 (如服务端问题), 在 API 层
             无限重试会导致与 @retry 装饰器形成嵌套爆炸, 阻塞 UI 转圈.
@@ -789,24 +782,17 @@ class LolClientConnector(QObject):
                     await asyncio.sleep(2)
                     continue
 
-                # 补充: LCU 极端 stale 场景 -- 连 gameCount 也被缓存
-                # (gameCount 与 gameList 条数一致或接近, 但都远小于 expected)
-                # 典型表现: 只返回 2 条, gameCount 也是 2, 但期望 20 条
-                # 仅在 expected 远大于实际返回 (>=5 差距) 且 gameCount>0 时重试,
-                # 避免调用方真的只有少量对局时无意义重试
-                if attempt < 2 and expected - len(gameList) >= 5 \
-                        and 0 < gameCount <= len(gameList) + 2 \
-                        and len(gameList) < 5:
-                    logger.error(
-                        f"getSummonerGamesByPuuid: possible stale cache "
-                        f"(attempt={attempt}, got={len(gameList)}, "
-                        f"gameCount={gameCount}, expected={expected}), "
-                        f"retrying in 2s", TAG)
-                    await asyncio.sleep(2)
-                    continue
-
                 # 空响应或数据不足但无 stale 迹象, 直接返回
                 # 不在此处重试空响应: LCU 可能持续为空, 与 @retry 形成嵌套爆炸
+                #
+                # 数据明显偏少 (LCU 冷启动缓存未同步, 典型表现: 只返回 2 条):
+                # 不做阻塞重试 -- 冷启动同步需数十秒, 快速重试无意义;
+                # 先返回部分数据让 UI 渲染, 同时调度后台恢复,
+                # 恢复成功后经 signalBus.matchHistoryRecovered 通知页面重刷
+                if 0 < len(gameList) < expected \
+                        and (gameCount > len(gameList) or len(gameList) < 5):
+                    self.__scheduleStaleRecovery(puuid, begIndex, endIndex)
+
                 if gameList:
                     self._gamesFastCache = (puuid, begIndex, endIndex,
                                             games, time.time())
@@ -827,6 +813,83 @@ class LolClientConnector(QObject):
         if last_exc:
             raise last_exc
         return []
+
+    # LCU 冷启动 stale cache 后台恢复参数 (测试可 patch)
+    _STALE_RECOVERY_INTERVAL = 30  # 秒
+    _STALE_RECOVERY_ATTEMPTS = 6   # 最多探测 6 次, 约 3 分钟
+
+    def __scheduleStaleRecovery(self, puuid, begIndex, endIndex):
+        """返回 stale 部分数据后调度后台恢复循环 (同一 puuid 去重)."""
+        existing = self._staleRecoveryTasks.get(puuid)
+        if existing is not None and not existing.done():
+            return
+        task = asyncio.create_task(
+            self.__recoverStaleMatchHistory(puuid, begIndex, endIndex))
+        self._staleRecoveryTasks[puuid] = task
+        logger.info(
+            f"stale match history: background recovery scheduled "
+            f"for {puuid} [{begIndex}-{endIndex}]", TAG)
+
+    async def __recoverStaleMatchHistory(self, puuid, begIndex, endIndex):
+        """LCU 冷启动缓存同步的后台恢复循环.
+
+        每 _STALE_RECOVERY_INTERVAL 秒重查一次 match-history:
+        - 拿到足量数据: 刷新 fast cache, 广播 matchHistoryRecovered (puuid)
+        - gameCount 与返回条数一致且不足: 账号确实只有少量对局, 提前停止
+        - LCU 断开 (ReferenceError): 放弃恢复
+        """
+        expected = endIndex - begIndex + 1
+        try:
+            for attempt in range(self._STALE_RECOVERY_ATTEMPTS):
+                await asyncio.sleep(self._STALE_RECOVERY_INTERVAL)
+                try:
+                    params = {"begIndex": begIndex, "endIndex": endIndex}
+                    res = await self.__get(
+                        f"/lol-match-history/v1/products/lol/{puuid}/matches",
+                        params)
+                    res = await res.json()
+                except ReferenceError:
+                    # LCU 已断开, 放弃恢复
+                    return
+                except Exception as e:
+                    logger.debug(
+                        f"stale recovery probe {attempt} failed: {e}", TAG)
+                    continue
+
+                games = res.get("games") if isinstance(res, dict) else None
+                if isinstance(games, dict):
+                    gameList = games.get("games") or []
+                    gameCount = games.get("gameCount", len(gameList))
+                elif isinstance(games, list):
+                    gameList = games
+                    gameCount = len(gameList)
+                else:
+                    continue
+
+                if len(gameList) >= expected:
+                    self._gamesFastCache = (puuid, begIndex, endIndex,
+                                            games, time.time())
+                    logger.info(
+                        f"match history recovered: {puuid} "
+                        f"got={len(gameList)}/{expected}", TAG)
+                    signalBus.matchHistoryRecovered.emit(puuid)
+                    return
+
+                # gameCount 与条数一致: 服务器确认只有这么多对局, 停止探测
+                if gameCount <= len(gameList):
+                    logger.debug(
+                        f"stale recovery stop: {puuid} has only "
+                        f"{gameCount} games", TAG)
+                    return
+
+            logger.warning(
+                f"stale recovery gave up: {puuid} still incomplete after "
+                f"{self._STALE_RECOVERY_ATTEMPTS} probes", TAG)
+        except CancelledError:
+            # close() 主动取消, 静默退出
+            pass
+        finally:
+            self._staleRecoveryTasks.pop(puuid, None)
 
     @retry()
     async def getGameDetailByGameId(self, gameId) -> dict:
