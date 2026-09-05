@@ -743,39 +743,48 @@ def parseDetailRankInfo(rankInfo):
     return _parseDetailRankInfoPure(rankInfo, pt.rankedSolo, pt.rankedFlex, is_english)
 
 
-async def parseAllyGameInfo(session, currentSummonerId, queueID, useSGP=False) -> TeamGameInfo:
+async def parseAllyGameInfo(session, currentSummonerId, queueID, useSGP=False) -> Optional[TeamGameInfo]:
+    # champ-select session 在进入选人瞬间的竞态下可能缺失 myTeam
+    # (LCU 返回空/不完整 dict, 实测触发过 v1.3.0 启动闪退), 统一防御性取值
+    myTeam = session.get('myTeam') or []
+    if not myTeam:
+        logger.warning(
+            f"parseAllyGameInfo: session has no myTeam, skip "
+            f"(keys={list(session.keys()) if isinstance(session, dict) else session})",
+            "tools")
+        return None
 
     if useSGP and connector.isInTencent():
         # 如果是国服就优先尝试 SGP
         try:
             tasks = [getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId)
-                     for item in session['myTeam']]
+                     for item in myTeam]
             summoners = await asyncio.gather(*tasks)
         except Exception:
             tasks = [parseSummonerGameInfo(item, queueID, currentSummonerId)
-                     for item in session['myTeam']]
+                     for item in myTeam]
             summoners = await asyncio.gather(*tasks)
 
         # SGP 常因队友 puuid 缺失/HIDDEN 只解析出本人 -> 用 LCU 接口补全队友
-        if len([s for s in summoners if s]) < 2 and len(session['myTeam']) >= 2:
+        if len([s for s in summoners if s]) < 2 and len(myTeam) >= 2:
             try:
                 lcu_summoners = await asyncio.gather(*[
                     parseSummonerGameInfo(item, queueID, currentSummonerId)
-                    for item in session['myTeam']])
+                    for item in myTeam])
             except Exception:
                 lcu_summoners = []
             if len([s for s in lcu_summoners if s]) > len(
                     [s for s in summoners if s]):
                 logger.info(
                     "parseAllyGameInfo: SGP sparse "
-                    f"({len([s for s in summoners if s])}/{len(session['myTeam'])}), "
+                    f"({len([s for s in summoners if s])}/{len(myTeam)}), "
                     f"use LCU teammates ({len([s for s in lcu_summoners if s])})",
                     "tools")
                 summoners = lcu_summoners
 
     else:
         tasks = [parseSummonerGameInfo(item, queueID, currentSummonerId)
-                 for item in session['myTeam']]
+                 for item in myTeam]
         summoners = await asyncio.gather(*tasks)
 
     summoners = [summoner for summoner in summoners if summoner]

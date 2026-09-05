@@ -524,3 +524,19 @@ def test_parse_ally_sgp_complete_keeps_sgp():
     assert result is not None
     assert len(result['summoners']) == 2
     assert parse_calls == []  # 不回退, 不调用 LCU
+
+
+def test_parse_ally_missing_myteam_returns_none():
+    """回归: v1.3.0 启动闪退 -- champ-select session 竞态缺失 myTeam 时,
+    SGP try 与 except 处理器里的 session['myTeam'] 连抛两个 KeyError.
+    契约: 缺失/空 myTeam 一律返回 None, 不抛异常."""
+    from unittest.mock import patch as _patch
+    from app.lol.tools import parseAllyGameInfo
+
+    for session in ({}, {'myTeam': []}, {'timerPhase': 'BAN_PICK'}):
+        for use_sgp in (True, False):
+            with _patch("app.lol.tools.connector.isInTencent",
+                        return_value=use_sgp):
+                result = _run(parseAllyGameInfo(
+                    session, 1, 440, useSGP=use_sgp))
+            assert result is None, f"session={session}, useSGP={use_sgp}"
