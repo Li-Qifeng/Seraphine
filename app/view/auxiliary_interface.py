@@ -1,7 +1,8 @@
 import asyncio
 from app.common.config import cfg
 from app.common.icons import Icon
-from app.common.qfluentwidgets import SettingCardGroup, SwitchSettingCard
+from app.common.qfluentwidgets import (SettingCardGroup, SwitchSettingCard,
+                                       FluentIcon)
 from app.common.style_sheet import StyleSheet
 from app.components.seraphine_interface import SeraphineInterface
 from app.components.setting_cards import QueueFilterCard, RatingStyleSettingCard
@@ -235,7 +236,7 @@ class AuxiliaryInterface(SeraphineInterface):
             parent=self.gameInfoGroup)
 
         self.sideChatCard = SwitchSettingCard(
-            Icon.MEGAPHONE, self.tr("红蓝方聊天播报"),
+            FluentIcon.MEGAPHONE, self.tr("红蓝方聊天播报"),
             self.tr("选人阶段在聊天室播报本局所在阵营 (蓝方/红方)"),
             cfg.enableSideChat,
             parent=self.gameInfoGroup)
