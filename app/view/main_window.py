@@ -1399,6 +1399,13 @@ class MainWindow(FluentWindow):
 
     # 进入英雄选择界面时触发
     async def __onChampionSelectBegin(self):
+        # 冷启动竞态: LCU 已进入选人但 currentSummoner 尚未拿到 (None) 时,
+        # 后续所有解析都需要 summonerId, 直接跳过避免 TypeError 闪退
+        if not self.currentSummoner:
+            logger.warning(
+                "champion select begin but currentSummoner is None, skip", TAG)
+            return
+
         self.championSelection.reset()
         cSession, gSession = await asyncio.gather(connector.getChampSelectSession(),
                                                   connector.getGameflowSession())
@@ -1407,6 +1414,9 @@ class MainWindow(FluentWindow):
             queueId = gSession['gameData']['queue']['id']
         except (KeyError, TypeError):
             queueId = None
+
+        # 防御: 极端情况下 res.json() 返回 null -> session 为 None
+        cSession = cSession or {}
 
         self.championSelection.queueId = queueId
 
@@ -1572,7 +1582,11 @@ class MainWindow(FluentWindow):
     # 英雄选择时，英雄改变 / 楼层改变时触发
     @asyncSlot(dict)
     async def __onChampSelectChanged(self, data):
-        data = data['data']
+        # WS 事件 payload 可能缺失 data / 字段不全 (LCU 竞态), 裸下标会经
+        # asyncSlot 冒泡闪退, 统一防御性取值后跳过不完整事件
+        data = (data or {}).get('data') or {}
+        if not data:
+            return
 
         # 诊断: 确认 ARAM 的 timer.phase 值 (不受 logLevel 限制)
         try:
@@ -1596,13 +1610,16 @@ class MainWindow(FluentWindow):
             'FINALIZATION': [autoSetSummonerSpell, autoTrade, showOpggBuild],
         }
 
-        for func in phase.get(data['timer']['phase'], []):
+        # timer/myTeam 可能缺失 (不完整 session), 缺失时跳过对应逻辑
+        timerPhase = (data.get('timer') or {}).get('phase')
+        for func in phase.get(timerPhase, []):
             if await func(data, self.championSelection):
                 break
 
-        await self.gameInfoInterface.updateAllyIcon(data['myTeam'])
-
-        self.gameInfoInterface.updateAllySummonersOrder(data['myTeam'])
+        myTeam = data.get('myTeam') or []
+        if myTeam:
+            await self.gameInfoInterface.updateAllyIcon(myTeam)
+            self.gameInfoInterface.updateAllySummonersOrder(myTeam)
 
         if data.get('benchEnabled'):
             await autoBenchGrab(data, self.championSelection)
@@ -1613,10 +1630,21 @@ class MainWindow(FluentWindow):
 
     # 进入游戏后触发
     async def __onGameStart(self):
+        if not self.currentSummoner:
+            logger.warning("game start but currentSummoner is None, skip", TAG)
+            return
+
         session = await connector.getGameflowSession()
         currentSummonerId = self.currentSummoner['summonerId']
 
-        queueId = session['gameData']['queue']['id']
+        # 防御: gameflow session 可能缺失 gameData/queue (LCU 竞态),
+        # 后续解析全部依赖 queueId, 拿不到时直接跳过
+        try:
+            queueId = session['gameData']['queue']['id']
+        except (KeyError, TypeError):
+            logger.warning("game start session has no gameData/queue, skip", TAG)
+            return
+
         if queueId in (1700, 1090, 1100, 1110, 1130, 1160):  # 斗魂 云顶匹配 (排位)
             return
 

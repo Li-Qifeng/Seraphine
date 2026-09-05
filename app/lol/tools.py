@@ -801,8 +801,14 @@ async def parseAllyGameInfo(session, currentSummonerId, queueID, useSGP=False) -
 
 
 async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSGP=False) -> Optional[TeamGameInfo]:
-    data = session['gameData']
-    queueId = data['queue']['id']
+    # 防御: gameflow session 可能缺失 gameData/queue (LCU 竞态, 裸下标会闪退)
+    data = session.get('gameData') if isinstance(session, dict) else None
+    queueId = ((data or {}).get('queue') or {}).get('id')
+    if queueId is None:
+        logger.warning(
+            "parseGameInfoByGameflowSession: session has no gameData/queue, "
+            "skip", "tools")
+        return None
 
     if queueId in (1700, 1090, 1100, 1110, 1130, 1160):  # 斗魂 云顶匹配 (排位)
         return None
@@ -864,8 +870,8 @@ async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSG
 
 
 def getAllyOrderByGameRole(session, currentSummonerId):
-    data = session['gameData']
-    queueId = data['queue']['id']
+    data = session.get('gameData') if isinstance(session, dict) else None
+    queueId = ((data or {}).get('queue') or {}).get('id')
 
     # 只有排位模式下有返回值
     if queueId not in (420, 440):
@@ -887,8 +893,8 @@ def getTeamColor(session, currentSummonerId):
     '''
     输入 session 以及当前召唤师 id，输出 summonerId -> 颜色的映射
     '''
-    data = session['gameData']
-    ally, enemy = separateTeams(data, currentSummonerId)
+    data = session.get('gameData') if isinstance(session, dict) else None
+    ally, enemy = separateTeams(data or {}, currentSummonerId)
 
     if ally is None or enemy is None:
         return {}

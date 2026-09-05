@@ -54,8 +54,9 @@ def secsToStr(secs):
 
 
 def separateTeams(data, currentSummonerId):
-    team1 = data['teamOne']
-    team2 = data['teamTwo']
+    # 防御: gameData 可能缺失 teamOne/teamTwo (LCU 竞态), 缺失视为空队伍
+    team1 = data.get('teamOne') or []
+    team2 = data.get('teamTwo') or []
 
     for summoner in team1:
         if summoner.get('summonerId') == currentSummonerId:
@@ -70,8 +71,8 @@ def separateTeams(data, currentSummonerId):
 
 def parseSummonerOrder(team):
     summoners = [{
-        'summonerId': s['summonerId'],
-        'cellId': s['cellId']
+        'summonerId': s.get('summonerId', 0),
+        'cellId': s.get('cellId', 0)
     } for s in team]
 
     summoners.sort(key=lambda x: x['cellId'])

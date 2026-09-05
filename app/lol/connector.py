@@ -328,7 +328,10 @@ class LolClientConnector(QObject):
                                  uri='/entitlements/v1/token',
                                  type=("Update",))
         async def onSGPTokenChanged(event):
-            self.sgpToken = event['data']['accessToken']
+            # 防御: WS 事件 payload 可能缺失 data/accessToken, 仅在拿到时更新
+            token = ((event.get('data') or {}).get('accessToken'))
+            if token:
+                self.sgpToken = token
 
         @self.listener.subscribe(event='OnJsonApiEvent_lol-matchmaking_v1_ready-check',
                                  uri='/lol-matchmaking/v1/ready-check',

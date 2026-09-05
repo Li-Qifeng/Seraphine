@@ -540,3 +540,43 @@ def test_parse_ally_missing_myteam_returns_none():
                 result = _run(parseAllyGameInfo(
                     session, 1, 440, useSGP=use_sgp))
             assert result is None, f"session={session}, useSGP={use_sgp}"
+
+
+# ---------------------------------------------------------------------------
+# 同类隐患回归: gameflow/champ-select session 竞态缺失字段时不抛异常
+# (裸下标 KeyError 经 qasync asyncSlot 冒泡 -> exceptHook sys.exit 闪退)
+# ---------------------------------------------------------------------------
+
+class TestMissingFieldDefensive:
+    def test_parse_game_info_missing_gamedata_returns_none(self):
+        """session 缺 gameData/queue 时返回 None 而非 KeyError."""
+        for session in ({}, {'gameData': {}},
+                        {'gameData': {'queue': {}}},
+                        None):
+            result = _run(parseGameInfoByGameflowSession(
+                session, 1, 'ally'))
+            assert result is None, f"session={session}"
+
+    def test_get_ally_order_missing_fields_returns_none(self):
+        """getAllyOrderByGameRole 缺 gameData/queue 时返回 None."""
+        from app.lol.tools import getAllyOrderByGameRole
+        for session in ({}, {'gameData': {'queue': {}}}, None):
+            assert getAllyOrderByGameRole(session, 1) is None
+
+    def test_get_team_color_missing_fields_returns_empty(self):
+        """getTeamColor 缺 gameData/teamOne/teamTwo 时返回 {}."""
+        from app.lol.tools import getTeamColor
+        for session in ({}, None,
+                        {'gameData': {'teamOne': None}}):
+            assert getTeamColor(session, 1) == {}
+
+    def test_separate_teams_missing_teams_returns_none_pair(self):
+        """separateTeams 缺 teamOne/teamTwo 时返回 (None, None)."""
+        from app.lol.tools_pure import separateTeams
+        assert separateTeams({}, 1) == (None, None)
+        assert separateTeams({'teamOne': []}, 1) == (None, None)
+
+    def test_parse_summoner_order_missing_fields_no_crash(self):
+        """parseSummonerOrder 条目缺失 summonerId/cellId 时不抛异常."""
+        from app.lol.tools_pure import parseSummonerOrder
+        assert parseSummonerOrder([{}, {'summonerId': 2}]) == [2]

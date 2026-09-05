@@ -155,7 +155,8 @@ class GameInfoInterface(SeraphineInterface):
 
     async def updateAllyIcon(self, team):
         for new in team:
-            if not new['championId'] or not new['summonerId']:
+            # 防御: 条目字段可能缺失 (不完整 session), 用 .get 避免 KeyError
+            if not new.get('championId') or not new.get('summonerId'):
                 continue
 
             summonerId = new['summonerId']
