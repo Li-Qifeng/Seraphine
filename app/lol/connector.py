@@ -310,13 +310,15 @@ class LolClientConnector(QObject):
                                  uri='/lol-summoner/v1/current-summoner',
                                  type=('Update',))
         async def onCurrentSummonerProfileChanged(event):
-            signalBus.currentSummonerProfileChanged.emit(event['data'])
+            # 防御: WS 事件 payload 可能缺失 data (与 myTeam KeyError 同类竞态)
+            signalBus.currentSummonerProfileChanged.emit(event.get('data') or {})
 
         @self.listener.subscribe(event='OnJsonApiEvent_lol-gameflow_v1_gameflow-phase',
                                  uri='/lol-gameflow/v1/gameflow-phase',
                                  type=('Update',))
         async def onGameFlowPhaseChanged(event):
-            signalBus.gameStatusChanged.emit(event['data'])
+            # 防御: WS 事件 payload 可能缺失 data, 缺失时按空串处理
+            signalBus.gameStatusChanged.emit(event.get('data') or '')
 
         @self.listener.subscribe(event='OnJsonApiEvent_lol-champ-select_v1_session',
                                  uri='/lol-champ-select/v1/session',
@@ -337,7 +339,8 @@ class LolClientConnector(QObject):
                                  uri='/lol-matchmaking/v1/ready-check',
                                  type=('Update',))
         async def onReadyCheckChanged(event):
-            signalBus.readyCheckChanged.emit(event['data'])
+            # 防御: WS 事件 payload 可能缺失 data, 缺失时按空 dict 处理
+            signalBus.readyCheckChanged.emit(event.get('data') or {})
 
         # @self.listener.subscribe(event='OnJsonApiEvent', type=())
         # async def onDebugListen(event):
