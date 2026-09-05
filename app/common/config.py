@@ -262,7 +262,7 @@ class Config(QConfig):
     autoShowHextechWindow = ConfigItem(
         "Functions", "AutoShowHextechWindow", True, BoolValidator())
     enableHextechWindowOnTop = ConfigItem(
-        "Functions", "EnableHextechWindowOnTop", False, BoolValidator())
+        "Functions", "EnableHextechWindowOnTop", True, BoolValidator())
 
     # 海克斯强化选择辅助 (ARAM Mayhem 游戏中推荐)
     enableHextechAssist = ConfigItem(
@@ -281,6 +281,10 @@ class Config(QConfig):
 
     lastSummoner = ConfigItem("Other", "LastSummoner", {})
 
+    # 配置迁移标记: 见文件末尾 _migrateConfig (一次性迁移的执行凭证)
+    hextechOnTopMigrated = ConfigItem(
+        "Other", "HextechOnTopMigrated", False, BoolValidator())
+
 YEAR = 2023
 AUTHOR = "Zzaphkiel"
 # 二次开发维护者信息 (fork 维护者署名, 与原作者 AUTHOR 区分)
@@ -295,3 +299,20 @@ LOCAL_PATH = f"{os.getenv('APPDATA')}\\Seraphine"
 
 cfg = Config()
 qconfig.load(f"{LOCAL_PATH}\\config.json", cfg)
+
+
+def _migrateConfig():
+    """一次性配置迁移: 让默认值变更对存量用户同样生效.
+
+    EnableHextechWindowOnTop 默认值 False -> True (v1.3.x). 该配置项此前
+    没有设置界面入口, 存量用户落盘的 False 只能是旧默认值, 不会是用户
+    主动选择, 因此统一迁移为 True. 迁移后用户可在辅助功能-大乱斗组
+    自由开关; 独立 flag 保证迁移只跑一次, 不会覆盖用户后续的手动关闭.
+    新安装用户: 项本身默认已是 True, 迁移为 no-op.
+    """
+    if not cfg.get(cfg.hextechOnTopMigrated):
+        cfg.set(cfg.enableHextechWindowOnTop, True)
+        cfg.set(cfg.hextechOnTopMigrated, True)
+
+
+_migrateConfig()

@@ -200,6 +200,18 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.hextechChampions,
             self.hextechGroup)
 
+        self.hextechAutoShowCard = SwitchSettingCard(
+            Icon.WINDOW, self.tr("自动弹出换英雄窗口"),
+            self.tr("选人阶段开始时自动显示换英雄窗口（仅大乱斗备选席模式）"),
+            cfg.autoShowHextechWindow,
+            parent=self.hextechGroup)
+
+        self.hextechOnTopCard = SwitchSettingCard(
+            Icon.PADDINGTOP, self.tr("换英雄窗口置顶"),
+            self.tr("选人阶段换英雄窗口始终显示在其他窗口前"),
+            cfg.enableHextechWindowOnTop,
+            parent=self.hextechGroup)
+
         self.hextechAssistCard = SwitchSettingCard(
             Icon.GAME,
             self.tr("海克斯强化辅助"),
@@ -331,6 +343,8 @@ class AuxiliaryInterface(SeraphineInterface):
 
         # 海克斯
         self.hextechGroup.addSettingCard(self.hextechChampionCard)
+        self.hextechGroup.addSettingCard(self.hextechAutoShowCard)
+        self.hextechGroup.addSettingCard(self.hextechOnTopCard)
         self.hextechGroup.addSettingCard(self.hextechAssistCard)
         self.hextechGroup.addSettingCard(self.hextechAssistAutoShowCard)
 

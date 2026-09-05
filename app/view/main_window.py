@@ -29,6 +29,7 @@ from app.view.game_info_interface import GameInfoInterface
 from app.view.auxiliary_interface import AuxiliaryInterface
 from app.view.opgg_window import OpggWindow
 from app.view.hextech_window import HextechWindow, HextechGrabFlyout
+from app.view.decline_window import DeclineWindow
 from app.common.util import (github, getLolClientPid, getTasklistPath,
                              getLolClientPidSlowly, getLoLPathByRegistry,
                              findGameWindowHwnd, findProcessWindowHwnd,
@@ -189,6 +190,11 @@ class MainWindow(FluentWindow):
         # Hextech 抢人窗口必须在 __conncetSignalToSlot 之前创建 (接线引用 self.hextechWindow)
         self.hextechWindow = HextechWindow()
         self.hextechWindow.setChampionSelection(self.championSelection)
+
+        # 拒绝对局窗口 (自动接受后反悔): 同样需在接线前创建
+        self.declineWindow = DeclineWindow()
+        self.declineWindow.declineRequested.connect(
+            lambda: asyncio.ensure_future(self.__declineMatchMaking()))
 
         self.__conncetSignalToSlot()
         self.__autoStartLolClient()
@@ -633,24 +639,16 @@ class MainWindow(FluentWindow):
             lambda: showAndSwitch(self.gameInfoInterface))
         settingsAction.triggered.connect(
             lambda: showAndSwitch(self.settingInterface))
-        declineAction = Action(Icon.SQUARECROSS, self.tr("Decline Match"), self)
-        declineAction.triggered.connect(
-            lambda: asyncio.ensure_future(self.__declineMatchMaking()))
-
         quitAction.triggered.connect(quit)
 
         self.trayMenu = TmpSystemTrayMenu(self)
-        self.declineAction = declineAction
 
         self.trayMenu.addAction(careerAction)
         self.trayMenu.addAction(searchAction)
         self.trayMenu.addAction(gameInfoAction)
-        self.trayMenu.addAction(declineAction)
         self.trayMenu.addSeparator()
         self.trayMenu.addAction(settingsAction)
         self.trayMenu.addAction(quitAction)
-
-        declineAction.setVisible(False)
 
         self.trayIcon.setContextMenu(self.trayMenu)
         # 双击事件
@@ -1152,7 +1150,7 @@ class MainWindow(FluentWindow):
             if self._accept_task and not self._accept_task.done():
                 self._accept_task.cancel()
                 self._accept_task = None
-            self.declineAction.setVisible(False)
+            self.declineWindow.hide()
 
         self.isGaming = isGaming
 
@@ -1207,17 +1205,17 @@ class MainWindow(FluentWindow):
             if self._accept_task and not self._accept_task.done():
                 self._accept_task.cancel()
                 self._accept_task = None
-        # 已拒绝后按钮无意义 (拒绝是终态, 再点 decline 无效), 不再显示
+        # 拒绝弹窗仅对开启自动接受的用户有意义 (设置名即"自动接受后可手动拒绝");
+        # 已拒绝是终态, 再点 decline 无效, 不再显示
         if (data.get('state') == 'InProgress'
                 and not declined
+                and cfg.get(cfg.enableAutoAcceptMatching)
                 and cfg.get(cfg.autoAcceptDeclineEnabled)):
-            self.declineAction.setVisible(True)
+            self.declineWindow.show()
         else:
-            self.declineAction.setVisible(False)
+            self.declineWindow.hide()
 
     async def __declineMatchMaking(self):
-        # 不依赖 _accepted_this_ready_check (该标志仅自动接受开启时设置):
-        # 只开"接受后可拒绝"关自动接受时, 反悔按钮同样有效
         try:
             await connector.declineMatchMaking()
         except Exception as e:
@@ -1227,6 +1225,9 @@ class MainWindow(FluentWindow):
         if self._accept_task and not self._accept_task.done():
             self._accept_task.cancel()
             self._accept_task = None
+        self.declineWindow.hide()
+        InfoBar.success("", self.tr("已拒绝对局"), duration=2000,
+                        parent=self, position=InfoBarPosition.BOTTOM_RIGHT)
 
     async def __onReconnect(self):
         if not cfg.get(cfg.enableAutoReconnect):
