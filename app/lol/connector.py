@@ -1328,24 +1328,38 @@ class LolClientConnector(QObject):
         return await res.read()
 
     async def dodge(self) -> bool:
-        """秒退英雄选择 (自定义/排位). 逐字移植 Sona dodgeChampSelect():
-        仅 DELETE /lol-lobby/v2/lobby, 404 视为幂等成功; 其余端点(如
-        .../champ-select/v1/session/quit) 实测 no-op, 弃用.
+        """秒退英雄选择 (ChampSelect 阶段).
+
+        POST /lol-gameflow/v1/session/dodge (LeagueAkari 契约, 国服/国际服均有效):
+        旧实现 DELETE /lol-lobby/v2/lobby 仅 Lobby 阶段有效, ChampSelect 阶段
+        实测返回 400 (见 Sona issue #29 契约说明), 已弃用.
+        单次请求可能被服务器吞掉, 有限重试直到 phase 离开 ChampSelect
+        (LeagueAkari 用 5 并发 worker 循环轰炸, 此处串行等效).
         """
         tag = "Dodge"
-        try:
-            res = await self.__delete("/lol-lobby/v2/lobby")
-            # __delete 不 raise_for_status: 真实 404 走正常返回, 在此判幂等
-            if res.status == 404:
-                ok = True
-                logger.info("dodge: delete lobby 404 idempotent", tag)
-            else:
-                ok = res.ok
-                logger.info(f"dodge: delete lobby status={res.status}", tag)
-        except Exception as e:
-            logger.warning(f"dodge: delete lobby failed: {e}", tag)
-            ok = False
-        return ok
+        body = {"dodgeIds": [1145141919810], "phase": "ChampSelect"}
+        saw_ok = False
+        for attempt in range(1, 16):
+            try:
+                res = await self.__post(
+                    "/lol-gameflow/v1/session/dodge", body)
+                logger.info(
+                    f"dodge: post session/dodge status={res.status} "
+                    f"attempt={attempt}", tag)
+                if res.ok:
+                    saw_ok = True
+            except Exception as e:
+                logger.warning(f"dodge: post session/dodge failed: {e}", tag)
+            await asyncio.sleep(0.3)
+            try:
+                if await self.getGameStatus() != "ChampSelect":
+                    logger.info(
+                        f"dodge: phase left ChampSelect at attempt={attempt}",
+                        tag)
+                    return True
+            except Exception as e:
+                logger.warning(f"dodge: get phase failed: {e}", tag)
+        return saw_ok
 
     async def sendChampSelectMessage(self, message: str) -> bool:
         """向 BP 聊天窗发送一条消息.

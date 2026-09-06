@@ -698,44 +698,96 @@ class TestSendChampSelectMessage:
 
 # ---------------------------------------------------------------------------
 # 契约: dodge -> bool
-#   逐字移植 Sona dodgeChampSelect: 仅 DELETE /lol-lobby/v2/lobby;
-#   DELETE 404 视为已不在房间的幂等成功. 其余异常返回 False.
+#   POST /lol-gameflow/v1/session/dodge (LeagueAkari 契约);
+#   有限重试 (最多 15 次, 每次 0.3s) 直到 phase 离开 ChampSelect;
+#   全部尝试后 phase 仍卡住时, 只要曾收到 2xx 也视为成功.
 # ---------------------------------------------------------------------------
 
+_DODGE_BODY = {"dodgeIds": [1145141919810], "phase": "ChampSelect"}
+
+
 class TestDodge:
-    def test_delete_ok_returns_true(self, mock_lcu):
-        """DELETE 房间成功 (200/204) -> True, 不再追加任何端点."""
-        delete_resp = _resp(status=204)
-        delete_resp.ok = True
+    def test_phase_leaves_returns_true(self, mock_lcu):
+        """POST 204 后 phase 离开 ChampSelect -> True, 单次即成功."""
+        post_resp = _resp(status=204)
+        post_resp.ok = True
 
-        with _patch_delete(delete_resp), \
-                _patch_post(_resp(status=204)) as mock_post:
+        with _patch_post(post_resp) as mock_post, \
+                _patch_get(_resp(text_data='"None"')), \
+                patch('app.lol.connector.asyncio.sleep',
+                      new=AsyncMock(return_value=None)):
             result = _run(mock_lcu.dodge())
 
         assert result is True
-        mock_post.assert_not_awaited()
+        mock_post.assert_awaited_once_with(
+            "/lol-gameflow/v1/session/dodge", _DODGE_BODY)
 
-    def test_delete_404_is_idempotent_success(self, mock_lcu):
-        """DELETE 返回 404 (已不在房间) 视为成功.
+    def test_retries_until_phase_changes(self, mock_lcu):
+        """phase 前两次仍为 ChampSelect, 第三次变 None -> True (POST 3 次)."""
+        post_resp = _resp(status=204)
+        post_resp.ok = True
+        get_mock = AsyncMock(side_effect=[
+            _resp(text_data='"ChampSelect"'),
+            _resp(text_data='"ChampSelect"'),
+            _resp(text_data='"None"'),
+        ])
 
-        客户端正常返回 response (不抛 ClientResponseError), 404 由
-        dodge() 直接判幂等成功.
-        """
-        delete_resp = _resp(status=404)
-        delete_resp.ok = False
-
-        with _patch_delete(delete_resp) as mock_del:
+        with _patch_post(post_resp) as mock_post, \
+                patch.object(connector, '_LolClientConnector__get',
+                             new=get_mock), \
+                patch('app.lol.connector.asyncio.sleep',
+                      new=AsyncMock(return_value=None)):
             result = _run(mock_lcu.dodge())
 
         assert result is True
-        mock_del.assert_awaited_once_with("/lol-lobby/v2/lobby")
+        assert mock_post.await_count == 3
 
-    def test_delete_fails_returns_false(self, mock_lcu):
-        """DELETE 返回 500 等其他错误时返回 False."""
-        delete_resp = _resp(status=500)
-        delete_resp.ok = False
+    def test_all_attempts_fail_returns_false(self, mock_lcu):
+        """POST 一直 400 且 phase 一直 ChampSelect -> False (15 次尝试)."""
+        post_resp = _resp(status=400)
+        post_resp.ok = False
 
-        with _patch_delete(delete_resp):
+        with _patch_post(post_resp) as mock_post, \
+                _patch_get(_resp(text_data='"ChampSelect"')), \
+                patch('app.lol.connector.asyncio.sleep',
+                      new=AsyncMock(return_value=None)):
             result = _run(mock_lcu.dodge())
 
         assert result is False
+        assert mock_post.await_count == 15
+
+    def test_2xx_but_phase_stuck_still_true(self, mock_lcu):
+        """服务器接受请求但 phase 迟迟不变 -> 曾收到 2xx 兜底视为成功."""
+        post_resp = _resp(status=204)
+        post_resp.ok = True
+
+        with _patch_post(post_resp), \
+                _patch_get(_resp(text_data='"ChampSelect"')), \
+                patch('app.lol.connector.asyncio.sleep',
+                      new=AsyncMock(return_value=None)):
+            result = _run(mock_lcu.dodge())
+
+        assert result is True
+
+    def test_post_exception_continues_then_success(self, mock_lcu):
+        """单次 POST 异常 (如 RateLimited) 不中断重试, 后续 phase 变化 -> True."""
+        post_resp = _resp(status=204)
+        post_resp.ok = True
+        post_mock = AsyncMock(side_effect=[
+            RateLimited(1), post_resp, post_resp])
+        get_mock = AsyncMock(side_effect=[
+            _resp(text_data='"ChampSelect"'),
+            _resp(text_data='"ChampSelect"'),
+            _resp(text_data='"None"'),
+        ])
+
+        with patch.object(connector, '_LolClientConnector__post',
+                          new=post_mock), \
+                patch.object(connector, '_LolClientConnector__get',
+                             new=get_mock), \
+                patch('app.lol.connector.asyncio.sleep',
+                      new=AsyncMock(return_value=None)):
+            result = _run(mock_lcu.dodge())
+
+        assert result is True
+        assert post_mock.await_count == 3
