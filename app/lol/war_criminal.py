@@ -126,10 +126,13 @@ def _zScore(values: list, value: float) -> float:
 _CHAMPION_ROLES = None
 
 
-def _roleOf(championId: int, queueId: Optional[int]) -> str:
-    """英雄角色分类. 海克斯/大乱斗一律返回 dps (全输出阵容)."""
-    if queueId in HEXTECH_QUEUE_IDS or queueId in ARAM_QUEUE_IDS:
-        return 'dps'
+def _roleOf(championId: int) -> str:
+    """英雄角色分类 (按 champion_roles.json 查表, 所有模式统一).
+
+    大乱斗/海克斯不再强制 dps: 坦克/辅助按 tank_support 权重计
+    承伤/CC/护盾, 消除"玩坦克天然低分"的系统性偏差;
+    其视野/推塔指标仍由 _computeContribution 按模式归零.
+    """
     global _CHAMPION_ROLES
     if _CHAMPION_ROLES is None:
         _roles_path = pathlib.Path(__file__).parent / 'champion_roles.json'
@@ -382,7 +385,7 @@ async def _computeTeamScores(team: list,
 
     scored = []
     for i, p in enumerate(team):
-        role = _roleOf(p.get('championId'), queueId)
+        role = _roleOf(p.get('championId'))
         contribution, evidence = _computeContribution(
             p, team, role, baselines[i], isHextech, isAram, hasObjectives)
         scored.append({
@@ -404,6 +407,14 @@ async def _computeTeamScores(team: list,
 # 5 档评级阈值 (基于 z-score 综合贡献分)
 # score 越高 = 对团队贡献越大
 GRADE_THRESHOLDS = (1.0, 0.3, -0.3, -1.0)  # 5 档的分界点
+
+# 排位模式档内排名微调参数:
+# 匹配机制锚定局内实力接近, 表现方差小, 5 人 z 常全落中间档 (宽 0.6) 同一档,
+# 绝对阈值区分度不足 (大乱斗方差大自然跨档, 无此问题).
+# 同档 >= RANK_ADJUST_MIN_GROUP 人时, 与相邻队友 z 差 >= RANK_ADJUST_EPS 的
+# 档内 top1 升一档 / bottom1 降一档; 差距在噪声内 (z 差 < EPS) 不动, 不冤枉人.
+RANK_ADJUST_EPS = 0.15
+RANK_ADJUST_MIN_GROUP = 3
 
 # 贴吧风标签 (胜方/败方各一套)
 GRADE_LABELS_TIEBA = {
@@ -653,6 +664,32 @@ def gradeFromScore(score: float) -> int:
     return 5
 
 
+def _applyRankAdjustment(scored: list, queueId: Optional[int]) -> None:
+    """排位/峡谷模式: 同档人多的档内排名细化 (原地修改 grade).
+
+    大乱斗/海克斯保持绝对阈值 (局内方差大自然跨档, 无需细化);
+    其余模式 (排位/匹配) 匹配机制压平表现方差, 5 人 z 常全落同一档,
+    此时档内显著高的 top1 升一档、显著低的 bottom1 降一档,
+    恢复"队内相对最好/最差"的区分度.
+    """
+    if queueId in ARAM_QUEUE_IDS or queueId in HEXTECH_QUEUE_IDS:
+        return
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for item in scored:
+        groups[item['grade']].append(item)
+    for grade, members in groups.items():
+        if len(members) < RANK_ADJUST_MIN_GROUP:
+            continue
+        members.sort(key=lambda x: x['score'], reverse=True)
+        # top1 显著高于档内第二名 -> 升一档
+        if members[0]['score'] - members[1]['score'] >= RANK_ADJUST_EPS:
+            members[0]['grade'] = max(1, grade - 1)
+        # bottom1 显著低于倒数第二名 -> 降一档
+        if members[-2]['score'] - members[-1]['score'] >= RANK_ADJUST_EPS:
+            members[-1]['grade'] = min(5, grade + 1)
+
+
 def _team_side(scheme: dict, isWin: bool) -> tuple:
     """从方案取 (labels, comments) 并按档位索引取该档."""
     labels = scheme['win' if isWin else 'loss']
@@ -719,15 +756,19 @@ async def rateEntireTeam(team: list,
     if not scored:
         return []
 
+    # 先全量按绝对阈值定档, 再做排位模式档内排名微调 (label 需在微调后生成)
+    for item in scored:
+        item['grade'] = gradeFromScore(item['score'])
+    _applyRankAdjustment(scored, queueId)
+
     rated = []
     for item in scored:
-        grade = gradeFromScore(item['score'])
-        label = gradeLabel(grade, isWin, style)
+        label = gradeLabel(item['grade'], isWin, style)
         rated.append({
             'puuid': item['puuid'],
             'championId': item['championId'],
             'score': item['score'],
-            'grade': grade,
+            'grade': item['grade'],
             'label': label,
             'isWin': isWin,
             'isCurrent': (currentPuuid is not None

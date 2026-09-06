@@ -85,24 +85,19 @@ class TestZScore:
 
 
 class TestRoleOf:
-    def test_hextech_always_dps(self):
-        # 海克斯模式一律 dps
-        for cid in [1, 100, 9999]:
-            assert _roleOf(cid, 2400) == 'dps'
+    def test_roles_from_json_all_modes(self):
+        # 所有模式统一按 champion_roles.json 查表
+        # (大乱斗不再强制 dps: 坦克按 tank_support 权重计承伤/CC, 消除系统性压低)
+        assert _roleOf(1) == 'dps'      # Annie -> mage -> dps
+        assert _roleOf(12) == 'tank_support'  # Alistar -> tank -> tank_support
+        assert _roleOf(7) == 'dps'      # LeBlanc -> assassin -> dps
+        assert _roleOf(89) == 'tank_support'  # Leona -> tank -> tank_support
+        assert _roleOf(22) == 'dps'     # Ashe -> marksman -> dps
+        assert _roleOf(32) == 'tank_support'  # Amumu -> tank -> tank_support
 
-    def test_aram_always_dps(self):
-        # 大乱斗模式一律 dps
-        assert _roleOf(1, 450) == 'dps'
-        assert _roleOf(89, 450) == 'dps'  # 坦克 (Leona) 也走 dps
-
-    def test_sr_roles_from_json(self):
-        # 召唤师峡谷按 champion_roles.json 映射
-        assert _roleOf(1, 420) == 'dps'      # Annie -> mage -> dps
-        assert _roleOf(12, 420) == 'tank_support'  # Alistar -> tank -> tank_support
-        assert _roleOf(7, 420) == 'dps'      # LeBlanc -> assassin -> dps
-        assert _roleOf(89, 420) == 'tank_support'  # Leona -> tank -> tank_support
-        assert _roleOf(22, 420) == 'dps'     # Ashe -> marksman -> dps
-        assert _roleOf(32, 420) == 'tank_support'  # Amumu -> tank -> tank_support
+    def test_unknown_champion_defaults_dps(self):
+        # 未收录英雄默认 dps
+        assert _roleOf(9999) == 'dps'
 
 
 # ---------- rateEntireTeam 集成测试 ----------
@@ -197,6 +192,98 @@ class TestRateEntireTeam:
             for r in result:
                 # 均衡队伍最差也不应极端负
                 assert r['score'] > -1.5
+
+    def test_rank_adjustment_splits_large_same_grade_group(self):
+        """排位模式: 同档 5 人且 top/bottom 显著 (z 差 >= 0.15) 时升/降一档."""
+        from app.lol.war_criminal import _applyRankAdjustment
+        # 全员落中间档 (grade 3, z 全在 -0.3~0.3), top1/bottom1 与相邻差 >= 0.15
+        scored = [
+            {'puuid': 'p1', 'score': 0.25, 'grade': 3},
+            {'puuid': 'p2', 'score': 0.08, 'grade': 3},
+            {'puuid': 'p3', 'score': 0.05, 'grade': 3},
+            {'puuid': 'p4', 'score': 0.02, 'grade': 3},
+            {'puuid': 'p5', 'score': -0.15, 'grade': 3},
+        ]
+        _applyRankAdjustment(scored, 420)
+        grades = {i['puuid']: i['grade'] for i in scored}
+        assert grades['p1'] == 2   # top1 显著高于 p2 (0.25-0.08=0.17) -> 升档
+        assert grades['p2'] == 3   # 中间不动
+        assert grades['p3'] == 3
+        assert grades['p4'] == 3
+        assert grades['p5'] == 4   # bottom1 显著低于 p4 (0.02-(-0.15)=0.17) -> 降档
+
+    def test_rank_adjustment_skips_aram(self):
+        """大乱斗/海克斯: 保持绝对阈值, 同档不做排名微调."""
+        from app.lol.war_criminal import _applyRankAdjustment
+        scored = [
+            {'puuid': 'p1', 'score': 0.25, 'grade': 3},
+            {'puuid': 'p2', 'score': 0.08, 'grade': 3},
+            {'puuid': 'p3', 'score': 0.05, 'grade': 3},
+            {'puuid': 'p4', 'score': 0.02, 'grade': 3},
+            {'puuid': 'p5', 'score': -0.15, 'grade': 3},
+        ]
+        _applyRankAdjustment(scored, 450)
+        assert all(i['grade'] == 3 for i in scored)
+        _applyRankAdjustment(scored, 2400)
+        assert all(i['grade'] == 3 for i in scored)
+
+    def test_rank_adjustment_noise_gap_not_adjusted(self):
+        """排位模式: 同档相邻 z 差 < 0.15 (噪声内) 不微调, 不冤枉人."""
+        from app.lol.war_criminal import _applyRankAdjustment
+        scored = [
+            {'puuid': 'p1', 'score': 0.10, 'grade': 3},
+            {'puuid': 'p2', 'score': 0.06, 'grade': 3},
+            {'puuid': 'p3', 'score': 0.03, 'grade': 3},
+            {'puuid': 'p4', 'score': 0.00, 'grade': 3},
+            {'puuid': 'p5', 'score': -0.04, 'grade': 3},
+        ]
+        _applyRankAdjustment(scored, 420)
+        # 相邻差全 < 0.15: 全员保持档 3
+        assert all(i['grade'] == 3 for i in scored)
+
+    def test_rank_adjustment_small_group_untouched(self):
+        """排位模式: 同档 < 3 人不微调 (组太小, 排名无意义)."""
+        from app.lol.war_criminal import _applyRankAdjustment
+        scored = [
+            {'puuid': 'p1', 'score': 0.20, 'grade': 3},
+            {'puuid': 'p2', 'score': -0.10, 'grade': 3},
+        ]
+        _applyRankAdjustment(scored, 420)
+        assert all(i['grade'] == 3 for i in scored)
+
+    def test_rank_adjustment_grade_bounds(self):
+        """排位模式: 升降不越界 (档 1 不再升, 档 5 不再降)."""
+        from app.lol.war_criminal import _applyRankAdjustment
+        scored = [
+            {'puuid': 'p1', 'score': 1.20, 'grade': 1},
+            {'puuid': 'p2', 'score': 0.95, 'grade': 1},
+            {'puuid': 'p3', 'score': 0.90, 'grade': 1},
+            {'puuid': 'p4', 'score': -0.90, 'grade': 5},
+            {'puuid': 'p5', 'score': -1.20, 'grade': 5},
+        ]
+        _applyRankAdjustment(scored, 420)
+        grades = {i['puuid']: i['grade'] for i in scored}
+        assert grades['p1'] == 1   # 已是最高档, 不越界
+        assert grades['p5'] == 5   # 已是最低档, 不越界
+
+    def test_rate_entire_team_rank_adjustment_integrated(self):
+        """集成: 排位模式下每人档位与绝对阈值档最多差 1 (微调所致),
+        大乱斗模式下档位恒等于绝对阈值档."""
+        with _neutral_baselines()[0], _neutral_baselines()[1]:
+            team = [
+                _makeParticipant('p1', 1, 30000, deaths=3, win=True),
+                _makeParticipant('p2', 2, 28000, deaths=4, win=True),
+                _makeParticipant('p3', 3, 26000, deaths=5, win=True),
+                _makeParticipant('p4', 4, 24000, deaths=5, win=True),
+                _makeParticipant('p5', 5, 22000, deaths=7, win=True),
+            ]
+            sr = _run_async(rateEntireTeam(team, 420, isWin=True))
+            for r in sr:
+                base = gradeFromScore(r['score'])
+                assert abs(r['grade'] - base) <= 1  # 微调最多 ±1 档
+            aram = _run_async(rateEntireTeam(team, 450, isWin=True))
+            for r in aram:
+                assert r['grade'] == gradeFromScore(r['score'])  # 无微调
 
     def test_hextech_vision_not_counted(self):
         """海克斯大乱斗视野分不计入: 视野全 0 不影响评分."""
