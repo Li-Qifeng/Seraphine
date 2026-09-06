@@ -570,7 +570,9 @@ class TestStaleMatchHistoryRecovery:
         assert len(c_data["games"]) == 20
 
     def test_recovery_stops_for_genuinely_small_accounts(self, mock_lcu):
-        """探测发现 gameCount 与条数一致 (账号真的只有几局) -> 停止且不广播."""
+        """探测发现 gameCount 与条数一致 (账号真的只有几局) -> 停止且不广播.
+
+        冷启动窗口外 (测试环境 _lcuStartedAt=0, 窗口已过) 才信任自洽信号."""
         sig_mock = MagicMock()
         get_mock = AsyncMock(side_effect=[
             _resp(json_data=_games_resp(2)),  # 首次请求 (stale)
@@ -588,6 +590,31 @@ class TestStaleMatchHistoryRecovery:
             _run(scenario())
 
         sig_mock.emit.assert_not_called()
+
+    def test_recovery_keeps_probing_during_cold_start(self, mock_lcu):
+        """冷启动窗口内 gameCount 假自洽 (返回 2 条且 gameCount=2,
+        2026-09-06 真实故障) -> 不提前停止, 探测耗尽后才放弃."""
+        import time as _time
+        sig_mock = MagicMock()
+        # 探测全部返回 2/2 假自洽
+        get_mock = AsyncMock(side_effect=[
+            _resp(json_data=_games_resp(2)),  # 首次请求 (stale)
+        ] + [_resp(json_data=_games_resp(2))] * 10)  # 探测全部假自洽
+        with patch.object(connector, '_LolClientConnector__get', new=get_mock), \
+                patch.object(signalBus, 'matchHistoryRecovered', new=sig_mock), \
+                patch.object(connector, '_lcuStartedAt', _time.time()), \
+                self._fast_sleep():
+            async def scenario():
+                await connector.getSummonerGamesByPuuid("abc", 0, 19)
+                task = connector._staleRecoveryTasks.get("abc")
+                assert task is not None
+                await task
+
+            _run(scenario())
+
+        # 未恢复 (不广播), 但探测跑满全部次数而非首次自洽即停
+        sig_mock.emit.assert_not_called()
+        assert get_mock.call_count == 1 + 10
 
     def test_recovery_stops_when_lcu_disconnected(self, mock_lcu):
         """探测期间 LCU 断开 (ReferenceError) -> 静默放弃恢复."""

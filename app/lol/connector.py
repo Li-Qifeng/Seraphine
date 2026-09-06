@@ -265,6 +265,10 @@ class LolClientConnector(QObject):
         # 防止同一 puuid 重复调度恢复循环
         self._staleRecoveryTasks = {}
 
+        # LCU 连接建立时刻 (start() 成功时刷新): 冷启动窗口起点.
+        # 0 表示未连接, 视为窗口已过 (测试/离线环境小账号仍可正常停止)
+        self._lcuStartedAt = 0.0
+
         # 状态锁: 保护 start/close 临界区, 防止多客户端切换时
         # close 与 start 并发执行 (例如 lolClientEnded 与 lolClientChanged
         # 信号触发的 task 在 asyncio 事件循环中交错).
@@ -301,6 +305,7 @@ class LolClientConnector(QObject):
             await self.__runListener()
             await self.__initRuneStyle()
 
+            self._lcuStartedAt = time.time()
             logger.critical(f"connector started, server: {self.server}", TAG)
 
     async def __runListener(self):
@@ -822,7 +827,11 @@ class LolClientConnector(QObject):
 
     # LCU 冷启动 stale cache 后台恢复参数 (测试可 patch)
     _STALE_RECOVERY_INTERVAL = 30  # 秒
-    _STALE_RECOVERY_ATTEMPTS = 6   # 最多探测 6 次, 约 3 分钟
+    _STALE_RECOVERY_ATTEMPTS = 10  # 最多探测 10 次, 约 5 分钟
+    # 冷启动窗口: 窗口内 LCU 自报的 gameCount 不可信 (真实故障: 返回 2 条
+    # 且 gameCount=2 假自洽, 30 秒后仍如此; 2026-09-06 日志), 恢复循环
+    # 不得据自洽信号提前停止, 只能探测耗尽; 窗口外信任自洽信号
+    _COLD_START_SECONDS = 300      # 5 分钟
 
     def __scheduleStaleRecovery(self, puuid, begIndex, endIndex):
         """返回 stale 部分数据后调度后台恢复循环 (同一 puuid 去重)."""
@@ -881,12 +890,21 @@ class LolClientConnector(QObject):
                     signalBus.matchHistoryRecovered.emit(puuid)
                     return
 
-                # gameCount 与条数一致: 服务器确认只有这么多对局, 停止探测
+                # gameCount 与条数一致: LCU 自报自洽, 两种可能:
+                # a) 账号确实只有这么多对局 -> 停止
+                # b) 冷启动缓存未同步, gameCount 本身是假的 ->
+                #    窗口内不可信, 继续探测
                 if gameCount <= len(gameList):
-                    logger.debug(
-                        f"stale recovery stop: {puuid} has only "
-                        f"{gameCount} games", TAG)
-                    return
+                    in_cold_start = (
+                        time.time() - self._lcuStartedAt
+                        < self._COLD_START_SECONDS)
+                    if not in_cold_start:
+                        logger.debug(
+                            f"stale recovery stop: {puuid} has only "
+                            f"{gameCount} games", TAG)
+                        return
+                    # 冷启动窗口内: LCU 缓存可能仍未同步, 继续探测
+                    continue
 
             logger.warning(
                 f"stale recovery gave up: {puuid} still incomplete after "
