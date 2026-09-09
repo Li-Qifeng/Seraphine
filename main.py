@@ -12,6 +12,7 @@ import sys
 from app.common.config import cfg, VERSION, BETA
 from app.common.logger import logger
 from app.common.shutdown_filter import ShutdownFilter
+from app.chat.service import chat_service
 from app.view.main_window import MainWindow
 
 TAG = "Main"
@@ -71,6 +72,7 @@ def main():
 
     w = MainWindow()
     app.aboutToQuit.connect(w.processListener.terminate)
+    app.aboutToQuit.connect(chat_service.shutdown)  # 注销全局热键、关闭话术库
     w.show()
 
     eventLoop.run_until_complete(appCloseEvent.wait())

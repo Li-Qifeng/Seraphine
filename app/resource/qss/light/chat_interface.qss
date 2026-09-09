@@ -1,0 +1,17 @@
+/* Chat Interface — Light Theme */
+QLabel#titleLabel {
+    color: rgba(0, 0, 0, 0.9);
+    font: 28px 'Segoe UI', 'Microsoft YaHei', 'PingFang SC';
+    background-color: transparent;
+    letter-spacing: -0.3px;
+}
+
+QScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+ChatInterface,
+#scrollWidget {
+    background-color: transparent;
+}

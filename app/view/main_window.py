@@ -27,6 +27,8 @@ from app.view.career_interface import CareerInterface
 from app.view.search_interface import SearchInterface
 from app.view.game_info_interface import GameInfoInterface
 from app.view.auxiliary_interface import AuxiliaryInterface
+from app.view.chat_interface import ChatInterface
+from app.chat.service import chat_service
 from app.view.opgg_window import OpggWindow
 from app.view.hextech_window import HextechWindow, HextechGrabFlyout
 from app.view.decline_window import DeclineWindow
@@ -129,6 +131,11 @@ class MainWindow(FluentWindow):
         self.gameInfoInterface = GameInfoInterface(self)
         self.auxiliaryFuncInterface = AuxiliaryInterface(self)
         self.settingInterface = SettingInterface(self)
+
+        # 快捷喊话子系统: 初始化服务（装事件过滤器/订阅游戏状态/装载热键）
+        # 再建设置页（页面构造依赖 chat_service.repo）
+        chat_service.init(QApplication.instance())
+        self.chatInterface = ChatInterface(self)
 
         logger.critical("Seraphine interfaces initialized", TAG)
 
@@ -266,6 +273,7 @@ class MainWindow(FluentWindow):
         self.gameInfoInterface.setObjectName("gameInfoInterface")
         self.auxiliaryFuncInterface.setObjectName("auxiliaryFuncInterface")
         self.settingInterface.setObjectName("settingInterface")
+        self.chatInterface.setObjectName("chatInterface")
 
     def __initNavigation(self):
         pos = NavigationItemPosition.SCROLL
@@ -283,6 +291,9 @@ class MainWindow(FluentWindow):
         self.addSubInterface(
             self.auxiliaryFuncInterface, Icon.WRENCH,
             self.tr("Auxiliary Functions"), pos)
+        self.addSubInterface(
+            self.chatInterface, Icon.COMMENT,
+            self.tr("快捷喊话"), pos)
 
         pos = NavigationItemPosition.BOTTOM
 
@@ -744,6 +755,7 @@ class MainWindow(FluentWindow):
 
         self.__unlockInterface()
         await asyncio.gather(championsInit, aramInitT)
+        signalBus.gameStatusChanged.emit(status)
         await self.__onGameStatusChanged(status)
 
         # Note 如果你希望测试大乱斗的数据弹框, 参考这个 -- By Hpero4
@@ -793,6 +805,7 @@ class MainWindow(FluentWindow):
         await connector.close()
 
         self.isClientProcessRunning = False
+        signalBus.gameStatusChanged.emit("None")
 
         await self.__updateAvatarIconName()
 

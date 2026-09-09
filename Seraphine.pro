@@ -17,5 +17,6 @@ SOURCES += app/view/main_window.py \
            app/components/multi_lol_path_setting.py \
            app/lol/tools.py \
             app/view/auxiliary_cards/tool_cards.py \
+            app/view/chat_interface.py \
 
 TRANSLATIONS += app/resource/i18n/Seraphine.zh_CN.ts

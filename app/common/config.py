@@ -279,6 +279,16 @@ class Config(QConfig):
         "Functions", "DeathSwitchExcludedModes",
         [1700, 1090, 1100, 1110, 1130, 1160])
 
+    # 快捷喊话子系统配置
+    enableQuickChat = ConfigItem("Chat", "Enabled", False, BoolValidator())
+    quickChatMinIntervalMs = RangeConfigItem(
+        "Chat", "MinIntervalMs", 800, RangeValidator(600, 5000))
+    quickChatBurstLimit = RangeConfigItem(
+        "Chat", "BurstLimit", 3, RangeValidator(2, 10))
+    quickChatBurstCooldownMs = RangeConfigItem(
+        "Chat", "BurstCooldownMs", 3000, RangeValidator(1000, 30000))
+    quickChatUseClipboard = ConfigItem("Chat", "UseClipboard", False, BoolValidator())
+
     lastSummoner = ConfigItem("Other", "LastSummoner", {})
 
     # 配置迁移标记: 见文件末尾 _migrateConfig (一次性迁移的执行凭证)

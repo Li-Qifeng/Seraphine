@@ -36,6 +36,7 @@ seraphine
 
 # 忽略 IDE 内部文件
 .trae/
+.workbuddy/
 
 # 临时测试输出
 tests/py_err.txt

@@ -1412,6 +1412,49 @@ class LolClientConnector(QObject):
             logger.warning(f"sendChampSelectMessage failed: {e}", TAG)
             return False
 
+    async def sendChatMessage(self, message: str, conv_types: tuple) -> bool:
+        """向指定类型的聊天会话发消息（快捷喊话子系统 LCU 通道）.
+
+        conv_types: 按优先级排列的会话类型元组，如 ("championSelect",)
+        或 ("party", "customGame")。找不到匹配会话返回 False（记 warning，
+        不弹窗）——喊话属锦上添花，不能因它打断正常流程。
+        """
+        try:
+            convs_res = await self.__get("/lol-chat/v1/conversations")
+            if convs_res.status != 200:
+                logger.warning(
+                    f"sendChatMessage: conversations {convs_res.status}", TAG)
+                return False
+            convs = await convs_res.json()
+            conv_id = None
+            for want in conv_types:
+                conv_id = next(
+                    (str(c.get("id")) for c in (convs or [])
+                     if isinstance(c, dict)
+                     and str(c.get("type", "")).lower() == want.lower()),
+                    None)
+                if conv_id:
+                    break
+            if not conv_id:
+                available = [str(c.get("type")) for c in (convs or [])
+                             if isinstance(c, dict)]
+                logger.warning(
+                    f"sendChatMessage: no conversation in {conv_types}, "
+                    f"available={available}", TAG)
+                return False
+            res = await self.__post(
+                f"/lol-chat/v1/conversations/{conv_id}/messages",
+                data={"type": "chat", "body": message})
+            if res.status in (200, 201):
+                logger.info(f"sendChatMessage: posted to {conv_id}", TAG)
+                return True
+            body = await res.text()
+            logger.warning(f"sendChatMessage: {res.status} {body}", TAG)
+            return False
+        except Exception as e:
+            logger.warning(f"sendChatMessage failed: {e}", TAG)
+            return False
+
     async def getFriends(self) -> list:
         """获取好友列表, 用于 auto honor 识别可点赞好友.
 

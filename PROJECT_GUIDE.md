@@ -442,6 +442,25 @@ WaitingForStatus   → 仅更新标题
 | `champions.py` | 英雄昵称/关键词（gtimg.cn，版本化缓存，模糊搜索） | `ChampionAlias` |
 | `exceptions.py` | 5 个自定义异常（均继承 Exception） | `SummonerNotFound`, `SummonerGamesNotFound`, `SummonerRankInfoNotFound`, `SummonerNotInGame`, `RetryMaximumAttempts` |
 
+### `app/chat/`（快捷喊话子系统，`feat/in-game-chat`）
+
+| 文件 | 职责 | 关键符号 |
+|---|---|---|
+| `store/db.py` | 话术库 SQLite（`seraphine_chat.db`，**只增不删永不 DROP**，RLock） | `ChatDb` |
+| `store/repo.py` | 分组/话术 CRUD、组内循环游标、热键清单、`send_log`（30 天滚动） | `ChatRepo` |
+| `store/seed.py` | 内置词库（5 组 25 条）幂等导入与升级合并（dirty 保护） | `ensure_seed`, `BUILTIN_PACK` |
+| `domain/rhythm.py` | 限流 + 抖动 + 连发冷却（硬下限 600ms，纯逻辑） | `Rhythm` |
+| `domain/keys.py` | 热键解析 + LOL 高危区/系统键**保存时硬拦截**（纯逻辑） | `parse_hotkey`, `validate_hotkey`, `hotkey_to_vk`, `HotkeyError` |
+| `domain/orchestrator.py` | **唯一发送出口**：阶段闸→循环取词→节奏→双通道发送→记账 | `SendOrchestrator` |
+| `engine/input_sim.py` | `SendInput(KEYEVENTF_UNICODE)` 逐字 + Enter 补扫描码 + 剪贴板整条（默认关） | `send_text`, `build_unicode_inputs` |
+| `engine/foreground.py` | 游戏前台判定（进程名 + `(TM) Client` 标题回退） | `is_game_foreground` |
+| `engine/hotkey.py` | `RegisterHotKey(hwnd=NULL)` + `QAbstractNativeEventFilter` 收 `WM_HOTKEY` | `HotkeyManager` |
+| `service.py` | 单例门面：init/shutdown/refresh_hotkeys/update_rhythm | `chat_service` |
+| `app/common/chat_config.py` | 独立配置 `chat_config.json`（默认 `enabled=False`） | `chat_cfg` |
+| `app/view/chat_interface.py` | 设置页「快捷喊话」（分组管理/循环预览/参数/日志） | `ChatInterface`, `GroupCard` |
+
+> 设计规格与真机验收见 `document/LOL_快捷喊话_设计规格_v1.0.md`、`document/LOL_快捷喊话_真机验收手册.md`；offscreen 冒烟脚本 `smoke_chat.py`（仓库根）。接线纪律：不改 `MainWindow.__conncetSignalToSlot`；LCU 通道走 `connector.sendChatMessage(message, conv_types)`。
+
 ### `app/view/`（表现层）
 
 | 文件 | 职责 |
