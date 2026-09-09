@@ -133,8 +133,9 @@ class MainWindow(FluentWindow):
         self.settingInterface = SettingInterface(self)
 
         # 快捷喊话子系统: 初始化服务（装事件过滤器/订阅游戏状态/装载热键）
-        # 再建设置页（页面构造依赖 chat_service.repo）
-        chat_service.init(QApplication.instance(), hwnd=int(self.winId()))
+        # 全局热键使用 Windows 线程消息模型 (hwnd=None)，解耦于具体原生窗口句柄生命周期
+        # 避免窗口销毁/托盘隐藏/无边框重构导致句柄失效 (WinError 1400)
+        chat_service.init(QApplication.instance())
         self.chatInterface = ChatInterface(self)
 
         logger.critical("Seraphine interfaces initialized", TAG)

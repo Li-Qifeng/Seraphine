@@ -88,6 +88,7 @@ class HotkeyManager(QObject):
         self._unregister = unregister_fn or _win32_unregister
         self._ids = {}        # hotkey_str -> hotkey_id
         self._groups = {}     # hotkey_id -> group_id
+        self._failed_hotkeys = {}  # hotkey_str -> err_tip
         self._next_id = 1
         self._filter = _NativeHotkeyFilter(self)
 
@@ -97,7 +98,7 @@ class HotkeyManager(QObject):
         return self._filter
 
     def set_hwnd(self, hwnd: int):
-        """绑定主窗口 HWND，使热键作为窗口消息精确路由到 Qt 消息循环。"""
+        """绑定主窗口 HWND（若为 None 则默认使用线程级消息队列）。"""
         self._hwnd = hwnd
 
     # ---- 登记簿（纯逻辑，可单测）----
@@ -105,6 +106,7 @@ class HotkeyManager(QObject):
     def register_bindings(self, bindings: dict) -> bool:
         """bindings: {hotkey_str: group_id}。先全部注销再按新清单注册。"""
         self.unregister_all()
+        self._failed_hotkeys.clear()
         for hotkey, group_id in bindings.items():
             try:
                 # 兜底校验：保存时硬拦截是主闸，注册时再过一遍高危区表
@@ -112,6 +114,7 @@ class HotkeyManager(QObject):
                 mod, vk = hotkey_to_vk(hotkey)
             except HotkeyError as e:
                 logger.warning(f"skip invalid hotkey {hotkey!r}: {e}", TAG)
+                self._failed_hotkeys[hotkey] = str(e)
                 continue
             hotkey_id = self._next_id
             self._next_id += 1
@@ -124,8 +127,9 @@ class HotkeyManager(QObject):
 
             if not ok:
                 err = ctypes.windll.kernel32.GetLastError()
-                err_tip = " (快捷键已被其他程序或旧进程占用)" if err == 1409 else f" (WinError {err})"
-                logger.warning(f"RegisterHotKey failed for {hotkey!r}{err_tip} (hwnd={self._hwnd})", TAG)
+                err_tip = "快捷键已被其他程序或旧进程占用" if err == 1409 else f"WinError {err}"
+                logger.warning(f"RegisterHotKey failed for {hotkey!r} ({err_tip}) (hwnd={self._hwnd})", TAG)
+                self._failed_hotkeys[hotkey] = err_tip
                 continue
             self._ids[hotkey] = hotkey_id
             self._groups[hotkey_id] = group_id
@@ -146,6 +150,9 @@ class HotkeyManager(QObject):
 
     def registered_hotkeys(self) -> list:
         return sorted(self._ids.keys())
+
+    def failed_hotkeys(self) -> dict:
+        return dict(self._failed_hotkeys)
 
     def _on_wm_hotkey(self, hotkey_id: int):
         group_id = self._groups.get(hotkey_id)

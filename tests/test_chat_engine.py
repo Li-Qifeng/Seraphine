@@ -87,6 +87,8 @@ class TestHotkeyManager:
         ok = mgr.register_bindings({"Alt+1": "g1"})
         assert not ok
         assert mgr.registered_hotkeys() == []
+        assert "Alt+1" in mgr.failed_hotkeys()
+
 
     def test_native_event_dispatch(self):
         mgr, _ = _make_manager()

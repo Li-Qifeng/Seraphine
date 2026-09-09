@@ -108,6 +108,9 @@ class ChatService(QObject):
     def registered_hotkeys(self) -> list:
         return self._hotkeys.registered_hotkeys() if self._hotkeys else []
 
+    def failed_hotkeys(self) -> dict:
+        return self._hotkeys.failed_hotkeys() if self._hotkeys else {}
+
     async def test_send(self, text: str) -> dict:
         """测试发送指定文本，用于设置页或调试。"""
         return await self._orchestrator.send_direct(text)

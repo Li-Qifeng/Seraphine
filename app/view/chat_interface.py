@@ -26,7 +26,7 @@ from app.components.seraphine_interface import SeraphineInterface
 from app.chat.domain.keys import HotkeyError, validate_hotkey
 from app.chat.engine.foreground import activate_game_window, is_game_foreground
 from app.chat.service import chat_service
-from app.chat.store.seed import BUILTIN_PACK_ID
+from app.chat.store.seed import BUILTIN_PACK_ID, reset_builtin_pack
 
 TAG = "ChatInterface"
 
@@ -201,10 +201,6 @@ class GroupDetailCard(CardWidget):
     def adjustCardHeight(self):
         self.phraseContainer.updateGeometry()
         self.updateGeometry()
-        h = max(self.vLayout.sizeHint().height(), 120)
-        self.resize(self.width(), h)
-        if self.parent() and hasattr(self.parent(), "adjustSize"):
-            self.parent().adjustSize()
 
     def load_group(self, group_id: str):
         if not group_id or not isinstance(group_id, str):
@@ -213,8 +209,6 @@ class GroupDetailCard(CardWidget):
         self.group = self.interface.repo.get_group(group_id)
         if not self.group:
             self.hide()
-            if self.parent() and hasattr(self.parent(), "adjustSize"):
-                self.parent().adjustSize()
             return
         self.show()
 
@@ -266,6 +260,9 @@ class GroupDetailCard(CardWidget):
                 edit = LineEdit(row)
                 edit.setText(p["content"])
 
+                saveBtn = TransparentPushButton(self.tr("保存"), row)
+                saveBtn.setEnabled(False)
+
                 enabledBox = CheckBox(self.tr("启用"), row)
                 enabledBox.setChecked(bool(p["enabled"]))
 
@@ -274,18 +271,23 @@ class GroupDetailCard(CardWidget):
 
                 layout.addWidget(idxLabel)
                 layout.addWidget(edit, 1)
+                layout.addWidget(saveBtn)
                 layout.addWidget(enabledBox)
                 layout.addWidget(testBtn)
                 layout.addWidget(delBtn)
 
-                edit.editingFinished.connect(
-                    lambda pid=p["id"], e=edit: self.__on_edit_phrase(pid, e))
+                edit.textChanged.connect(
+                    lambda _, b=saveBtn: b.setEnabled(True))
+                edit.returnPressed.connect(
+                    lambda pid=p["id"], e=edit, b=saveBtn: self.__on_save_phrase(pid, e, b))
+                saveBtn.clicked.connect(
+                    lambda _, pid=p["id"], e=edit, b=saveBtn: self.__on_save_phrase(pid, e, b))
                 enabledBox.stateChanged.connect(
                     lambda _state, pid=p["id"], b=enabledBox: (
                         self.interface.repo.set_phrase_enabled(pid, b.isChecked()),
                         self.refresh_preview()))
                 testBtn.clicked.connect(
-                    lambda _, text=p["content"]: self.interface.test_send_text(text))
+                    lambda _, pid=p["id"], e=edit, b=saveBtn: self.__on_test_phrase(pid, e, b))
                 delBtn.clicked.connect(
                     lambda _, pid=p["id"]: self.__on_remove_phrase(pid))
 
@@ -347,20 +349,41 @@ class GroupDetailCard(CardWidget):
         self.addEdit.clear()
         self.reload_phrases()
         self.refresh_preview()
-        self.interface.refresh_groups(keep_id=self.current_group_id)
 
-    def __on_edit_phrase(self, phrase_id: str, edit: LineEdit):
+    def __on_save_phrase(self, phrase_id: str, edit: LineEdit, save_btn: TransparentPushButton):
         content = edit.text().strip()
         if not content:
+            InfoBar.warning(
+                title=self.tr("话术内容不能为空"),
+                content=self.tr("请输入有效文本后再保存"),
+                orient=Qt.Vertical, isClosable=True,
+                position=InfoBarPosition.TOP_RIGHT, duration=2000,
+                parent=self.interface)
             return
         self.interface.repo.update_phrase_content(phrase_id, content)
         self.refresh_preview()
+        save_btn.setEnabled(False)
+        InfoBar.success(
+            title=self.tr("话术已保存"),
+            content=content,
+            orient=Qt.Vertical, isClosable=True,
+            position=InfoBarPosition.TOP_RIGHT, duration=2000,
+            parent=self.interface)
+
+    def __on_test_phrase(self, phrase_id: str, edit: LineEdit, save_btn: TransparentPushButton):
+        content = edit.text().strip()
+        if not content:
+            return
+        if save_btn.isEnabled():
+            self.interface.repo.update_phrase_content(phrase_id, content)
+            self.refresh_preview()
+            save_btn.setEnabled(False)
+        self.interface.test_send_text(content)
 
     def __on_remove_phrase(self, phrase_id: str):
         self.interface.repo.delete_phrase(phrase_id)
         self.reload_phrases()
         self.refresh_preview()
-        self.interface.refresh_groups(keep_id=self.current_group_id)
 
     def __on_delete_group(self):
         if not self.current_group_id or not self.group:
@@ -460,6 +483,14 @@ class ChatInterface(SeraphineInterface):
         # 2. 话术分组与内容管理组
         self.manageGroup = SettingCardGroup(self.tr("话术分组与管理"), self.scrollWidget)
 
+        self.packCard = SettingCard(
+            Icon.DOCUMENT, self.tr("内置词库信息"),
+            "", self.manageGroup)
+        self.resetPackBtn = PushButton(self.tr("恢复默认词库"), self.packCard)
+        self.resetPackBtn.clicked.connect(self.__on_reset_pack)
+        self.packCard.hBoxLayout.addWidget(self.resetPackBtn)
+        self.packCard.hBoxLayout.addSpacing(16)
+
         self.newGroupCard = SettingCard(
             Icon.TEXTEDIT, self.tr("新建话术分组"),
             self.tr("创建独立自定义分组并可绑定专属全局快捷键"), self.manageGroup)
@@ -481,17 +512,14 @@ class ChatInterface(SeraphineInterface):
         self.groupDetailCard = GroupDetailCard(self, parent=self.manageGroup)
 
         self.manageGroup.addSettingCards([
+            self.packCard,
             self.newGroupCard,
             self.groupSegmented,
             self.groupDetailCard,
         ])
 
-        # 3. 词库与发送记录组
-        self.logGroup = SettingCardGroup(self.tr("词库与发送记录"), self.scrollWidget)
-
-        self.packCard = SettingCard(
-            Icon.DOCUMENT, self.tr("内置词库信息"),
-            "", self.logGroup)
+        # 3. 发送记录组
+        self.logGroup = SettingCardGroup(self.tr("发送记录"), self.scrollWidget)
 
         self.logCard = SettingCard(
             Icon.LOG, self.tr("最近发送记录"),
@@ -511,7 +539,6 @@ class ChatInterface(SeraphineInterface):
         self.logTable.setMinimumHeight(240)
 
         self.logGroup.addSettingCards([
-            self.packCard,
             self.logCard,
             self.logTable,
         ])
@@ -585,7 +612,13 @@ class ChatInterface(SeraphineInterface):
             pass
         admin_tip = " | 权限: 管理员" if is_admin else " | 权限: 普通用户（若游戏以管理员运行，Seraphine 也需以管理员启动）"
 
-        self.statusCard.setContent(f"【阶段】{phase_str}  |  【热键】{hk_str}{admin_tip}")
+        failed = chat_service.failed_hotkeys()
+        fail_tip = ""
+        if failed:
+            items = [f"{k}({v})" for k, v in failed.items()]
+            fail_tip = f"  |  【警告】热键注册受阻: {', '.join(items)}"
+
+        self.statusCard.setContent(f"【阶段】{phase_str}  |  【热键】{hk_str}{admin_tip}{fail_tip}")
 
     def refresh_logs(self):
         rows = self.repo.list_send_logs(limit=100)
@@ -601,9 +634,29 @@ class ChatInterface(SeraphineInterface):
         self.logTable.resizeColumnsToContents()
 
     def __refresh_pack_info(self):
-        version = self.repo.get_meta("builtin_pack_version") or "-"
+        version = self.repo.get_meta("builtin_pack_version") or "1"
         self.packCard.setContent(
-            self.tr(f"内置中文词库 v{version}（包含 5 组 25 条预设战术话术，支持自由编辑与自定义新增）"))
+            self.tr(f"内置官方中文战术词库 v{version}（包含对线/打野/团战/资源/礼貌 5 组共 25 条预设话术，支持自由编辑、增删与恢复默认）"))
+
+    def __on_reset_pack(self):
+        box = MessageBox(
+            self.tr("恢复默认内置词库"),
+            self.tr("确定要将内置词库恢复为官方默认预设吗？这将重置 5 组官方内置话术及默认快捷键（自定义分组不受影响）。"),
+            self.window())
+        box.yesButton.setText(self.tr("恢复默认"))
+        box.cancelButton.setText(self.tr("取消"))
+        if box.exec_():
+            reset_builtin_pack(self.repo)
+            chat_service.refresh_hotkeys()
+            self.refresh_groups()
+            self.refresh_status()
+            self.__refresh_pack_info()
+            InfoBar.success(
+                title=self.tr("内置词库已恢复"),
+                content=self.tr("已成功恢复 5 组 25 条官方默认战术话术"),
+                orient=Qt.Vertical, isClosable=True,
+                position=InfoBarPosition.TOP_RIGHT, duration=3000,
+                parent=self)
 
     # ---------- 事件与发送 ----------
 

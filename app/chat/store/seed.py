@@ -130,3 +130,24 @@ def ensure_seed(repo: ChatRepo, pack: Optional[dict] = None):
 
     repo.set_meta(META_KEY, str(pack["version"]))
     logger.info(f"builtin pack v{pack['version']} seeded", TAG)
+
+
+def reset_builtin_pack(repo: ChatRepo, pack: Optional[dict] = None):
+    """强制重置内置话术包为官方默认预设（重置内容与默认热键，清除 dirty 标记）。"""
+    pack = pack or BUILTIN_PACK
+    logger.info(f"resetting builtin pack v{pack['version']}", TAG)
+    for g in pack["groups"]:
+        repo.upsert_group(g["id"], g["name"], hotkey=g["hotkey"],
+                          sort=g["sort"], pack_id=pack["id"])
+        repo.update_group_fields(g["id"], enabled=True, hotkey=g["hotkey"])
+        for p in g["phrases"]:
+            repo.upsert_phrase(p["id"], g["id"], p["content"],
+                               sort=p["sort"], pack_id=pack["id"])
+            with repo.db.lock:
+                repo.db.conn().execute(
+                    "UPDATE phrase SET dirty=0, enabled=1, content=? WHERE id=?",
+                    (p["content"], p["id"]))
+                repo.db.conn().commit()
+    repo.set_meta(META_KEY, str(pack["version"]))
+
+

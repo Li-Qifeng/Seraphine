@@ -223,3 +223,14 @@ class TestSeed:
         ensure_seed(seeded)
         assert seeded.get_group("u1") is not None
         assert seeded.get_phrase("up1")["enabled"] == 1
+
+    def test_reset_builtin_pack(self, seeded):
+        from app.chat.store.seed import reset_builtin_pack
+        gid = seeded.list_groups()[0]["id"]
+        p = seeded.list_phrases(gid)[0]
+        seeded.update_phrase_content(p["id"], "用户随便改的内容")
+        assert seeded.get_phrase(p["id"])["dirty"] == 1
+        reset_builtin_pack(seeded)
+        assert seeded.get_phrase(p["id"])["dirty"] == 0
+        assert seeded.get_phrase(p["id"])["content"] == BUILTIN_PACK["groups"][0]["phrases"][0]["content"]
+

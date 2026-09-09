@@ -71,7 +71,7 @@ async def amain() -> int:
 
     ui = ChatInterface()
     ok &= check("ChatInterface constructed", ui is not None
-                and len(ui.groupCards) == len(groups))
+                and ui.groupSegmented is not None and ui.groupDetailCard is not None)
 
     chat_service.shutdown()
     print("SMOKE", "PASS" if ok else "FAIL")
