@@ -35,3 +35,21 @@ def is_game_foreground() -> bool:
     except (psutil.NoSuchProcess, Exception) as e:
         logger.debug(f"is_game_foreground failed: {e}", TAG)
         return False
+
+
+def activate_game_window() -> bool:
+    """寻找并激活英雄联盟游戏窗口到前台（供测试发送或快捷呼出使用）。"""
+    from app.common.util import findGameWindowHwnd
+    import win32con
+    hwnd = findGameWindowHwnd()
+    if not hwnd:
+        return False
+    try:
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(hwnd)
+        return True
+    except Exception as e:
+        logger.warning(f"activate_game_window failed: {e}", TAG)
+        return False
+

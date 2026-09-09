@@ -134,7 +134,7 @@ class MainWindow(FluentWindow):
 
         # 快捷喊话子系统: 初始化服务（装事件过滤器/订阅游戏状态/装载热键）
         # 再建设置页（页面构造依赖 chat_service.repo）
-        chat_service.init(QApplication.instance())
+        chat_service.init(QApplication.instance(), hwnd=int(self.winId()))
         self.chatInterface = ChatInterface(self)
 
         logger.critical("Seraphine interfaces initialized", TAG)

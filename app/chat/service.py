@@ -43,8 +43,10 @@ class ChatService(QObject):
 
     # ---------- 生命周期 ----------
 
-    def init(self, app):
+    def init(self, app, hwnd: int = None):
         if self._inited:
+            if hwnd and self._hotkeys:
+                self._hotkeys.set_hwnd(hwnd)
             return
         self._db = ChatDb()
         self._repo = ChatRepo(self._db)
@@ -60,9 +62,9 @@ class ChatService(QObject):
             ingame_sender=self._ingame_send,
         )
 
-        self._hotkeys = HotkeyManager(parent=self)
+        self._hotkeys = HotkeyManager(parent=self, hwnd=hwnd)
         self._hotkeys.triggered.connect(self._on_hotkey_triggered)
-        app.installNativeEventFilter(self._hotkeys)
+        app.installNativeEventFilter(self._hotkeys.event_filter)
 
         signalBus.gameStatusChanged.connect(self._on_game_status_changed)
         signalBus.lolClientEnded.connect(self._on_client_ended)
@@ -71,7 +73,13 @@ class ChatService(QObject):
         self._inited = True
         self.refresh_hotkeys()
         self._try_sync_active_phase()
-        logger.info("chat service inited", TAG)
+        logger.info(f"chat service inited (hwnd={hwnd})", TAG)
+
+    def set_hwnd(self, hwnd: int):
+        """设置主窗口 HWND，用于绑定全局热键消息路由。"""
+        if self._hotkeys:
+            self._hotkeys.set_hwnd(hwnd)
+            self.refresh_hotkeys()
 
     def shutdown(self):
         if not self._inited:
@@ -117,7 +125,13 @@ class ChatService(QObject):
 
     def _on_hotkey_triggered(self, group_id: str):
         # 热键事件在 Qt 线程（qasync 循环）到达，直接派生协程
-        asyncio.ensure_future(self._orchestrator.send_group(group_id))
+        logger.info(f"hotkey triggered for group={group_id}, dispatching send_group", TAG)
+        asyncio.ensure_future(self._handle_send_group(group_id))
+
+    async def _handle_send_group(self, group_id: str):
+        res = await self._orchestrator.send_group(group_id)
+        if not res.get("ok"):
+            logger.info(f"send_group result: {res}", TAG)
 
     def _on_game_status_changed(self, status):
         old_phase = self._phase
