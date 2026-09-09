@@ -130,8 +130,15 @@ class ChatService(QObject):
 
     async def _handle_send_group(self, group_id: str):
         res = await self._orchestrator.send_group(group_id)
-        if not res.get("ok"):
-            logger.info(f"send_group result: {res}", TAG)
+        ok = res.get("ok")
+        stage = res.get("stage")
+        detail = res.get("detail")
+        channel = res.get("channel")
+        text = res.get("text")
+        if ok:
+            logger.info(f"send_group SUCCESS: group={group_id}, channel={channel}, text={text!r}", TAG)
+        else:
+            logger.warning(f"send_group FAILED: group={group_id}, stage={stage}, detail={detail}", TAG)
 
     def _on_game_status_changed(self, status):
         old_phase = self._phase

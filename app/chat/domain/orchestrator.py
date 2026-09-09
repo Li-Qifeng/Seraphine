@@ -74,20 +74,22 @@ class SendOrchestrator:
         phase = self._phase_provider()
         if phase == _INGAME_PHASE:
             if not self._foreground_checker():
-                logger.info("gate: game not foreground", TAG)
+                logger.warning("gate: game not foreground, dispatch skipped", TAG)
                 return {"ok": False, "stage": "gate", "text": None, "channel": None,
                         "detail": "游戏非前台窗口"}
             channel = "ingame"
         elif phase in _LCU_PHASES:
             channel = "lcu"
         else:
-            logger.info(f"gate blocked: phase={phase}", TAG)
+            logger.warning(f"gate blocked: phase={phase}", TAG)
             return {"ok": False, "stage": "gate", "text": None, "channel": None,
                     "detail": f"当前状态不可发送 ({phase or '未连接'})"}
 
         phrase = self._repo.next_phrase_in_group(group_id)
         if not phrase:
-            return {"ok": False, "stage": "empty", "text": None, "channel": None}
+            logger.warning(f"send_group aborted: group {group_id!r} has no enabled phrases", TAG)
+            return {"ok": False, "stage": "empty", "text": None, "channel": None,
+                    "detail": "该分组没有启用的话术"}
         text = phrase["content"]
 
         delay = self._rhythm.next_delay(self._time())

@@ -207,6 +207,8 @@ class GroupDetailCard(CardWidget):
             self.parent().adjustSize()
 
     def load_group(self, group_id: str):
+        if not group_id or not isinstance(group_id, str):
+            return
         self.current_group_id = group_id
         self.group = self.interface.repo.get_group(group_id)
         if not self.group:
@@ -546,7 +548,7 @@ class ChatInterface(SeraphineInterface):
             label = f"{g['name']} ({hotkey})" if hotkey else f"{g['name']} ({count})"
             self.groupSegmented.addItem(
                 g["id"], label,
-                onClick=lambda gid=g["id"]: self.__on_select_group(gid)
+                onClick=lambda *_, gid=g["id"]: self.__on_select_group(gid)
             )
 
         if target_id:

@@ -101,6 +101,19 @@ class TestHotkeyManager:
         # conftest 桩环境下 triggered 是 MagicMock；真实环境为 pyqtSignal 正常 emit
         mgr.triggered.emit.assert_called_once_with("g1")
 
+    def test_native_event_dispatch_bytes_and_dispatcher_msg(self):
+        mgr, _ = _make_manager()
+        mgr.register_bindings({"Alt+1": "g1"})
+        hotkey_id = mgr._ids["Alt+1"]
+        msg = _MSG()
+        msg.message = WM_HOTKEY
+        msg.wParam = hotkey_id
+
+        # 测试 bytes 类型的 windows_dispatcher_MSG
+        handled, ret = mgr.nativeEventFilter(
+            b"windows_dispatcher_MSG", ctypes.addressof(msg))
+        assert handled and ret == 0
+
     def test_native_event_ignores_other_messages(self):
         mgr, _ = _make_manager()
         msg = _MSG()

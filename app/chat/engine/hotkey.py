@@ -32,6 +32,13 @@ class _MSG(ctypes.Structure):
     ]
 
 
+_user32 = ctypes.windll.user32
+_user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+_user32.RegisterHotKey.restype = wintypes.BOOL
+_user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+_user32.UnregisterHotKey.restype = wintypes.BOOL
+
+
 class _NativeHotkeyFilter(QAbstractNativeEventFilter):
     """纯 C++ 接口封装（不继承 QObject），规避 PyQt SIP 多重继承虚表分发丢失问题。"""
 
@@ -40,22 +47,27 @@ class _NativeHotkeyFilter(QAbstractNativeEventFilter):
         self._manager = manager
 
     def nativeEventFilter(self, eventType, message):
-        if eventType in (b"windows_generic_MSG", "windows_generic_MSG"):
+        type_bytes = bytes(eventType) if isinstance(eventType, (bytes, bytearray)) else str(eventType).encode("latin1", "ignore")
+        if b"windows_generic_MSG" in type_bytes or b"windows_dispatcher_MSG" in type_bytes:
             try:
                 msg = _MSG.from_address(int(message))
                 if msg.message == WM_HOTKEY:
-                    return self._manager._on_wm_hotkey(msg.wParam)
+                    logger.info(f"native WM_HOTKEY message intercepted: wParam={msg.wParam}, hwnd={msg.hwnd}", TAG)
+                    self._manager._on_wm_hotkey(msg.wParam)
+                    return True, 0
             except Exception as e:
-                logger.debug(f"nativeEventFilter parse error: {e}", TAG)
+                logger.warning(f"nativeEventFilter parse error: {e}", TAG)
         return False, 0
 
 
 def _win32_register(hotkey_id: int, mod: int, vk: int, hwnd=None) -> bool:
-    return bool(ctypes.windll.user32.RegisterHotKey(hwnd, hotkey_id, mod, vk))
+    h = wintypes.HWND(hwnd) if hwnd else None
+    return bool(_user32.RegisterHotKey(h, hotkey_id, mod, vk))
 
 
 def _win32_unregister(hotkey_id: int, hwnd=None) -> bool:
-    return bool(ctypes.windll.user32.UnregisterHotKey(hwnd, hotkey_id))
+    h = wintypes.HWND(hwnd) if hwnd else None
+    return bool(_user32.UnregisterHotKey(h, hotkey_id))
 
 
 class HotkeyManager(QObject):
@@ -111,7 +123,9 @@ class HotkeyManager(QObject):
                 ok = self._register(hotkey_id, mod | MOD_NOREPEAT, vk)
 
             if not ok:
-                logger.warning(f"RegisterHotKey failed for {hotkey!r} (hwnd={self._hwnd})", TAG)
+                err = ctypes.windll.kernel32.GetLastError()
+                err_tip = " (快捷键已被其他程序或旧进程占用)" if err == 1409 else f" (WinError {err})"
+                logger.warning(f"RegisterHotKey failed for {hotkey!r}{err_tip} (hwnd={self._hwnd})", TAG)
                 continue
             self._ids[hotkey] = hotkey_id
             self._groups[hotkey_id] = group_id
