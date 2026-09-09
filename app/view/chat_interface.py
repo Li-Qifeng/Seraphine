@@ -198,11 +198,21 @@ class GroupDetailCard(CardWidget):
         line.setStyleSheet("background-color: rgba(128, 128, 128, 0.15); max-height: 1px;")
         return line
 
+    def adjustCardHeight(self):
+        self.phraseContainer.updateGeometry()
+        self.updateGeometry()
+        h = max(self.vLayout.sizeHint().height(), 120)
+        self.resize(self.width(), h)
+        if self.parent() and hasattr(self.parent(), "adjustSize"):
+            self.parent().adjustSize()
+
     def load_group(self, group_id: str):
         self.current_group_id = group_id
         self.group = self.interface.repo.get_group(group_id)
         if not self.group:
             self.hide()
+            if self.parent() and hasattr(self.parent(), "adjustSize"):
+                self.parent().adjustSize()
             return
         self.show()
 
@@ -225,10 +235,13 @@ class GroupDetailCard(CardWidget):
     def reload_phrases(self):
         while self.phraseLayout.count():
             item = self.phraseLayout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
 
         if not self.current_group_id:
+            self.adjustCardHeight()
             return
 
         phrases = self.interface.repo.list_phrases(self.current_group_id)
@@ -236,45 +249,48 @@ class GroupDetailCard(CardWidget):
             emptyLabel = QLabel(self.tr("该分组暂无话术，请在下方输入框添加"), self.phraseContainer)
             emptyLabel.setStyleSheet("color: #888888; font-style: italic; padding: 10px 0;")
             self.phraseLayout.addWidget(emptyLabel)
-            return
+            emptyLabel.show()
+        else:
+            for i, p in enumerate(phrases):
+                row = QWidget(self.phraseContainer)
+                layout = QHBoxLayout(row)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.setSpacing(10)
 
-        for i, p in enumerate(phrases):
-            row = QWidget(self.phraseContainer)
-            layout = QHBoxLayout(row)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(10)
+                idxLabel = QLabel(f"#{i+1}", row)
+                idxLabel.setFixedWidth(28)
+                idxLabel.setStyleSheet("color: #888888; font-weight: bold;")
 
-            idxLabel = QLabel(f"#{i+1}", row)
-            idxLabel.setFixedWidth(28)
-            idxLabel.setStyleSheet("color: #888888; font-weight: bold;")
+                edit = LineEdit(row)
+                edit.setText(p["content"])
 
-            edit = LineEdit(row)
-            edit.setText(p["content"])
+                enabledBox = CheckBox(self.tr("启用"), row)
+                enabledBox.setChecked(bool(p["enabled"]))
 
-            enabledBox = CheckBox(self.tr("启用"), row)
-            enabledBox.setChecked(bool(p["enabled"]))
+                testBtn = TransparentPushButton(self.tr("试发"), row)
+                delBtn = TransparentPushButton(self.tr("删除"), row)
 
-            testBtn = TransparentPushButton(self.tr("试发"), row)
-            delBtn = TransparentPushButton(self.tr("删除"), row)
+                layout.addWidget(idxLabel)
+                layout.addWidget(edit, 1)
+                layout.addWidget(enabledBox)
+                layout.addWidget(testBtn)
+                layout.addWidget(delBtn)
 
-            layout.addWidget(idxLabel)
-            layout.addWidget(edit, 1)
-            layout.addWidget(enabledBox)
-            layout.addWidget(testBtn)
-            layout.addWidget(delBtn)
+                edit.editingFinished.connect(
+                    lambda pid=p["id"], e=edit: self.__on_edit_phrase(pid, e))
+                enabledBox.stateChanged.connect(
+                    lambda _state, pid=p["id"], b=enabledBox: (
+                        self.interface.repo.set_phrase_enabled(pid, b.isChecked()),
+                        self.refresh_preview()))
+                testBtn.clicked.connect(
+                    lambda _, text=p["content"]: self.interface.test_send_text(text))
+                delBtn.clicked.connect(
+                    lambda _, pid=p["id"]: self.__on_remove_phrase(pid))
 
-            edit.editingFinished.connect(
-                lambda pid=p["id"], e=edit: self.__on_edit_phrase(pid, e))
-            enabledBox.stateChanged.connect(
-                lambda _state, pid=p["id"], b=enabledBox: (
-                    self.interface.repo.set_phrase_enabled(pid, b.isChecked()),
-                    self.refresh_preview()))
-            testBtn.clicked.connect(
-                lambda _, text=p["content"]: self.interface.test_send_text(text))
-            delBtn.clicked.connect(
-                lambda _, pid=p["id"]: self.__on_remove_phrase(pid))
+                self.phraseLayout.addWidget(row)
+                row.show()
 
-            self.phraseLayout.addWidget(row)
+        self.adjustCardHeight()
 
     def __on_save_hotkey(self):
         if not self.current_group_id:
@@ -390,24 +406,24 @@ class ChatInterface(SeraphineInterface):
         self.enableCard = SwitchSettingCard(
             Icon.COMMENT, self.tr("启用快捷喊话"),
             self.tr("开启全局热键一键发送预设短语（局内模拟输入，选人与房间走 LCU 通道）"),
-            chat_cfg.enabled, self)
+            chat_cfg.enabled, self.basicGroup)
         self.enableCard.checkedChanged.connect(self.__on_enable_changed)
 
         self.statusCard = SettingCard(
             Icon.INFO, self.tr("运行环境状态"),
-            self.tr("正在检测客户端与全局热键状态..."), self)
-        self.refreshStatusBtn = PushButton(self.tr("刷新状态"), self)
+            self.tr("正在检测客户端与全局热键状态..."), self.basicGroup)
+        self.refreshStatusBtn = PushButton(self.tr("刷新状态"), self.statusCard)
         self.refreshStatusBtn.clicked.connect(self.refresh_status)
         self.statusCard.hBoxLayout.addWidget(self.refreshStatusBtn)
         self.statusCard.hBoxLayout.addSpacing(16)
 
         self.testCard = SettingCard(
             Icon.FEEDBACK, self.tr("测试发送"),
-            self.tr("局内将自动激活游戏窗口并模拟输入发送，选人与房间走 LCU 通道"), self)
-        self.testEdit = LineEdit(self)
+            self.tr("局内将自动激活游戏窗口并模拟输入发送，选人与房间走 LCU 通道"), self.basicGroup)
+        self.testEdit = LineEdit(self.testCard)
         self.testEdit.setPlaceholderText(self.tr("输入测试文本，如：集合打龙"))
         self.testEdit.setFixedWidth(200)
-        self.testBtn = PushButton(self.tr("测试发送"), self)
+        self.testBtn = PushButton(self.tr("测试发送"), self.testCard)
         self.testBtn.clicked.connect(self.__on_test_send)
         self.testCard.hBoxLayout.addWidget(self.testEdit)
         self.testCard.hBoxLayout.addWidget(self.testBtn)
@@ -415,8 +431,8 @@ class ChatInterface(SeraphineInterface):
 
         self.paramCard = SettingCard(
             Icon.SETTING, self.tr("发送频率限制"),
-            self.tr("两次发送最小间隔（带随机抖动，防止固定频率被检测）"), self)
-        self.intervalSpin = SpinBox(self)
+            self.tr("两次发送最小间隔（带随机抖动，防止固定频率被检测）"), self.basicGroup)
+        self.intervalSpin = SpinBox(self.paramCard)
         self.intervalSpin.setRange(600, 5000)
         self.intervalSpin.setSingleStep(100)
         self.intervalSpin.setSuffix(" ms")
@@ -428,7 +444,7 @@ class ChatInterface(SeraphineInterface):
         self.clipboardCard = SwitchSettingCard(
             Icon.COPY, self.tr("剪贴板粘贴模式"),
             self.tr("默认关闭（采用逐字安全模拟）。开启后通过剪贴板秒发，并在发送后延迟还原剪贴板"),
-            chat_cfg.useClipboard, self)
+            chat_cfg.useClipboard, self.basicGroup)
         self.clipboardCard.checkedChanged.connect(self.__on_params_changed)
 
         self.basicGroup.addSettingCards([
@@ -444,44 +460,46 @@ class ChatInterface(SeraphineInterface):
 
         self.newGroupCard = SettingCard(
             Icon.TEXTEDIT, self.tr("新建话术分组"),
-            self.tr("创建独立自定义分组并可绑定专属全局快捷键"), self)
-        self.newNameEdit = LineEdit(self)
+            self.tr("创建独立自定义分组并可绑定专属全局快捷键"), self.manageGroup)
+        self.newNameEdit = LineEdit(self.newGroupCard)
         self.newNameEdit.setPlaceholderText(self.tr("分组名称，如：战术"))
         self.newNameEdit.setFixedWidth(140)
-        self.newHotkeyEdit = KeyCaptureEdit(self)
+        self.newHotkeyEdit = KeyCaptureEdit(self.newGroupCard)
         self.newHotkeyEdit.setPlaceholderText(self.tr("点击按键(可选)"))
         self.newHotkeyEdit.setFixedWidth(130)
-        self.newGroupBtn = PushButton(self.tr("创建分组"), self)
+        self.newGroupBtn = PushButton(self.tr("创建分组"), self.newGroupCard)
         self.newGroupBtn.clicked.connect(self.__on_create_group)
         self.newGroupCard.hBoxLayout.addWidget(self.newNameEdit)
         self.newGroupCard.hBoxLayout.addWidget(self.newHotkeyEdit)
         self.newGroupCard.hBoxLayout.addWidget(self.newGroupBtn)
         self.newGroupCard.hBoxLayout.addSpacing(16)
 
-        self.manageGroup.addSettingCard(self.newGroupCard)
+        # 分组选项卡 + 分组详情卡片（规范挂载到 manageGroup，通过 addSettingCards 注册）
+        self.groupSegmented = SegmentedWidget(self.manageGroup)
+        self.groupDetailCard = GroupDetailCard(self, parent=self.manageGroup)
 
-        # 分组选项卡 + 分组详情卡片
-        self.groupSegmented = SegmentedWidget(self)
-        self.groupDetailCard = GroupDetailCard(self, self)
-        self.manageGroup.cardLayout.addWidget(self.groupSegmented)
-        self.manageGroup.cardLayout.addWidget(self.groupDetailCard)
+        self.manageGroup.addSettingCards([
+            self.newGroupCard,
+            self.groupSegmented,
+            self.groupDetailCard,
+        ])
 
         # 3. 词库与发送记录组
         self.logGroup = SettingCardGroup(self.tr("词库与发送记录"), self.scrollWidget)
 
         self.packCard = SettingCard(
             Icon.DOCUMENT, self.tr("内置词库信息"),
-            "", self)
+            "", self.logGroup)
 
         self.logCard = SettingCard(
             Icon.LOG, self.tr("最近发送记录"),
-            self.tr("展示最近 100 条快捷喊话记录（本地保留 30 天）"), self)
-        self.logRefreshBtn = PushButton(self.tr("刷新日志"), self)
+            self.tr("展示最近 100 条快捷喊话记录（本地保留 30 天）"), self.logGroup)
+        self.logRefreshBtn = PushButton(self.tr("刷新日志"), self.logCard)
         self.logRefreshBtn.clicked.connect(self.refresh_logs)
         self.logCard.hBoxLayout.addWidget(self.logRefreshBtn)
         self.logCard.hBoxLayout.addSpacing(16)
 
-        self.logTable = TableWidget(self)
+        self.logTable = TableWidget(self.logGroup)
         self.logTable.setColumnCount(4)
         self.logTable.setHorizontalHeaderLabels(
             [self.tr("时间"), self.tr("话术内容"), self.tr("发送通道"),
@@ -493,14 +511,16 @@ class ChatInterface(SeraphineInterface):
         self.logGroup.addSettingCards([
             self.packCard,
             self.logCard,
+            self.logTable,
         ])
-        self.logGroup.cardLayout.addWidget(self.logTable)
 
         self.__initLayout()
         self.refresh_groups()
         self.refresh_status()
         self.refresh_logs()
         self.__refresh_pack_info()
+        self.manageGroup.adjustSize()
+        self.logGroup.adjustSize()
 
     def __initLayout(self):
         self.expandLayout.setSpacing(28)
