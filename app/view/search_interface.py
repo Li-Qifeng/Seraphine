@@ -1361,11 +1361,15 @@ class SearchInterface(SeraphineInterface):
     # Fix: 超快速的在候选栏选中两次同样puuid会起两个task加载战绩, 100%干掉客户端 -- By Hpero4
     @asyncLockDecorator('loadFirstPageLock')
     async def searchAndShowFirstPage(self, puuid=None, force=False):
-        # force 模式: 用已有 puuid 查 summoner, 不依赖搜索框内容
-        # 用于生涯页刷新后同步刷新搜索页
+        # force 模式: 不依赖搜索框内容, 直接用已知 puuid 查 summoner
+        #   - 显式传入 puuid (生涯页点对局进来) 必须优先用传入值,
+        #     否则会被搜索页上一次的目标覆盖 (查完队友后从自己生涯点进来
+        #     仍显示队友战绩)
+        #   - 未传 puuid (生涯页刷新后同步/冷启动恢复) 才回退搜索页当前目标
         name = None
-        if force and self.puuid and self.puuid != 0:
-            summoner = await connector.getSummonerByPuuid(self.puuid)
+        target_puuid = puuid or self.puuid
+        if force and target_puuid and target_puuid != 0:
+            summoner = await connector.getSummonerByPuuid(target_puuid)
         else:
             name = self.searchLineEdit.text()
             if name == "":
