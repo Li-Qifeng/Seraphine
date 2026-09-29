@@ -778,6 +778,11 @@ class MainWindow(FluentWindow):
     async def __onLolClientEnded(self):
         logger.critical("League of Legends client ended", TAG)
 
+        # LCU 断开后本局状态不再可信: 客户端重开时 gameflow 可能直接是
+        # InProgress, 而 InProgress 分支靠 isGaming 判断是否需要重新拉取
+        # 对局信息 — 不复位就会整局都不刷新 (需重启应用才恢复)
+        self.isGaming = False
+
         if self.searchInterface.gameLoadingTask:
             self.searchInterface.gameLoadingTask.cancel()
             self.searchInterface.gameLoadingTask = None

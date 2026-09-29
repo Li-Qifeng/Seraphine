@@ -698,18 +698,23 @@ class TestSendChampSelectMessage:
 
 # ---------------------------------------------------------------------------
 # 契约: dodge -> bool
-#   POST /lol-gameflow/v1/session/dodge (LeagueAkari 契约);
-#   有限重试 (最多 15 次, 每次 0.3s) 直到 phase 离开 ChampSelect;
-#   全部尝试后 phase 仍卡住时, 只要曾收到 2xx 也视为成功.
+#   POST /lol-login/v1/session/invoke?destination=lcdsServiceProxy&method=call
+#        &args=["", "teambuilder-draft", "quitV2", ""]  (LCDS 服务代理)
+#   成功判据是 gameflow 离开 ChampSelect; 最多 5 轮重试, 未离开返回 False.
 # ---------------------------------------------------------------------------
 
-_DODGE_BODY = {"dodgeIds": [1145141919810], "phase": "ChampSelect"}
+_DODGE_ARGS = ['', 'teambuilder-draft', 'quitV2', '']
+_DODGE_PATH = (
+    "/lol-login/v1/session/invoke?"
+    "destination=lcdsServiceProxy&method=call&args=%5B%22%22%2C+%22teambuilder-draft"
+    "%22%2C+%22quitV2%22%2C+%22%22%5D"
+)
 
 
 class TestDodge:
     def test_phase_leaves_returns_true(self, mock_lcu):
-        """POST 204 后 phase 离开 ChampSelect -> True, 单次即成功."""
-        post_resp = _resp(status=204)
+        """invoke 200 后 phase 离开 ChampSelect -> True, 单次即成功."""
+        post_resp = _resp(status=200)
         post_resp.ok = True
 
         with _patch_post(post_resp) as mock_post, \
@@ -720,13 +725,15 @@ class TestDodge:
 
         assert result is True
         mock_post.assert_awaited_once_with(
-            "/lol-gameflow/v1/session/dodge", _DODGE_BODY)
+            _DODGE_PATH, {'data': _DODGE_ARGS})
 
     def test_retries_until_phase_changes(self, mock_lcu):
-        """phase 前两次仍为 ChampSelect, 第三次变 None -> True (POST 3 次)."""
-        post_resp = _resp(status=204)
+        """第 1 轮 4 次探测仍在 ChampSelect, 第 2 轮离开 -> True (invoke 2 次)."""
+        post_resp = _resp(status=200)
         post_resp.ok = True
         get_mock = AsyncMock(side_effect=[
+            _resp(text_data='"ChampSelect"'),
+            _resp(text_data='"ChampSelect"'),
             _resp(text_data='"ChampSelect"'),
             _resp(text_data='"ChampSelect"'),
             _resp(text_data='"None"'),
@@ -740,12 +747,12 @@ class TestDodge:
             result = _run(mock_lcu.dodge())
 
         assert result is True
-        assert mock_post.await_count == 3
+        assert mock_post.await_count == 2
 
-    def test_all_attempts_fail_returns_false(self, mock_lcu):
-        """POST 一直 400 且 phase 一直 ChampSelect -> False (15 次尝试)."""
-        post_resp = _resp(status=400)
-        post_resp.ok = False
+    def test_phase_stuck_returns_false(self, mock_lcu):
+        """请求被受理但 phase 一直 ChampSelect -> False (5 轮, 不可误报成功)."""
+        post_resp = _resp(status=200)
+        post_resp.ok = True
 
         with _patch_post(post_resp) as mock_post, \
                 _patch_get(_resp(text_data='"ChampSelect"')), \
@@ -754,28 +761,16 @@ class TestDodge:
             result = _run(mock_lcu.dodge())
 
         assert result is False
-        assert mock_post.await_count == 15
-
-    def test_2xx_but_phase_stuck_still_true(self, mock_lcu):
-        """服务器接受请求但 phase 迟迟不变 -> 曾收到 2xx 兜底视为成功."""
-        post_resp = _resp(status=204)
-        post_resp.ok = True
-
-        with _patch_post(post_resp), \
-                _patch_get(_resp(text_data='"ChampSelect"')), \
-                patch('app.lol.connector.asyncio.sleep',
-                      new=AsyncMock(return_value=None)):
-            result = _run(mock_lcu.dodge())
-
-        assert result is True
+        assert mock_post.await_count == 5
 
     def test_post_exception_continues_then_success(self, mock_lcu):
-        """单次 POST 异常 (如 RateLimited) 不中断重试, 后续 phase 变化 -> True."""
-        post_resp = _resp(status=204)
+        """单次 invoke 异常 (如 RateLimited) 不中断重试, 下一轮 phase 变化 -> True."""
+        post_resp = _resp(status=200)
         post_resp.ok = True
-        post_mock = AsyncMock(side_effect=[
-            RateLimited(1), post_resp, post_resp])
+        post_mock = AsyncMock(side_effect=[RateLimited(1), post_resp])
         get_mock = AsyncMock(side_effect=[
+            _resp(text_data='"ChampSelect"'),
+            _resp(text_data='"ChampSelect"'),
             _resp(text_data='"ChampSelect"'),
             _resp(text_data='"ChampSelect"'),
             _resp(text_data='"None"'),
@@ -790,4 +785,4 @@ class TestDodge:
             result = _run(mock_lcu.dodge())
 
         assert result is True
-        assert post_mock.await_count == 3
+        assert post_mock.await_count == 2

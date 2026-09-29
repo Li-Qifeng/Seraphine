@@ -10,6 +10,7 @@ import traceback
 from asyncio import CancelledError
 from collections import deque
 from typing import Optional, Union
+from urllib.parse import urlencode
 
 import aiohttp
 from PyQt5.QtCore import QObject
@@ -1330,36 +1331,44 @@ class LolClientConnector(QObject):
     async def dodge(self) -> bool:
         """秒退英雄选择 (ChampSelect 阶段).
 
-        POST /lol-gameflow/v1/session/dodge (LeagueAkari 契约, 国服/国际服均有效):
-        旧实现 DELETE /lol-lobby/v2/lobby 仅 Lobby 阶段有效, ChampSelect 阶段
-        实测返回 400 (见 Sona issue #29 契约说明), 已弃用.
-        单次请求可能被服务器吞掉, 有限重试直到 phase 离开 ChampSelect
-        (LeagueAkari 用 5 并发 worker 循环轰炸, 此处串行等效).
+        走 LCDS 服务代理 — 与客户端原生"退出对局"按钮同款调用:
+            POST /lol-login/v1/session/invoke
+                ?destination=lcdsServiceProxy&method=call
+                &args=["", "teambuilder-draft", "quitV2", ""]
+        参考 Sona lcu.dodgeChampSelectViaQuitV2() 与 LeagueAkari login.dodge().
+        此前两种实现实测均不生效: DELETE /lol-lobby/v2/lobby 仅 Lobby 阶段可用;
+        POST /lol-gameflow/v1/session/dodge 恒返回 204 但 phase 不动.
+        以 gameflow 离开 ChampSelect 作为成功判据, 避免误报"已秒退".
         """
         tag = "Dodge"
-        body = {"dodgeIds": [1145141919810], "phase": "ChampSelect"}
-        saw_ok = False
-        for attempt in range(1, 16):
+        args = ['', 'teambuilder-draft', 'quitV2', '']
+        query = urlencode({
+            'destination': 'lcdsServiceProxy',
+            'method': 'call',
+            'args': json.dumps(args),
+        })
+        path = f"/lol-login/v1/session/invoke?{query}"
+        for attempt in range(1, 6):
             try:
-                res = await self.__post(
-                    "/lol-gameflow/v1/session/dodge", body)
+                res = await self.__post(path, {'data': args})
                 logger.info(
-                    f"dodge: post session/dodge status={res.status} "
-                    f"attempt={attempt}", tag)
-                if res.ok:
-                    saw_ok = True
+                    f"dodge: invoke quitV2 status={res.status} attempt={attempt}",
+                    tag)
             except Exception as e:
-                logger.warning(f"dodge: post session/dodge failed: {e}", tag)
-            await asyncio.sleep(0.3)
-            try:
-                if await self.getGameStatus() != "ChampSelect":
-                    logger.info(
-                        f"dodge: phase left ChampSelect at attempt={attempt}",
-                        tag)
-                    return True
-            except Exception as e:
-                logger.warning(f"dodge: get phase failed: {e}", tag)
-        return saw_ok
+                logger.warning(f"dodge: invoke quitV2 failed: {e}", tag)
+            # 秒退生效后 gameflow 会离开 ChampSelect, 每隔 0.25s 探一次
+            for _ in range(4):
+                await asyncio.sleep(0.25)
+                try:
+                    if await self.getGameStatus() != "ChampSelect":
+                        logger.info(
+                            f"dodge: phase left ChampSelect at attempt={attempt}",
+                            tag)
+                        return True
+                except Exception as e:
+                    logger.warning(f"dodge: get phase failed: {e}", tag)
+        logger.warning("dodge: phase still ChampSelect after retries", tag)
+        return False
 
     async def sendChampSelectMessage(self, message: str) -> bool:
         """向 BP 聊天窗发送一条消息.
