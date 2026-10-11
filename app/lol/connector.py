@@ -701,6 +701,35 @@ class LolClientConnector(QObject):
 
         return res["games"]
 
+    async def __fetchGamesViaSGPFallback(self, puuid, begIndex, endIndex):
+        """LCU match-history 不可用或数据明显偏少时的 SGP 兜底 (仅国服).
+
+        返回 LCU 格式容器 {"gameCount": N, "games": [...]}; SGP 不可用、
+        失败或无数据时返回 None, 调用方保持原有行为.
+        """
+        if not self.inTencent:
+            return None
+        try:
+            res = await self.getSummonerGamesByPuuidViaSGP(
+                puuid, begIndex, endIndex)
+            sgpGames = res.get("games") or []
+            # SGP SUMMARY 条目结构 {"json": <LCU 格式对局>, ...}
+            gameList = [g["json"] for g in sgpGames
+                        if isinstance(g, dict) and g.get("json")]
+            if not gameList:
+                return None
+            return {
+                "gameCount": res.get("totalGames") or len(gameList),
+                "games": gameList,
+            }
+        except (aiohttp.ClientError, asyncio.TimeoutError, RateLimited,
+                ReferenceError, AttributeError, TypeError, ValueError,
+                KeyError) as e:
+            logger.warning(
+                f"SGP games fallback failed for {puuid} "
+                f"({type(e).__name__}: {e})", TAG)
+            return None
+
     @retry()
     async def getSummonerGamesByPuuid(self, puuid, begIndex=0, endIndex=4) -> list:
         """
@@ -731,6 +760,10 @@ class LolClientConnector(QObject):
             注意: LCU 返回空但无异常 (gameCount=0) 时直接返回, 不做额外重试.
             因为 LCU 的 match-history 可能持续为空 (如服务端问题), 在 API 层
             无限重试会导致与 @retry 装饰器形成嵌套爆炸, 阻塞 UI 转圈.
+
+            LCU 响应无 "games" 字段或数据明显偏少时, 国服 (isInTencent)
+            走 SGP SUMMARY 兜底 (见 __fetchGamesViaSGPFallback), 兜底成功
+            时返回 SGP 数据, 失败时保持原有行为.
         """
         # 快速缓存命中: Lobby 阶段多个调用方 (战犯诊断/生涯/搜索)
         # 共享同一份预取结果, 避免重复请求互相阻塞
@@ -803,6 +836,21 @@ class LolClientConnector(QObject):
                 # 恢复成功后经 signalBus.matchHistoryRecovered 通知页面重刷
                 if 0 < len(gameList) < expected \
                         and (gameCount > len(gameList) or len(gameList) < 5):
+                    # LCU 缓存可能长时间不刷新 (2026-10-11 真实故障: 只返回
+                    # 2 条且 gameCount=2 假自洽, 持续 30+ 分钟). 国服 SGP
+                    # 数据不经过该缓存, 更可靠时直接覆盖
+                    sgpGames = await self.__fetchGamesViaSGPFallback(
+                        puuid, begIndex, endIndex)
+                    if sgpGames is not None \
+                            and len(sgpGames["games"]) > len(gameList):
+                        logger.info(
+                            f"getSummonerGamesByPuuid: LCU returned only "
+                            f"{len(gameList)} games (gameCount={gameCount}), "
+                            f"using SGP fallback "
+                            f"({len(sgpGames['games'])} games)", TAG)
+                        self._gamesFastCache = (puuid, begIndex, endIndex,
+                                                sgpGames, time.time())
+                        return sgpGames
                     self.__scheduleStaleRecovery(puuid, begIndex, endIndex)
 
                 if gameList:
@@ -814,6 +862,18 @@ class LolClientConnector(QObject):
                 if attempt < 3:
                     await asyncio.sleep(2)
                     continue
+                # LCU match-history 持续无 "games" 字段 (选人阶段常见):
+                # 国服走 SGP 兜底, 兜底失败再抛给 @retry / 调用方
+                sgpGames = await self.__fetchGamesViaSGPFallback(
+                    puuid, begIndex, endIndex)
+                if sgpGames is not None:
+                    logger.info(
+                        f"getSummonerGamesByPuuid: LCU has no games for "
+                        f"{puuid}, using SGP fallback "
+                        f"({len(sgpGames['games'])} games)", TAG)
+                    self._gamesFastCache = (puuid, begIndex, endIndex,
+                                            sgpGames, time.time())
+                    return sgpGames
                 raise
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 last_exc = e
@@ -851,8 +911,10 @@ class LolClientConnector(QObject):
 
         每 _STALE_RECOVERY_INTERVAL 秒重查一次 match-history:
         - 拿到足量数据: 刷新 fast cache, 广播 matchHistoryRecovered (puuid)
-        - gameCount 与返回条数一致且不足: 账号确实只有少量对局, 提前停止
+        - gameCount 与返回条数一致且条数 >=5: 账号确实只有少量对局, 提前停止
+          (条数 <5 时 gameCount 可能是假自洽, 继续探测)
         - LCU 断开 (ReferenceError): 放弃恢复
+        - 探测耗尽: 清除 fast cache 中的残缺数据, 便于下次调用重新调度
         """
         expected = endIndex - begIndex + 1
         try:
@@ -880,7 +942,18 @@ class LolClientConnector(QObject):
                     gameList = games
                     gameCount = len(gameList)
                 else:
-                    continue
+                    gameList = []
+                    gameCount = 0
+
+                if not gameList:
+                    # LCU 仍无 "games" (与加载失败同源): 国服用 SGP 兜底探测
+                    sgpGames = await self.__fetchGamesViaSGPFallback(
+                        puuid, begIndex, endIndex)
+                    if sgpGames is None:
+                        continue
+                    games = sgpGames
+                    gameList = sgpGames["games"]
+                    gameCount = sgpGames.get("gameCount", len(gameList))
 
                 if len(gameList) >= expected:
                     self._gamesFastCache = (puuid, begIndex, endIndex,
@@ -895,21 +968,28 @@ class LolClientConnector(QObject):
                 # a) 账号确实只有这么多对局 -> 停止
                 # b) 冷启动缓存未同步, gameCount 本身是假的 ->
                 #    窗口内不可信, 继续探测
+                # 条数极少 (<5) 时 gameCount 同样不可信 (2026-10-11 真实
+                # 故障: 只返回 2 条且 gameCount=2, 冷启动窗口外仍假自洽),
+                # 只有条数达到 5 才认可自洽信号
                 if gameCount <= len(gameList):
                     in_cold_start = (
                         time.time() - self._lcuStartedAt
                         < self._COLD_START_SECONDS)
-                    if not in_cold_start:
+                    if not in_cold_start and len(gameList) >= 5:
                         logger.debug(
                             f"stale recovery stop: {puuid} has only "
                             f"{gameCount} games", TAG)
                         return
-                    # 冷启动窗口内: LCU 缓存可能仍未同步, 继续探测
+                    # 冷启动窗口内或假自洽: LCU 缓存可能仍未同步, 继续探测
                     continue
 
             logger.warning(
                 f"stale recovery gave up: {puuid} still incomplete after "
                 f"{self._STALE_RECOVERY_ATTEMPTS} probes", TAG)
+            # 清掉 fast cache 中的残缺数据, 下次调用重新拉取并重新调度恢复
+            cached = self._gamesFastCache
+            if cached is not None and cached[0] == puuid:
+                self._gamesFastCache = None
         except CancelledError:
             # close() 主动取消, 静默退出
             pass

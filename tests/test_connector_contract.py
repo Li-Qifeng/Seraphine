@@ -159,6 +159,53 @@ class TestGetSummonerGamesByPuuid:
             with pytest.raises(SummonerGamesNotFound):
                 _run(mock_lcu.getSummonerGamesByPuuid("abc"))
 
+    def _fast_sleep(self):
+        """把 connector 模块里的 asyncio.sleep 置空, 加速内层重试."""
+        return patch('app.lol.connector.asyncio.sleep',
+                     new=AsyncMock(return_value=None))
+
+    def test_sgp_fallback_when_lcu_has_no_games(self, mock_lcu):
+        """LCU match-history 持续无 "games" 字段时, 国服走 SGP 兜底返回数据.
+
+        转换契约: SGP SUMMARY 条目 {"json": <LCU 格式对局>} 展开为
+        LCU 容器 {"gameCount": N, "games": [...]}."""
+        sgp_payload = {
+            "totalGames": 20,
+            "games": [{"json": {"gameId": i}} for i in range(20)],
+        }
+        with _patch_get(_resp(json_data={"errorCode": "not_found"})), \
+                patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
+                             new=AsyncMock(return_value=sgp_payload)), \
+                patch.object(connector, 'inTencent', True), \
+                self._fast_sleep():
+            result = _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
+        assert result["gameCount"] == 20
+        assert result["games"] == [{"gameId": i} for i in range(20)]
+
+    def test_sgp_fallback_overrides_short_data(self, mock_lcu):
+        """LCU 只返回 2 条 (gameCount=2 假自洽) 时用 SGP 更全数据覆盖,
+        不再调度后台恢复."""
+        lcu_payload = {"games": {
+            "gameCount": 2, "games": [{"gameId": 0}, {"gameId": 1}]}}
+        sgp_payload = {
+            "totalGames": 20,
+            "games": [{"json": {"gameId": i}} for i in range(20)],
+        }
+        schedule_mock = MagicMock(return_value=None)
+        with _patch_get(_resp(json_data=lcu_payload)), \
+                patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
+                             new=AsyncMock(return_value=sgp_payload)), \
+                patch.object(
+                    connector, '_LolClientConnector__scheduleStaleRecovery',
+                    new=schedule_mock), \
+                patch.object(connector, 'inTencent', True):
+            result = _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
+        assert result["gameCount"] == 20
+        assert len(result["games"]) == 20
+        schedule_mock.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # 契约: getRankedStatsByPuuid -> dict | raise SummonerRankInfoNotFound
@@ -570,13 +617,14 @@ class TestStaleMatchHistoryRecovery:
         assert len(c_data["games"]) == 20
 
     def test_recovery_stops_for_genuinely_small_accounts(self, mock_lcu):
-        """探测发现 gameCount 与条数一致 (账号真的只有几局) -> 停止且不广播.
+        """探测发现 gameCount 与条数一致且条数 >=5 (账号真的只有几局) -> 停止且不广播.
 
-        冷启动窗口外 (测试环境 _lcuStartedAt=0, 窗口已过) 才信任自洽信号."""
+        冷启动窗口外 (测试环境 _lcuStartedAt=0, 窗口已过) 且条数 >=5
+        才信任自洽信号; 条数 <5 的自洽视为假自洽 (见下一个用例)."""
         sig_mock = MagicMock()
         get_mock = AsyncMock(side_effect=[
             _resp(json_data=_games_resp(2)),  # 首次请求 (stale)
-            _resp(json_data=_games_resp(3)),  # 探测: 3 局且 gameCount=3
+            _resp(json_data=_games_resp(6)),  # 探测: 6 局且 gameCount=6
         ])
         with patch.object(connector, '_LolClientConnector__get', new=get_mock), \
                 patch.object(signalBus, 'matchHistoryRecovered', new=sig_mock), \
@@ -613,6 +661,28 @@ class TestStaleMatchHistoryRecovery:
             _run(scenario())
 
         # 未恢复 (不广播), 但探测跑满全部次数而非首次自洽即停
+        sig_mock.emit.assert_not_called()
+        assert get_mock.call_count == 1 + 10
+
+    def test_recovery_keeps_probing_on_fake_self_consistency(self, mock_lcu):
+        """条数 <5 的自洽 (2 条且 gameCount=2) 是假自洽 -- 2026-10-11 真实
+        故障: 冷启动窗口外仍持续 30+ 分钟. 不提前停止, 探测跑满全部次数."""
+        sig_mock = MagicMock()
+        # 探测全部返回 2/2 假自洽 (不 patch _lcuStartedAt, 窗口已过)
+        get_mock = AsyncMock(side_effect=[
+            _resp(json_data=_games_resp(2)),  # 首次请求 (stale)
+        ] + [_resp(json_data=_games_resp(2))] * 10)
+        with patch.object(connector, '_LolClientConnector__get', new=get_mock), \
+                patch.object(signalBus, 'matchHistoryRecovered', new=sig_mock), \
+                self._fast_sleep():
+            async def scenario():
+                await connector.getSummonerGamesByPuuid("abc", 0, 19)
+                task = connector._staleRecoveryTasks.get("abc")
+                assert task is not None
+                await task
+
+            _run(scenario())
+
         sig_mock.emit.assert_not_called()
         assert get_mock.call_count == 1 + 10
 

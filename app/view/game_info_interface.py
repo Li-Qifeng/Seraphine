@@ -317,7 +317,9 @@ class TeamSummoners(QFrame):
 
         for summonerId in order:
             view = self.items[summonerId]
-            self.vBoxLayout.addWidget(view)
+            # stretch=1 与 updateSummoners 保持一致, 否则重排序后
+            # 行高退回 sizeHint, 少人时与右侧战绩列错位
+            self.vBoxLayout.addWidget(view, stretch=1)
 
         if len(order) < 5:
             self.vBoxLayout.addStretch(5 - len(order))
@@ -605,14 +607,18 @@ class SummonersGamesView(QFrame):
 
         for i, summonerId in enumerate(order):
             view = self.items[summonerId]
-            self.hBoxLayout.addWidget(view)
+            # stretch=1 与 updateSummoners 保持一致, 否则重排序后
+            # 列宽退回 sizeHint, 少人时排列不齐
+            self.hBoxLayout.addWidget(view, stretch=1)
 
             view.setProperty("isFirst", False)
             view.setProperty("isLast", False)
 
             if i == 0:
                 view.setProperty("isFirst", True)
-            elif i == 4:
+            # isLast 标记实际最后一列 (不足 5 人时 i==4 永远不成立,
+            # 末列会残留分隔线且 hover 圆角错误)
+            if i == len(order) - 1:
                 view.setProperty("isLast", True)
 
             view.style().polish(view)
@@ -625,9 +631,10 @@ class SummonersGamesView(QFrame):
     def updateSummoners(self, summoners):
         self.clear()
 
-        for i, summoner in enumerate(summoners):
-            if not summoner:
-                continue
+        # 可能含 None 条目 (HIDDEN 玩家), 按实际渲染的列计算首尾与补偿
+        valid = [s for s in summoners if s]
+
+        for i, summoner in enumerate(valid):
             games = Games(summoner)
             self.items[summoner["summonerId"]] = games
 
@@ -635,13 +642,13 @@ class SummonersGamesView(QFrame):
 
             if i == 0:
                 games.setProperty("isFirst", True)
-            elif i == 4:
+            if i == len(valid) - 1:
                 games.setProperty("isLast", True)
 
-        if len(summoners) < 5:
-            self.hBoxLayout.addStretch(5 - len(summoners))
+        if len(valid) < 5:
+            self.hBoxLayout.addStretch(5 - len(valid))
             spacing = self.hBoxLayout.spacing()
-            self.hBoxLayout.addSpacing(spacing * (5 - len(summoners)))
+            self.hBoxLayout.addSpacing(spacing * (5 - len(valid)))
 
     def clear(self):
         for i in reversed(range(self.hBoxLayout.count())):
