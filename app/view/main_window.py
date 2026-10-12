@@ -1111,8 +1111,16 @@ class MainWindow(FluentWindow):
                     logger.error(
                         f"Lobby: prefetching games [{0}-{max_needed - 1}] "
                         f"for {prefetch_puuid}", TAG)
-                    await connector.getSummonerGamesByPuuid(
-                        prefetch_puuid, 0, max_needed - 1)
+                    # 预取是尽力而为: LCU/SGP 双失败时会抛
+                    # SummonerGamesNotFound, 不能让它中断 Lobby 后续流程
+                    # (战犯诊断/生涯刷新), 否则整个 __onGameStatusChanged 被打断
+                    try:
+                        await connector.getSummonerGamesByPuuid(
+                            prefetch_puuid, 0, max_needed - 1)
+                    except Exception as e:
+                        logger.warning(
+                            f"Lobby: prefetch games failed "
+                            f"({type(e).__name__}: {e}), continue", TAG)
 
             # 战犯诊断必须在生涯刷新前完成, 否则 verdict 缓存还没写入,
             # 战绩卡片渲染时 getVerdict 命中不到, 徽章不会显示

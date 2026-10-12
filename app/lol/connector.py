@@ -717,14 +717,17 @@ class LolClientConnector(QObject):
             gameList = [g["json"] for g in sgpGames
                         if isinstance(g, dict) and g.get("json")]
             if not gameList:
+                # SGP 也无数据 (如游戏刚结束的服务端薄窗口): 保持原有行为
+                logger.warning(
+                    f"SGP games fallback: no usable games for {puuid}", TAG)
                 return None
             return {
                 "gameCount": res.get("totalGames") or len(gameList),
                 "games": gameList,
             }
         except (aiohttp.ClientError, asyncio.TimeoutError, RateLimited,
-                ReferenceError, AttributeError, TypeError, ValueError,
-                KeyError) as e:
+                SummonerGamesNotFound, AssertionError, ReferenceError,
+                AttributeError, TypeError, ValueError, KeyError) as e:
             logger.warning(
                 f"SGP games fallback failed for {puuid} "
                 f"({type(e).__name__}: {e})", TAG)

@@ -206,6 +206,18 @@ class TestGetSummonerGamesByPuuid:
         assert len(result["games"]) == 20
         schedule_mock.assert_not_called()
 
+    def test_sgp_fallback_failure_keeps_original_contract(self, mock_lcu):
+        """SGP 兜底自身失败/无数据时返回 None, 保持原有
+        SummonerGamesNotFound 契约, 不向外泄露 SGP 异常 (2026-10-12 崩溃)."""
+        with _patch_get(_resp(json_data={"errorCode": "not_found"})), \
+                patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
+                             new=AsyncMock(
+                                 side_effect=SummonerGamesNotFound())), \
+                patch.object(connector, 'inTencent', True), \
+                self._fast_sleep():
+            with pytest.raises(SummonerGamesNotFound):
+                _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
 
 # ---------------------------------------------------------------------------
 # 契约: getRankedStatsByPuuid -> dict | raise SummonerRankInfoNotFound
