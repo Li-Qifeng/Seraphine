@@ -85,14 +85,17 @@ def mock_lcu():
     - lcuSess 设为非 None: 通过 @needLcu 的 `is None` 检查
     - semaphore 设为 None: @retry 检测到后跳过并发 semaphore, 直接执行
     - _gamesFastCache 清空: 避免测试间缓存污染
+    - sgpToken 设为非 None: 让 __fetchGamesViaSGPFallback 不被 token 短路跳过
     """
     connector.lcuSess = MagicMock()
     connector.semaphore = None
     connector._gamesFastCache = None
+    connector.sgpToken = "test-token"
     yield connector
     connector.lcuSess = None
     connector.semaphore = None
     connector._gamesFastCache = None
+    connector.sgpToken = None
 
 
 def _patch_get(ret_val):
@@ -183,28 +186,43 @@ class TestGetSummonerGamesByPuuid:
         assert result["gameCount"] == 20
         assert result["games"] == [{"gameId": i} for i in range(20)]
 
-    def test_sgp_fallback_overrides_short_data(self, mock_lcu):
-        """LCU 只返回 2 条 (gameCount=2 假自洽) 时用 SGP 更全数据覆盖,
-        不再调度后台恢复."""
+    def test_short_data_returns_immediately_and_schedules_recovery(
+            self, mock_lcu):
+        """LCU 只返回 2 条 (gameCount=2 假自洽) 时立即返回部分数据并调度后台
+        恢复, 热路径不再同步等 SGP (2026-10-13 回归: 同步 SGP 导致转圈)."""
         lcu_payload = {"games": {
             "gameCount": 2, "games": [{"gameId": 0}, {"gameId": 1}]}}
-        sgp_payload = {
-            "totalGames": 20,
-            "games": [{"json": {"gameId": i}} for i in range(20)],
-        }
+        sgp_mock = AsyncMock(return_value={"totalGames": 20, "games": []})
         schedule_mock = MagicMock(return_value=None)
         with _patch_get(_resp(json_data=lcu_payload)), \
                 patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
-                             new=AsyncMock(return_value=sgp_payload)), \
+                             new=sgp_mock), \
                 patch.object(
                     connector, '_LolClientConnector__scheduleStaleRecovery',
                     new=schedule_mock), \
                 patch.object(connector, 'inTencent', True):
             result = _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
 
-        assert result["gameCount"] == 20
-        assert len(result["games"]) == 20
-        schedule_mock.assert_not_called()
+        # 立即返回 LCU 部分数据, 同时调度后台恢复补齐
+        assert result["gameCount"] == 2
+        assert len(result["games"]) == 2
+        schedule_mock.assert_called_once()
+        # 热路径不再同步调用 SGP
+        sgp_mock.assert_not_called()
+
+    def test_sgp_fallback_skipped_when_token_not_ready(self, mock_lcu):
+        """sgpToken 未就绪 (客户端刚启动) 时直接跳过 SGP 兜底, 不发请求."""
+        connector.sgpToken = None
+        sgp_mock = AsyncMock(return_value={"totalGames": 20, "games": []})
+        with _patch_get(_resp(json_data={"errorCode": "not_found"})), \
+                patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
+                             new=sgp_mock), \
+                patch.object(connector, 'inTencent', True), \
+                self._fast_sleep():
+            with pytest.raises(SummonerGamesNotFound):
+                _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
+        sgp_mock.assert_not_called()
 
     def test_sgp_fallback_failure_keeps_original_contract(self, mock_lcu):
         """SGP 兜底自身失败/无数据时返回 None, 保持原有

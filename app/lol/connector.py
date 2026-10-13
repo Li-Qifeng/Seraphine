@@ -391,8 +391,11 @@ class LolClientConnector(QObject):
         else:
             url = f'https://{self.server.lower()}-sgp.lol.qq.com:21019'
 
+        # 10s 总超时: SGP 无响应时快速失败, 避免单个挂死请求长时间占用
+        # 并发 semaphore 许可, 拖住生涯/搜索页
         self.sgpSess = aiohttp.ClientSession(
-            base_url=url
+            base_url=url,
+            timeout=aiohttp.ClientTimeout(total=10)
         )
 
         self.sgpToken = await self.getSGPtoken()
@@ -713,6 +716,10 @@ class LolClientConnector(QObject):
         """
         if not self.inTencent:
             return None
+        if self.sgpToken is None:
+            # SGP token 未就绪 (客户端刚启动, WS entitlement 未到): 直接跳过,
+            # 避免每个 puuid 都白等一次注定失败的 SGP 请求
+            return None
         try:
             res = await self.getSummonerGamesByPuuidViaSGP(
                 puuid, begIndex, endIndex)
@@ -843,21 +850,11 @@ class LolClientConnector(QObject):
                 # 恢复成功后经 signalBus.matchHistoryRecovered 通知页面重刷
                 if 0 < len(gameList) < expected \
                         and (gameCount > len(gameList) or len(gameList) < 5):
-                    # LCU 缓存可能长时间不刷新 (2026-10-11 真实故障: 只返回
-                    # 2 条且 gameCount=2 假自洽, 持续 30+ 分钟). 国服 SGP
-                    # 数据不经过该缓存, 更可靠时直接覆盖
-                    sgpGames = await self.__fetchGamesViaSGPFallback(
-                        puuid, begIndex, endIndex)
-                    if sgpGames is not None \
-                            and len(sgpGames["games"]) > len(gameList):
-                        logger.info(
-                            f"getSummonerGamesByPuuid: LCU returned only "
-                            f"{len(gameList)} games (gameCount={gameCount}), "
-                            f"using SGP fallback "
-                            f"({len(sgpGames['games'])} games)", TAG)
-                        self._gamesFastCache = (puuid, begIndex, endIndex,
-                                                sgpGames, time.time())
-                        return sgpGames
+                    # 立即返回部分数据, 不在此处同步等 SGP:
+                    # aa8469d 曾把 SGP 兜底搬进热路径, 导致 LCU 偏少时前台每次
+                    # 多阻塞 ~5s, 生涯/搜索页转圈 (2026-10-13 回归定位).
+                    # 恢复 v1.3.1 行为: 先返回让 UI 渲染, 由后台恢复循环补齐 --
+                    # __recoverStaleMatchHistory 自身会试 SGP (见下方循环)
                     self.__scheduleStaleRecovery(puuid, begIndex, endIndex)
 
                 if gameList:
