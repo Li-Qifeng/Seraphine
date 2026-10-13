@@ -218,6 +218,26 @@ class TestGetSummonerGamesByPuuid:
             with pytest.raises(SummonerGamesNotFound):
                 _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
 
+    def test_games_not_found_not_amplified_by_outer_retry(self, mock_lcu):
+        """契约: SummonerGamesNotFound 不被 @retry 放大 5 倍.
+
+        方法内部已有单层重试 (4 次 LCU 尝试) + SGP 兜底; 若 @retry 再重试
+        整个方法, 单次调用耗时 = 5 × (3×2s + SGP) ≈ 55s (2026-10-12 实测),
+        生涯页轮询叠加后卡数分钟."""
+        get_mock = AsyncMock(
+            return_value=_resp(json_data={"errorCode": "not_found"}))
+        with patch.object(
+                connector, '_LolClientConnector__get', new=get_mock), \
+                patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
+                             new=AsyncMock(return_value={"games": []})), \
+                patch.object(connector, 'inTencent', True), \
+                self._fast_sleep():
+            with pytest.raises(SummonerGamesNotFound):
+                _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
+        # 仅方法内部的 4 次尝试, 无 @retry 的 5 倍放大
+        assert get_mock.call_count == 4
+
 
 # ---------------------------------------------------------------------------
 # 契约: getRankedStatsByPuuid -> dict | raise SummonerRankInfoNotFound

@@ -120,7 +120,11 @@ def retry(count=5, retry_sep=0):
                     exce = e
 
                     # SummonerNotFound 再重试会报 429 (限流)
-                    if isinstance(e, SummonerNotFound):
+                    # SummonerGamesNotFound: 方法内部已做退避重试 + SGP 兜底,
+                    # 再叠加 @retry 会把它放大 5 倍. 2026-10-12 实测: 客户端启动/
+                    # 对局中 LCU 与 SGP 同时无数据时, 单次调用耗时 55s,
+                    # 生涯页轮询叠加后卡数分钟 (重试只保留单层)
+                    if isinstance(e, (SummonerNotFound, SummonerGamesNotFound)):
                         raise e
 
                     continue
