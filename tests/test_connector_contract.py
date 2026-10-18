@@ -83,19 +83,26 @@ def mock_lcu():
     """配置 connector 绕过 @needLcu 守卫与 @retry 并发限制, 测试后还原.
 
     - lcuSess 设为非 None: 通过 @needLcu 的 `is None` 检查
-    - semaphore 设为 None: @retry 检测到后跳过并发 semaphore, 直接执行
+    - semaphore 设为 None: _concurrency_limit 检测到后跳过并发限流, 直接执行
     - _gamesFastCache 清空: 避免测试间缓存污染
     - sgpToken 设为非 None: 让 __fetchGamesViaSGPFallback 不被 token 短路跳过
+    - _staleRecoveryTasks 清空: 避免无 games 分支调度的后台任务跨用例残留
     """
     connector.lcuSess = MagicMock()
     connector.semaphore = None
     connector._gamesFastCache = None
     connector.sgpToken = "test-token"
+    for task in list(connector._staleRecoveryTasks.values()):
+        task.cancel()
+    connector._staleRecoveryTasks.clear()
     yield connector
     connector.lcuSess = None
     connector.semaphore = None
     connector._gamesFastCache = None
     connector.sgpToken = None
+    for task in list(connector._staleRecoveryTasks.values()):
+        task.cancel()
+    connector._staleRecoveryTasks.clear()
 
 
 def _patch_get(ret_val):
@@ -224,37 +231,70 @@ class TestGetSummonerGamesByPuuid:
 
         sgp_mock.assert_not_called()
 
-    def test_sgp_fallback_failure_keeps_original_contract(self, mock_lcu):
-        """SGP 兜底自身失败/无数据时返回 None, 保持原有
-        SummonerGamesNotFound 契约, 不向外泄露 SGP 异常 (2026-10-12 崩溃)."""
+    def test_sgp_fallback_failure_schedules_recovery_and_raises(self, mock_lcu):
+        """SGP 兜底自身失败/无数据时返回 None: 保持原有
+        SummonerGamesNotFound 契约, 不向外泄露 SGP 异常, 并调度后台恢复补齐
+        (2026-10-12 崩溃 / 2026-10-19 无 games 分支改造)."""
+        schedule_mock = MagicMock(return_value=None)
         with _patch_get(_resp(json_data={"errorCode": "not_found"})), \
                 patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
                              new=AsyncMock(
                                  side_effect=SummonerGamesNotFound())), \
+                patch.object(
+                    connector, '_LolClientConnector__scheduleStaleRecovery',
+                    new=schedule_mock), \
                 patch.object(connector, 'inTencent', True), \
                 self._fast_sleep():
             with pytest.raises(SummonerGamesNotFound):
                 _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
 
-    def test_games_not_found_not_amplified_by_outer_retry(self, mock_lcu):
-        """契约: SummonerGamesNotFound 不被 @retry 放大 5 倍.
+        schedule_mock.assert_called_once_with("abc", 0, 19)
 
-        方法内部已有单层重试 (4 次 LCU 尝试) + SGP 兜底; 若 @retry 再重试
-        整个方法, 单次调用耗时 = 5 × (3×2s + SGP) ≈ 55s (2026-10-12 实测),
-        生涯页轮询叠加后卡数分钟."""
+    def test_no_games_branch_skips_3x2s_backoff(self, mock_lcu):
+        """无 "games" 字段分支不再做 3×2s 无谓退避: 单次 LCU 尝试后立即走
+        SGP 兜底 (2026-10-19: 退避拖慢面板且与 SGP 兜底重复)."""
+        schedule_mock = MagicMock(return_value=None)
         get_mock = AsyncMock(
             return_value=_resp(json_data={"errorCode": "not_found"}))
         with patch.object(
                 connector, '_LolClientConnector__get', new=get_mock), \
                 patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
                              new=AsyncMock(return_value={"games": []})), \
+                patch.object(
+                    connector, '_LolClientConnector__scheduleStaleRecovery',
+                    new=schedule_mock), \
                 patch.object(connector, 'inTencent', True), \
                 self._fast_sleep():
             with pytest.raises(SummonerGamesNotFound):
                 _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
 
-        # 仅方法内部的 4 次尝试, 无 @retry 的 5 倍放大
-        assert get_mock.call_count == 4
+        # 仅 1 次 LCU 尝试 (无退避重试), 失败后调度后台恢复
+        assert get_mock.call_count == 1
+        schedule_mock.assert_called_once_with("abc", 0, 19)
+
+    def test_games_not_found_not_amplified_by_outer_retry(self, mock_lcu):
+        """契约: SummonerGamesNotFound 不被 @retry 放大 5 倍.
+
+        无 "games" 分支现在单次 LCU 尝试 (残留重试已去掉) + SGP 兜底;
+        若 @retry 再重试整个方法, 单次调用会被放大 5 倍 (2026-10-12 实测),
+        生涯页轮询叠加后卡数分钟."""
+        get_mock = AsyncMock(
+            return_value=_resp(json_data={"errorCode": "not_found"}))
+        schedule_mock = MagicMock(return_value=None)
+        with patch.object(
+                connector, '_LolClientConnector__get', new=get_mock), \
+                patch.object(connector, 'getSummonerGamesByPuuidViaSGP',
+                             new=AsyncMock(return_value={"games": []})), \
+                patch.object(
+                    connector, '_LolClientConnector__scheduleStaleRecovery',
+                    new=schedule_mock), \
+                patch.object(connector, 'inTencent', True), \
+                self._fast_sleep():
+            with pytest.raises(SummonerGamesNotFound):
+                _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
+        # 仅方法内部的 1 次尝试, 无 @retry 的 5 倍放大
+        assert get_mock.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -906,3 +946,54 @@ class TestDodge:
 
         assert result is True
         assert post_mock.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# 契约: 并发许可下沉到 HTTP 层 (2026-10-19)
+#   @retry 不再包住整个方法; 许可只在 __get 等真正发请求时占用,
+#   方法内部的重试睡眠 / SGP 兜底期间不再攥着许可 (避免 gather 退化为串行).
+# ---------------------------------------------------------------------------
+
+class TestConcurrencyLimit:
+    def test_decorator_does_not_hold_semaphore_around_method(self, mock_lcu):
+        """占满唯一许可时, 被装饰方法仍能立即完成 (许可只在 HTTP 层占用).
+
+        此处 mock 掉 __get (绕过真实 HTTP 层): 若装饰器仍在外层抢许可就会
+        阻塞 -> 超时失败; 限流下沉到 HTTP 层后应直接返回.
+        """
+        async def scenario():
+            connector.semaphore = asyncio.Semaphore(1)
+            await connector.semaphore.acquire()  # 占满唯一许可
+            try:
+                with _patch_get(_resp(json_data=_games_resp(20))):
+                    return await asyncio.wait_for(
+                        connector.getSummonerGamesByPuuid("abc", 0, 19),
+                        timeout=1)
+            finally:
+                connector.semaphore.release()
+
+        try:
+            result = _run(scenario())
+        finally:
+            connector.semaphore = None
+        assert len(result["games"]) == 20
+
+    def test_http_layer_acquires_semaphore(self, mock_lcu):
+        """真实 __get 在许可被占满时应阻塞 (限流确实发生在 HTTP 层)."""
+        connector.lcuSess = MagicMock()
+        connector.lcuSess.get = AsyncMock(return_value=_resp(json_data={}))
+
+        async def scenario():
+            connector.semaphore = asyncio.Semaphore(1)
+            await connector.semaphore.acquire()
+            try:
+                with pytest.raises(asyncio.TimeoutError):
+                    await asyncio.wait_for(
+                        connector._LolClientConnector__get("/x"), timeout=0.2)
+            finally:
+                connector.semaphore.release()
+
+        try:
+            _run(scenario())
+        finally:
+            connector.semaphore = None

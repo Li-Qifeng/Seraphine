@@ -13,6 +13,7 @@ from typing import Optional, Union
 from urllib.parse import urlencode
 
 import aiohttp
+from contextlib import asynccontextmanager
 from PyQt5.QtCore import QObject
 
 from app.common.config import cfg, Language
@@ -66,6 +67,26 @@ def _parse_retry_after(value):
         return 5
 
 
+@asynccontextmanager
+async def _concurrency_limit():
+    """并发许可: 只包住真正的 HTTP 请求.
+
+    2026-10-19: 原先 @retry 在方法外层抢许可, 方法内部的重试睡眠 (3×2s)
+    与 SGP 兜底期间会一直攥着许可; 5 个许可被少数慢请求占满后, 上层
+    asyncio.gather 退化为串行 (生涯页加载不出来). 下沉到 HTTP 层后,
+    睡眠/重试期间不再占用许可, 只有实际发请求时才限流.
+
+    connector.close() 会把 semaphore 重置为 None (客户端已断开), 此时
+    跳过限流直接执行.
+    """
+    sem = connector.semaphore
+    if sem is None:
+        yield
+        return
+    async with sem:
+        yield
+
+
 def retry(count=5, retry_sep=0):
     def decorator(func):
         # 装饰时缓存一次参数签名, 避免每次调用重复 inspect
@@ -95,13 +116,10 @@ def retry(count=5, retry_sep=0):
             exce = None
             for _ in range(count):
                 try:
-                    # connector.close() 会把 semaphore 重置为 None, 此时客户端已断开,
-                    # 仍有 in-flight 请求会走到这里 -- 直接执行, 不再受并发限制
-                    if connector.semaphore is None:
-                        res = await func(*args, **kwargs)
-                    else:
-                        async with connector.semaphore:
-                            res = await func(*args, **kwargs)
+                    # 并发许可已下沉到 HTTP 层 (见 _concurrency_limit):
+                    # 方法内部的重试睡眠 / SGP 兜底不再占用许可, 避免少量慢
+                    # 请求占满 semaphore 导致 gather 串行 (2026-10-19)
+                    res = await func(*args, **kwargs)
                 except CancelledError:
                     # Fix: 使用 task.cancel() 偶尔会停不下 task -- By Hpero4
                     #   在调用 cancel() 时, 会从调用栈的最底抛出 CancelledError, 最终传递到 loop 终止 task;
@@ -863,11 +881,9 @@ class LolClientConnector(QObject):
                 return games
             except SummonerGamesNotFound as e:
                 last_exc = e
-                if attempt < 3:
-                    await asyncio.sleep(2)
-                    continue
-                # LCU match-history 持续无 "games" 字段 (选人阶段常见):
-                # 国服走 SGP 兜底, 兜底失败再抛给 @retry / 调用方
+                # LCU match-history 无 "games" 字段 (选人阶段常见) -- 该状态下
+                # LCU 短时间内不会自愈, 原先的 3×2s 同步退避只会拖慢面板,
+                # 且与 SGP 兜底重复. 2026-10-19: 去掉退避, 首次失败即走 SGP 兜底.
                 sgpGames = await self.__fetchGamesViaSGPFallback(
                     puuid, begIndex, endIndex)
                 if sgpGames is not None:
@@ -878,6 +894,8 @@ class LolClientConnector(QObject):
                     self._gamesFastCache = (puuid, begIndex, endIndex,
                                             sgpGames, time.time())
                     return sgpGames
+                # SGP 也无数据: 调度后台恢复循环补齐, 再抛给调用方
+                self.__scheduleStaleRecovery(puuid, begIndex, endIndex)
                 raise
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 last_exc = e
@@ -1663,7 +1681,8 @@ class LolClientConnector(QObject):
 
     @needLcu()
     async def __get(self, path, params=None) -> aiohttp.ClientResponse:
-        res = await self.lcuSess.get(path, params=params, ssl=False)
+        async with _concurrency_limit():
+            res = await self.lcuSess.get(path, params=params, ssl=False)
         if res.status == 429:
             retry_after = _parse_retry_after(res.headers.get('Retry-After'))
             raise RateLimited(retry_after)
@@ -1672,7 +1691,8 @@ class LolClientConnector(QObject):
     @needLcu()
     async def __post(self, path, data=None) -> aiohttp.ClientResponse:
         headers = {"Content-type": "application/json"}
-        res = await self.lcuSess.post(path, json=data, headers=headers, ssl=False)
+        async with _concurrency_limit():
+            res = await self.lcuSess.post(path, json=data, headers=headers, ssl=False)
         if res.status == 429:
             retry_after = _parse_retry_after(res.headers.get('Retry-After'))
             raise RateLimited(retry_after)
@@ -1680,7 +1700,8 @@ class LolClientConnector(QObject):
 
     @needLcu()
     async def __put(self, path, data=None) -> aiohttp.ClientResponse:
-        res = await self.lcuSess.put(path, json=data, ssl=False)
+        async with _concurrency_limit():
+            res = await self.lcuSess.put(path, json=data, ssl=False)
         if res.status == 429:
             retry_after = _parse_retry_after(res.headers.get('Retry-After'))
             raise RateLimited(retry_after)
@@ -1688,7 +1709,8 @@ class LolClientConnector(QObject):
 
     @needLcu()
     async def __delete(self, path) -> aiohttp.ClientResponse:
-        res = await self.lcuSess.delete(path, ssl=False)
+        async with _concurrency_limit():
+            res = await self.lcuSess.delete(path, ssl=False)
         if res.status == 429:
             retry_after = _parse_retry_after(res.headers.get('Retry-After'))
             raise RateLimited(retry_after)
@@ -1696,7 +1718,8 @@ class LolClientConnector(QObject):
 
     @needLcu()
     async def __patch(self, path, data=None) -> aiohttp.ClientResponse:
-        res = await self.lcuSess.patch(path, json=data, ssl=False)
+        async with _concurrency_limit():
+            res = await self.lcuSess.patch(path, json=data, ssl=False)
         if res.status == 429:
             retry_after = _parse_retry_after(res.headers.get('Retry-After'))
             raise RateLimited(retry_after)
@@ -1709,7 +1732,8 @@ class LolClientConnector(QObject):
             "Authorization": f"Bearer {self.sgpToken}"
         }
 
-        res = await self.sgpSess.get(path, params=params, ssl=False, headers=headers)
+        async with _concurrency_limit():
+            res = await self.sgpSess.get(path, params=params, ssl=False, headers=headers)
         if res.status == 429:
             retry_after = _parse_retry_after(res.headers.get('Retry-After'))
             raise RateLimited(retry_after)
