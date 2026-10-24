@@ -580,3 +580,124 @@ class TestMissingFieldDefensive:
         """parseSummonerOrder 条目缺失 summonerId/cellId 时不抛异常."""
         from app.lol.tools_pure import parseSummonerOrder
         assert parseSummonerOrder([{}, {'summonerId': 2}]) == [2]
+
+
+# ---------------------------------------------------------------------------
+# 故障容错回归 (2026-10-24: 战绩服务 503 期间海克斯换英雄窗口不消失)
+# getSummonerGamesInfoViaSGP 的 except 分支曾遗漏 origGamesInfo/summonerName
+# 赋值 -> UnboundLocalError 冒泡中断 gameflow 状态处理收尾.
+# ---------------------------------------------------------------------------
+
+class TestGameInfoResilience:
+    def _patch_sgp_connector(self, games_side_effect=None, games_return=None):
+        """mock getSummonerGamesInfoViaSGP 依赖的 connector SGP 接口."""
+        from unittest.mock import AsyncMock, MagicMock
+        from app.lol.tools import connector
+
+        summoner = {"gameName": "Tester", "tagLine": "1234", "level": 30,
+                    "expPoints": 10, "expToNextLevel": 100,
+                    "id": 2, "privacy": "PUBLIC"}
+        return [
+            patch("app.lol.tools.connector.getChampionIcon",
+                  new=AsyncMock(return_value="icon.png")),
+            patch("app.lol.tools.connector.getSummonerByPuuidViaSGP",
+                  new=AsyncMock(return_value=summoner)),
+            patch("app.lol.tools.connector.getRankedStatsByPuuidViaSGP",
+                  new=AsyncMock(return_value=None)),
+            patch("app.lol.tools.connector.getSummonerGamesByPuuidViaSGP",
+                  new=AsyncMock(side_effect=games_side_effect,
+                                return_value=games_return)),
+            patch.object(connector, "manager", MagicMock()),
+            # conftest 的 QObject stub 不接受 parent 参数, ToolsTranslator
+            # 实例化会 TypeError, 一并 mock 掉
+            patch("app.lol.tools.ToolsTranslator", MagicMock()),
+        ]
+
+    def test_sgp_games_failure_returns_participant_not_unbound_local(self):
+        """SGP 战绩拉取抛异常 (如 HTTP 503) 时仍返回玩家数据, 不抛
+        UnboundLocalError (2026-10-24 回归)."""
+        import aiohttp
+        from app.lol.tools import getSummonerGamesInfoViaSGP
+
+        item = _player(2, champion_id=20)
+        item['puuid'] = 'p-2'
+        patches = self._patch_sgp_connector(
+            games_side_effect=aiohttp.ClientError("SGP HTTP 503"))
+        with patches[0], patches[1], patches[2], patches[3], patches[4], \
+                patches[5]:
+            result = _run(getSummonerGamesInfoViaSGP(item, 420, 1))
+
+        assert result is not None
+        assert result['summonerId'] == 2
+        assert result['gamesInfo'] == []
+        assert result['name'] == "Tester"
+
+    def test_sgp_empty_games_list_returns_participant(self):
+        """SGP 返回 200 但 games 为空列表时不抛 IndexError, 照常返回."""
+        from app.lol.tools import getSummonerGamesInfoViaSGP
+
+        item = _player(2, champion_id=20)
+        item['puuid'] = 'p-2'
+        patches = self._patch_sgp_connector(
+            games_return={"games": [], "totalGames": 0})
+        with patches[0], patches[1], patches[2], patches[3], patches[4], \
+                patches[5]:
+            result = _run(getSummonerGamesInfoViaSGP(item, 420, 1))
+
+        assert result is not None
+        assert result['gamesInfo'] == []
+        assert result['name'] == "Tester"
+
+    def test_single_player_failure_does_not_break_team(self):
+        """LCU 路径单个玩家解析抛异常时, 其余玩家正常返回, 不向
+        gameflow 状态处理冒泡 (海克斯窗口收尾被跳过的中断源)."""
+        session = _make_session(
+            420,
+            [_player(1, champion_id=10), _player(2, champion_id=20)],
+            [],
+        )
+
+        async def mock_parse(item, qid, csid):
+            if item['summonerId'] == 2:
+                raise RuntimeError("player 2 exploded")
+            return {'summonerId': item['summonerId'],
+                    'championId': item['championId'],
+                    'selectedPosition': item.get('selectedPosition')}
+
+        with patch("app.lol.tools.parseSummonerGameInfo", new=mock_parse):
+            result = _run(parseGameInfoByGameflowSession(session, 1, 'ally'))
+
+        assert result is not None
+        assert [s['summonerId'] for s in result['summoners']] == [1]
+
+    def test_sgp_partial_failure_falls_back_to_lcu(self):
+        """SGP 路径部分玩家失败时整队回退 LCU, 保持既有 fallback 语义."""
+        session = _make_session(
+            420,
+            [_player(1, champion_id=10), _player(2, champion_id=20)],
+            [],
+        )
+        parse_calls = []
+
+        async def mock_sgp(item, qid, csid):
+            if item['summonerId'] == 2:
+                raise RuntimeError("SGP down for player 2")
+            return {'summonerId': item['summonerId'],
+                    'championId': item['championId'],
+                    'selectedPosition': item.get('selectedPosition')}
+
+        async def mock_parse(item, qid, csid):
+            parse_calls.append(item['summonerId'])
+            return {'summonerId': item['summonerId'],
+                    'championId': item['championId'],
+                    'selectedPosition': item.get('selectedPosition')}
+
+        with patch("app.lol.tools.getSummonerGamesInfoViaSGP", new=mock_sgp), \
+                patch("app.lol.tools.parseSummonerGameInfo", new=mock_parse), \
+                patch("app.lol.tools.connector.isInTencent", return_value=True):
+            result = _run(parseGameInfoByGameflowSession(
+                session, 1, 'ally', useSGP=True))
+
+        assert result is not None
+        assert sorted(parse_calls) == [1, 2]
+        assert sorted(s['summonerId'] for s in result['summoners']) == [1, 2]

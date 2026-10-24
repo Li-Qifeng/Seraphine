@@ -837,22 +837,32 @@ async def parseGameInfoByGameflowSession(session, currentSummonerId, side, useSG
 
     if useSGP and connector.isInTencent():
         # 如果是国服就优先尝试 SGP
-        try:
-            tasks = [getSummonerGamesInfoViaSGP(item, queueId, currentSummonerId)
-                     for item in team]
-            summoners = await asyncio.gather(*tasks)
-
-        except Exception:
+        tasks = [getSummonerGamesInfoViaSGP(item, queueId, currentSummonerId)
+                 for item in team]
+        # return_exceptions: 单个玩家解析失败 (如战绩服务 503) 不再打断
+        # 全队 gather, 也不再冒泡中断 gameflow 状态处理 (2026-10-24)
+        summoners = await asyncio.gather(*tasks, return_exceptions=True)
+        if any(isinstance(s, BaseException) for s in summoners):
+            logger.warning(
+                f"parseGameInfoByGameflowSession: SGP path failed "
+                f"({sum(1 for s in summoners if isinstance(s, BaseException))}"
+                f"/{len(summoners)} players), falling back to LCU", "tools")
             tasks = [parseSummonerGameInfo(item, queueId, currentSummonerId)
                      for item in team]
-            summoners = await asyncio.gather(*tasks)
+            summoners = await asyncio.gather(*tasks, return_exceptions=True)
 
     else:
         tasks = [parseSummonerGameInfo(item, queueId, currentSummonerId)
                  for item in team]
-        summoners = await asyncio.gather(*tasks)
+        summoners = await asyncio.gather(*tasks, return_exceptions=True)
 
-    summoners = [summoner for summoner in summoners if summoner]
+    for s in summoners:
+        if isinstance(s, BaseException):
+            logger.warning(
+                f"parseGameInfoByGameflowSession: player parse failed "
+                f"({type(s).__name__}: {s}), skipped", "tools")
+    summoners = [summoner for summoner in summoners
+                 if summoner and not isinstance(summoner, BaseException)]
 
     if queueId in [420, 440]:
         s = sortedSummonersByGameRole(summoners)
@@ -1001,12 +1011,20 @@ async def parseSummonerGameInfo(item, queueId, currentSummonerId) -> Optional[Te
 
     _, kill, deaths, assists, _, _ = parseGames(gamesInfo)
 
-    teammatesInfo = [
-        getTeammates(
-            await connector.getGameDetailByGameId(game["gameId"]),
-            puuid
-        ) for game in gamesInfo[:1]  # 避免空报错, 查上一局的队友(对手)
-    ]
+    # 上一局队友(对手)查询是尽力而为: game-detail 服务故障时不能让异常
+    # 冒泡打断整个对局信息解析 (2026-10-24 海克斯窗口不消失的中断源之一)
+    teammatesInfo = []
+    try:
+        teammatesInfo = [
+            getTeammates(
+                await connector.getGameDetailByGameId(game["gameId"]),
+                puuid
+            ) for game in gamesInfo[:1]  # 避免空报错, 查上一局的队友(对手)
+        ]
+    except Exception as e:
+        logger.warning(
+            f"parseSummonerGameInfo: fetch last-game teammates failed "
+            f"({type(e).__name__}: {e})", "tools")
 
     recentlyChampionName = ""
     fateFlag = None
@@ -1088,22 +1106,37 @@ async def getSummonerGamesInfoViaSGP(item, queueID, currentSummonerId) -> Option
 
                 begIdx = endIdx + 1
     except Exception:
+        # 2026-10-24: 原先只置 gamesInfo=[], 下方 teammatesInfo 仍引用
+        # origGamesInfo, return 处引用 summonerName/tagLine -> UnboundLocalError
+        # 沿 parseGameInfoByGameflowSession -> __onGameStart 冒泡, 跳过 gameflow
+        # 收尾 (海克斯换英雄窗口不消失). 战绩服务 503 故障期间此异常必现
         gamesInfo = []
+        origGamesInfo = None
+        summonerName = summoner.get("gameName") or ""
+        tagLine = summoner.get("tagLine")
     else:
-        summonerName, tagLine = getNameTagLineFromGame(
-            origGamesInfo['games'][0], puuid)
+        sgpRawGames = origGamesInfo.get("games") or []
+        if sgpRawGames:
+            summonerName, tagLine = getNameTagLineFromGame(
+                sgpRawGames[0], puuid)
+        else:
+            # SGP 返回空列表时与拉取失败同样降级, 不能裸取 [0]
+            summonerName = summoner.get("gameName") or ""
+            tagLine = summoner.get("tagLine")
 
         tasks = [parseGamesDataFromSGP(game, puuid)
-                 for game in origGamesInfo["games"][:20]]
+                 for game in sgpRawGames[:20]]
         gamesInfo = await asyncio.gather(*tasks)
 
     _, kill, deaths, assists, _, _ = parseGames(gamesInfo)
 
+    # origGamesInfo 在 SGP 战绩拉取失败时为 None, 不能裸下标
+    sgpRawGames = (origGamesInfo or {}).get('games') or []
     teammatesInfo = [
         getTeammatesFromSGPGame(
             game,
             puuid
-        ) for game in origGamesInfo['games'][:1]  # 避免空报错, 查上一局的队友(对手)
+        ) for game in sgpRawGames[:1]  # 避免空报错, 查上一局的队友(对手)
     ]
 
     recentlyChampionName = ""

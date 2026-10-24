@@ -746,9 +746,18 @@ class LolClientConnector(QObject):
             gameList = [g["json"] for g in sgpGames
                         if isinstance(g, dict) and g.get("json")]
             if not gameList:
-                # SGP 也无数据 (如游戏刚结束的服务端薄窗口): 保持原有行为
+                # SGP 也无数据 (如游戏刚结束的服务端薄窗口): 保持原有行为.
+                # 记录响应结构, 区分"真无数据"与"响应格式变化/错误体"
+                # (2026-10-24: 此前一律记 no usable games, 服务故障被掩盖)
+                topKeys = (list(res.keys()) if isinstance(res, dict)
+                           else type(res).__name__)
+                entryKeys = (list(sgpGames[0].keys())
+                             if sgpGames and isinstance(sgpGames[0], dict)
+                             else None)
                 logger.warning(
-                    f"SGP games fallback: no usable games for {puuid}", TAG)
+                    f"SGP games fallback: no usable games for {puuid} "
+                    f"(topKeys={topKeys}, games_len={len(sgpGames)}, "
+                    f"entryKeys={entryKeys})", TAG)
                 return None
             return {
                 "gameCount": res.get("totalGames") or len(gameList),
@@ -823,7 +832,20 @@ class LolClientConnector(QObject):
                 res = await res.json()
 
                 if "games" not in res:
-                    raise SummonerGamesNotFound()
+                    # LCU 上游 match-history 服务故障时返回
+                    # {"errorCode":"RPC_ERROR","httpStatus":503/500,...},
+                    # 把服务错误详情带进异常与日志, 避免被误当成"无数据"
+                    # (2026-10-24 排查: 腾讯 match-history 后端 503 故障期间
+                    # 日志完全看不出真实原因)
+                    detail = ""
+                    if isinstance(res, dict) and "errorCode" in res:
+                        detail = (f" [{res.get('errorCode')} "
+                                  f"{res.get('httpStatus')}: "
+                                  f"{res.get('message')}]")
+                        logger.warning(
+                            f"getSummonerGamesByPuuid: LCU match-history "
+                            f"service error for {puuid}{detail}", TAG)
+                    raise SummonerGamesNotFound(detail)
 
                 # LCU 响应结构: res["games"] 是容器 dict
                 # {"gameCount": N, "games": [game1, ...], "gameBeginDate": ...}
@@ -1737,6 +1759,18 @@ class LolClientConnector(QObject):
         if res.status == 429:
             retry_after = _parse_retry_after(res.headers.get('Retry-After'))
             raise RateLimited(retry_after)
+        if res.status >= 400:
+            # SGP 上游服务故障时返回 4xx/5xx (如 503 "Connection retries
+            # limit exceeded"), 此前只有 429 被拦截, 5xx 的 JSON 错误体
+            # {"status": {...}} 会被下游当成"成功但无数据" -- 2026-10-24
+            # 排查: 78 条 "no usable games" 实为 503 误判. 读出错误体摘要
+            # 抛 ClientError, 让调用方按服务失败记录真实原因
+            try:
+                body = await res.text()
+            except (aiohttp.ClientError, ValueError) as e:
+                body = f"<unreadable: {e}>"
+            raise aiohttp.ClientError(
+                f"SGP HTTP {res.status}: {body[:200]}")
         return res
 
     async def getLoginSummonerByPid(self, pid) -> dict:

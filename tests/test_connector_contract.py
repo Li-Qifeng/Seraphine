@@ -997,3 +997,59 @@ class TestConcurrencyLimit:
             _run(scenario())
         finally:
             connector.semaphore = None
+
+
+# ---------------------------------------------------------------------------
+# 契约: 服务端错误分类 (2026-10-24: match-history 后端 503 故障排查)
+#   SGP 非 2xx 不再被当成"成功但无数据"; LCU errorCode 响应带详情抛出,
+#   日志一眼看出是服务故障而非玩家无战绩.
+# ---------------------------------------------------------------------------
+
+class TestServiceErrorClassification:
+    def test_sgp_5xx_raises_client_error(self, mock_lcu):
+        """SGP 5xx (如 503 Connection retries limit exceeded) 抛
+        aiohttp.ClientError 并携带状态码与错误体摘要, 不再被下游当成
+        200 空数据误记为 no usable games."""
+        mock_resp = MagicMock()
+        mock_resp.status = 503
+        mock_resp.text = AsyncMock(return_value=(
+            '{"status":{"message":"Service Unavailable - Connection '
+            'retries limit exceeded. Response timed out.","status_code":503}}'))
+        mock_sess = MagicMock()
+        mock_sess.get = AsyncMock(return_value=mock_resp)
+
+        with patch.object(connector, 'sgpSess', mock_sess), \
+                patch.object(connector, 'inTencent', True):
+            with pytest.raises(aiohttp.ClientError) as ei:
+                _run(connector.getSummonerGamesByPuuidViaSGP("abc", 0, 19))
+
+        assert "503" in str(ei.value)
+        assert "Connection retries limit exceeded" in str(ei.value)
+
+    def test_sgp_200_empty_games_logs_shape_and_returns_none(self, mock_lcu):
+        """SGP 200 但无可用对局时 __fetchGamesViaSGPFallback 返回 None
+        (行为不变), 但日志记录响应结构便于区分格式变化."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value={"games": [], "totalGames": 0})
+        mock_sess = MagicMock()
+        mock_sess.get = AsyncMock(return_value=mock_resp)
+
+        with patch.object(connector, 'sgpSess', mock_sess), \
+                patch.object(connector, 'inTencent', True):
+            result = _run(connector._LolClientConnector__fetchGamesViaSGPFallback(
+                "abc", 0, 19))
+
+        assert result is None
+
+    def test_lcu_error_response_detail_in_exception(self, mock_lcu):
+        """LCU match-history 返回 errorCode (RPC_ERROR 503/500) 时,
+        SummonerGamesNotFound 携带服务错误详情, 调用方日志不再空白."""
+        data = {"errorCode": "RPC_ERROR", "httpStatus": 503,
+                "message": "Error getting match list for summoner"}
+        with _patch_get(_resp(json_data=data)):
+            with pytest.raises(SummonerGamesNotFound) as ei:
+                _run(mock_lcu.getSummonerGamesByPuuid("abc", 0, 19))
+
+        assert "RPC_ERROR" in str(ei.value)
+        assert "503" in str(ei.value)

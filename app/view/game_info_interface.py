@@ -30,6 +30,8 @@ from app.components.seraphine_interface import SeraphineInterface
 
 class GameInfoInterface(SeraphineInterface):
     manualSendHorseReport = pyqtSignal()
+    # 手动刷新对局信息 (战绩服务故障恢复后由用户触发重拉)
+    refreshRequested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -49,6 +51,8 @@ class GameInfoInterface(SeraphineInterface):
         self.filterButton.setFixedHeight(32)
         self.manualSendButton = PushButton(self.tr("Send rating"))
         self.manualSendButton.setFixedHeight(32)
+        self.refreshButton = PushButton(self.tr("Refresh"))
+        self.refreshButton.setFixedHeight(32)
         self.modeFilterWidget = ModeFilterWidget()
 
         # 保存召唤师的英雄信息
@@ -84,6 +88,7 @@ class GameInfoInterface(SeraphineInterface):
         self.filterLayout = QHBoxLayout()
         self.filterLayout.setContentsMargins(0, 0, 0, 0)
         self.filterLayout.addStretch(1)
+        self.filterLayout.addWidget(self.refreshButton, alignment=Qt.AlignRight)
         self.filterLayout.addWidget(self.manualSendButton,
                                     alignment=Qt.AlignRight)
         self.filterLayout.addWidget(self.filterButton, alignment=Qt.AlignRight)
@@ -99,6 +104,7 @@ class GameInfoInterface(SeraphineInterface):
             self.__onCurrentTeamChanged)
         self.filterButton.clicked.connect(self.__onFilterButtonClicked)
         self.manualSendButton.clicked.connect(self.manualSendHorseReport.emit)
+        self.refreshButton.clicked.connect(self.refreshRequested.emit)
         self.modeFilterWidget.setCallback(self.__onFilterChanged)
 
     def __onFilterButtonClicked(self):

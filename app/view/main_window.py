@@ -389,6 +389,12 @@ class MainWindow(FluentWindow):
         signalBus.toCareerInterface.connect(self.__switchToCareerInterface)
         self.gameInfoInterface.manualSendHorseReport.connect(
             self.__onManualSendHorseReport)
+        # 对局信息页"刷新"按钮: 战绩服务故障恢复后手动重拉
+        self.gameInfoInterface.refreshRequested.connect(
+            self.__onGameInfoRefreshRequested)
+        # 后台恢复拿到完整战绩后自动重绘对局信息面板
+        signalBus.matchHistoryRecovered.connect(
+            self.__onMatchHistoryRecovered)
 
         # From setting_interface
         self.settingInterface.careerGamesCount.pushButton.clicked.connect(
@@ -1043,6 +1049,14 @@ class MainWindow(FluentWindow):
 
     @asyncSlot(str)
     async def __onGameStatusChanged(self, status):
+        # 海克斯换英雄窗口只在选人阶段有意义: 状态一变就立即隐藏, 不能放在
+        # 函数末尾 -- 战绩服务故障时下方 await 抛异常会跳过末尾收尾,
+        # 窗口残留到游戏结束才消失 (2026-10-24 用户反馈)
+        if status != 'ChampSelect':
+            self.opggWindow.setStaysOnTopEnabled(False)
+            self.hextechWindow.setStaysOnTopEnabled(False)
+            self.hextechWindow.hide()
+
         title = None
         isGaming = False
 
@@ -1075,14 +1089,25 @@ class MainWindow(FluentWindow):
             await self.__onChampionSelectBegin()
         elif status == 'GameStart':
             title = self.tr("Gaming")
-            await self.__onGameStart()
+            # 对局信息解析失败 (如战绩服务 503) 不应中断 gameflow 收尾
+            try:
+                await self.__onGameStart()
+            except Exception as e:
+                logger.error(
+                    f"__onGameStart failed ({type(e).__name__}: {e}), "
+                    f"skip to keep gameflow pipeline going", TAG)
             isGaming = True
         elif status == 'InProgress':
             title = self.tr("Gaming")
 
             # 重连或正常进入游戏 (走 GameStart), 不需要更新数据
             if not self.isGaming:
-                await self.__onGameStart()
+                try:
+                    await self.__onGameStart()
+                except Exception as e:
+                    logger.error(
+                        f"__onGameStart failed ({type(e).__name__}: {e}), "
+                        f"skip to keep gameflow pipeline going", TAG)
             isGaming = True
         elif status == 'WaitingForStatus':
             title = self.tr("Waiting for status")
@@ -1166,11 +1191,6 @@ class MainWindow(FluentWindow):
             self.declineWindow.hide()
 
         self.isGaming = isGaming
-
-        if status != 'ChampSelect':
-            self.opggWindow.setStaysOnTopEnabled(False)
-            self.hextechWindow.setStaysOnTopEnabled(False)
-            self.hextechWindow.hide()
 
         if title is not None:
             self.setWindowTitle("Seraphine - " + title)
@@ -1644,9 +1664,51 @@ class MainWindow(FluentWindow):
 
     # 进入游戏后触发
     async def __onGameStart(self):
+        queueId = await self.__loadGameInfoPanel()
+        if queueId is None:
+            return
+
+        # ARAM Mayhem: 启动海克斯辅助轮询
+        if queueId == 2400 and cfg.get(cfg.enableHextechAssist):
+            logger.error(
+                f"HextechAssist: starting timer for queueId={queueId}", TAG)
+            self.hextechAssistTimer.start()
+            # 自动切到 OPGG 海克斯辅助页 (若开启自动显示)
+            if cfg.get(cfg.hextechAssistAutoShow):
+                try:
+                    championId = await self.__getChampionIdFromLiveClient()
+                    if championId and championId > 0:
+                        logger.error(
+                            f"HextechAssist: auto show for championId={championId}", TAG)
+                        self.opggWindow.showHextechAssist(championId)
+                    else:
+                        logger.error(
+                            "HextechAssist: no championId from live client", TAG)
+                except Exception as e:
+                    logger.error(f"Hextech assist auto show failed: {e}", TAG)
+
+        # 死亡自动切窗: 非排除模式且启用时启动轮询
+        if cfg.get(cfg.enableDeathSwitch):
+            excluded = cfg.get(cfg.deathSwitchExcludedModes)
+            if isinstance(excluded, list) and queueId not in excluded:
+                logger.error(
+                    f"DeathSwitch: starting timer for queueId={queueId}", TAG)
+                self._deathPrevAlive = True
+                self._deathRespawnTask = None
+                self._deathBrowserHwnd = 0
+                self.deathSwitchTimer.start()
+
+    async def __loadGameInfoPanel(self, force=False):
+        """拉取 gameflow session 并重绘对局信息面板.
+
+        进游戏 (__onGameStart) / 对局信息页"刷新"按钮 /
+        matchHistoryRecovered 自动刷新共用.
+        force=True 时忽略"已加载"跳过逻辑强制重拉.
+        返回 queueId; 不在对局或数据缺失时返回 None.
+        """
         if not self.currentSummoner:
             logger.warning("game start but currentSummoner is None, skip", TAG)
-            return
+            return None
 
         session = await connector.getGameflowSession()
         currentSummonerId = self.currentSummoner['summonerId']
@@ -1657,10 +1719,10 @@ class MainWindow(FluentWindow):
             queueId = session['gameData']['queue']['id']
         except (KeyError, TypeError):
             logger.warning("game start session has no gameData/queue, skip", TAG)
-            return
+            return None
 
         if queueId in (1700, 1090, 1100, 1110, 1130, 1160):  # 斗魂 云顶匹配 (排位)
-            return
+            return None
 
         # 如果是进游戏后开的软件，需要先把友方信息更新上去
         async def paintAllySummonersInfo():
@@ -1673,7 +1735,7 @@ class MainWindow(FluentWindow):
                     break
             expected_ally_count = len(ally_team) if ally_team else 0
 
-            if self.gameInfoInterface.allyChampions and expected_ally_count > 0 \
+            if not force and self.gameInfoInterface.allyChampions and expected_ally_count > 0 \
                     and len(self.gameInfoInterface.allyChampions) >= expected_ally_count:
                 return
 
@@ -1728,36 +1790,33 @@ class MainWindow(FluentWindow):
         await paintTeamColor()
 
         self.checkAndSwitchTo(self.gameInfoInterface)
+        return queueId
 
-        # ARAM Mayhem: 启动海克斯辅助轮询
-        if queueId == 2400 and cfg.get(cfg.enableHextechAssist):
+    @asyncSlot()
+    async def __onGameInfoRefreshRequested(self):
+        """对局信息页"刷新"按钮: 强制重拉当前对局的队友战绩."""
+        logger.info("GameInfo: manual refresh requested", TAG)
+        try:
+            await self.__loadGameInfoPanel(force=True)
+        except Exception as e:
             logger.error(
-                f"HextechAssist: starting timer for queueId={queueId}", TAG)
-            self.hextechAssistTimer.start()
-            # 自动切到 OPGG 海克斯辅助页 (若开启自动显示)
-            if cfg.get(cfg.hextechAssistAutoShow):
-                try:
-                    championId = await self.__getChampionIdFromLiveClient()
-                    if championId and championId > 0:
-                        logger.error(
-                            f"HextechAssist: auto show for championId={championId}", TAG)
-                        self.opggWindow.showHextechAssist(championId)
-                    else:
-                        logger.error(
-                            "HextechAssist: no championId from live client", TAG)
-                except Exception as e:
-                    logger.error(f"Hextech assist auto show failed: {e}", TAG)
+                f"GameInfo: manual refresh failed ({type(e).__name__}: {e})",
+                TAG)
 
-        # 死亡自动切窗: 非排除模式且启用时启动轮询
-        if cfg.get(cfg.enableDeathSwitch):
-            excluded = cfg.get(cfg.deathSwitchExcludedModes)
-            if isinstance(excluded, list) and queueId not in excluded:
-                logger.error(
-                    f"DeathSwitch: starting timer for queueId={queueId}", TAG)
-                self._deathPrevAlive = True
-                self._deathRespawnTask = None
-                self._deathBrowserHwnd = 0
-                self.deathSwitchTimer.start()
+    @asyncSlot(str)
+    async def __onMatchHistoryRecovered(self, puuid):
+        """后台恢复拿到完整战绩后自动重绘对局信息面板 (无需手动刷新)."""
+        if not (self.isGaming
+                or self.stackedWidget.currentWidget() is self.gameInfoInterface):
+            return
+        logger.info(
+            f"match history recovered ({puuid}), refresh game info panel", TAG)
+        try:
+            await self.__loadGameInfoPanel(force=True)
+        except Exception as e:
+            logger.error(
+                f"GameInfo: auto refresh failed ({type(e).__name__}: {e})",
+                TAG)
 
     async def __onGameEnd(self):
         # 停止死亡自动切窗轮询
