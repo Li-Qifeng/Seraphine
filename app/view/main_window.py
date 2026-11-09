@@ -152,6 +152,8 @@ class MainWindow(FluentWindow):
         self.currentSummoner = cfg.get(cfg.lastSummoner) or None
 
         self.isGaming = False
+        # 当前这局的对局面板是否真正加载成功 (GameStart 失败时供 InProgress 补拉)
+        self.gameInfoLoaded = False
         self.isTrayExit = False
         self.tasklistEnabled = True
         self.championSelection = ChampionSelection()
@@ -749,8 +751,23 @@ class MainWindow(FluentWindow):
         # ---- 240413 ---- By Hpero4
 
         self.__unlockInterface()
-        await asyncio.gather(championsInit, aramInitT)
-        await self.__onGameStatusChanged(status)
+
+        # 启动时若已在游戏里 (GameStart/InProgress), 先拉对局面板并切页:
+        # 不能等 AramBuff/英雄别名的网络初始化, 否则面板会被延后十几秒
+        # (期间停在生涯页, 看起来就是"没有自动加载对局信息")
+        if status in ('GameStart', 'InProgress'):
+            await self.__onGameStatusChanged(status)
+            await asyncio.gather(championsInit, aramInitT)
+        else:
+            await asyncio.gather(championsInit, aramInitT)
+            # status 是初始化前取的, 等待期间可能已变 (选人→进游戏),
+            # 用最新值处理, 避免按过期阶段走
+            try:
+                status = await connector.getGameStatus()
+            except Exception as e:
+                logger.warning(
+                    f"refresh game status after init failed: {e}", TAG)
+            await self.__onGameStatusChanged(status)
 
         # Note 如果你希望测试大乱斗的数据弹框, 参考这个 -- By Hpero4
         # self.careerInterface.icon.aramInfo = AramBuff.getInfoByChampionId(75)
@@ -788,6 +805,7 @@ class MainWindow(FluentWindow):
         # InProgress, 而 InProgress 分支靠 isGaming 判断是否需要重新拉取
         # 对局信息 — 不复位就会整局都不刷新 (需重启应用才恢复)
         self.isGaming = False
+        self.gameInfoLoaded = False
 
         if self.searchInterface.gameLoadingTask:
             self.searchInterface.gameLoadingTask.cancel()
@@ -1100,8 +1118,10 @@ class MainWindow(FluentWindow):
         elif status == 'InProgress':
             title = self.tr("Gaming")
 
-            # 重连或正常进入游戏 (走 GameStart), 不需要更新数据
-            if not self.isGaming:
+            # 重连或正常进入游戏 (走 GameStart), 不需要更新数据;
+            # 但 GameStart 阶段加载失败 (session 尚无 gameData/队伍) 时
+            # isGaming 已为 True, 需要按"是否真正加载成功"补一次
+            if not self.isGaming or not self.gameInfoLoaded:
                 try:
                     await self.__onGameStart()
                 except Exception as e:
@@ -1790,6 +1810,7 @@ class MainWindow(FluentWindow):
         await paintTeamColor()
 
         self.checkAndSwitchTo(self.gameInfoInterface)
+        self.gameInfoLoaded = True
         return queueId
 
     @asyncSlot()
@@ -1819,6 +1840,7 @@ class MainWindow(FluentWindow):
                 TAG)
 
     async def __onGameEnd(self):
+        self.gameInfoLoaded = False
         # 停止死亡自动切窗轮询
         self.deathSwitchTimer.stop()
         self.__hideDeathCountdown()

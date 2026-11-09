@@ -563,12 +563,14 @@ class TestMissingFieldDefensive:
         for session in ({}, {'gameData': {'queue': {}}}, None):
             assert getAllyOrderByGameRole(session, 1) is None
 
-    def test_get_team_color_missing_fields_returns_empty(self):
-        """getTeamColor 缺 gameData/teamOne/teamTwo 时返回 {}."""
+    def test_get_team_color_missing_fields_returns_empty_pair(self):
+        """getTeamColor 缺 gameData/teamOne/teamTwo 时返回 ({}, {}) —
+        必须与 paintTeamColor 的二元解包契约一致, 否则 ValueError
+        会跳过 checkAndSwitchTo (对局面板不自动切页)."""
         from app.lol.tools import getTeamColor
         for session in ({}, None,
                         {'gameData': {'teamOne': None}}):
-            assert getTeamColor(session, 1) == {}
+            assert getTeamColor(session, 1) == ({}, {})
 
     def test_separate_teams_missing_teams_returns_none_pair(self):
         """separateTeams 缺 teamOne/teamTwo 时返回 (None, None)."""

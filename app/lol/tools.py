@@ -907,7 +907,7 @@ def getTeamColor(session, currentSummonerId):
     ally, enemy = separateTeams(data or {}, currentSummonerId)
 
     if ally is None or enemy is None:
-        return {}
+        return {}, {}
 
     def makeTeam(team):
         # teamParticipantId => [summonerId]
