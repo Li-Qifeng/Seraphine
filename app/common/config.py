@@ -264,6 +264,12 @@ class Config(QConfig):
     enableHextechWindowOnTop = ConfigItem(
         "Functions", "EnableHextechWindowOnTop", True, BoolValidator())
 
+    # 常驻侧边栏 (快捷开关 + 大乱斗换英雄): 客户端运行期间常驻贴在客户端左侧
+    enableSideDock = ConfigItem(
+        "Functions", "EnableSideDock", True, BoolValidator())
+    sideDockCollapsed = ConfigItem(
+        "Functions", "SideDockCollapsed", False, BoolValidator())
+
     # 海克斯强化选择辅助 (ARAM Mayhem 游戏中推荐)
     enableHextechAssist = ConfigItem(
         "Functions", "EnableHextechAssist", True, BoolValidator())

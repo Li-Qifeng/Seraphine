@@ -487,10 +487,21 @@ def getLolClientWindowPos() -> QRectF:
     rect = win32gui.GetWindowRect(hwnd)
 
     # 窗口最小化的时候，比例不是 16:9，直接 return 一个 None
-    if (rect[3] - rect[1]) / (rect[2] - rect[0]) != 0.5625:
+    # (侧边栏每 500ms 轮询一次, 宽度为 0 的异常矩形不能触发 ZeroDivisionError)
+    width = rect[2] - rect[0]
+    if width <= 0 or (rect[3] - rect[1]) / width != 0.5625:
         return None
 
-    return QRectF(rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
+    return QRectF(rect[0], rect[1], width, rect[3] - rect[1])
+
+
+def isLolClientForeground() -> bool:
+    """客户端窗口当前是否在前台 (供置顶的侧边栏判断显隐)."""
+    try:
+        hwnd = win32gui.FindWindow("RCLIENT", "League of Legends")
+        return bool(hwnd) and win32gui.GetForegroundWindow() == hwnd
+    except Exception:
+        return False
 
 
 def _enumWindowsFilter(hwnd, exe_name):

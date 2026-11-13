@@ -200,15 +200,22 @@ class AuxiliaryInterface(SeraphineInterface):
             cfg.hextechChampions,
             self.hextechGroup)
 
+        self.sideDockCard = SwitchSettingCard(
+            Icon.WINDOW, self.tr("常驻侧边栏"),
+            self.tr("客户端运行期间在其左侧常驻快捷开关栏（自动匹配、自动再来一局等），"
+                    "大乱斗选人时同时显示换英雄区"),
+            cfg.enableSideDock,
+            parent=self.hextechGroup)
+
         self.hextechAutoShowCard = SwitchSettingCard(
-            Icon.WINDOW, self.tr("自动弹出换英雄窗口"),
-            self.tr("选人阶段开始时自动显示换英雄窗口（仅大乱斗备选席模式）"),
+            Icon.WINDOW, self.tr("自动展开换英雄区"),
+            self.tr("大乱斗选人开始时自动展开侧边栏中的换英雄区（侧边栏折叠时）"),
             cfg.autoShowHextechWindow,
             parent=self.hextechGroup)
 
         self.hextechOnTopCard = SwitchSettingCard(
-            Icon.PADDINGTOP, self.tr("换英雄窗口置顶"),
-            self.tr("选人阶段换英雄窗口始终显示在其他窗口前"),
+            Icon.PADDINGTOP, self.tr("侧边栏置顶"),
+            self.tr("侧边栏显示在其他窗口前（仅在客户端位于前台时显示）"),
             cfg.enableHextechWindowOnTop,
             parent=self.hextechGroup)
 
@@ -342,6 +349,7 @@ class AuxiliaryInterface(SeraphineInterface):
         self.automationGroup.addSettingCard(self.deathSwitchCard)
 
         # 海克斯
+        self.hextechGroup.addSettingCard(self.sideDockCard)
         self.hextechGroup.addSettingCard(self.hextechChampionCard)
         self.hextechGroup.addSettingCard(self.hextechAutoShowCard)
         self.hextechGroup.addSettingCard(self.hextechOnTopCard)

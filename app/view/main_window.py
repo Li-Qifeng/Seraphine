@@ -702,6 +702,7 @@ class MainWindow(FluentWindow):
         await opgg.start()
         self.checkAndSwitchTo(self.careerInterface)
         self.isClientProcessRunning = True
+        self.hextechWindow.setClientPresent(True)
 
         await self.__changeCareerToCurrentSummoner()
         await self.__updateAvatarIconName()
@@ -822,6 +823,7 @@ class MainWindow(FluentWindow):
         await connector.close()
 
         self.isClientProcessRunning = False
+        self.hextechWindow.setClientPresent(False)
 
         await self.__updateAvatarIconName()
 
@@ -1028,7 +1030,7 @@ class MainWindow(FluentWindow):
             self.__terminateListeners()
             self._deathCountdownWindow.close()
             self.opggWindow.close()
-            self.hextechWindow.close()
+            self.hextechWindow.shutdown()
 
             cfg.set(cfg.windowSize, self.windowSize)
 
@@ -1072,8 +1074,8 @@ class MainWindow(FluentWindow):
         # 窗口残留到游戏结束才消失 (2026-10-24 用户反馈)
         if status != 'ChampSelect':
             self.opggWindow.setStaysOnTopEnabled(False)
-            self.hextechWindow.setStaysOnTopEnabled(False)
-            self.hextechWindow.hide()
+        # 侧边栏常驻: 只按阶段高亮相关开关 (离开选人时自动收起换英雄区), 不再隐藏窗口
+        self.hextechWindow.setPhase(status)
 
         title = None
         isGaming = False
@@ -1505,14 +1507,12 @@ class MainWindow(FluentWindow):
                 self.opggWindow.setStaysOnTopEnabled(True)
             self.opggWindow.show()
 
-        # 海克斯/大乱斗抢人窗口: 仅备选席模式 + 自动弹开启时显示
-        if cfg.get(cfg.autoShowHextechWindow) and cSession.get('benchEnabled'):
-            if cfg.get(cfg.enableHextechWindowOnTop):
-                self.hextechWindow.setStaysOnTopEnabled(True)
-            self.hextechWindow.show()
-            # WS 事件可能在 show() 之前已到达 (await asyncio.gather 交出事件循环),
-            # 此时 isVisible() 为 False, hextechSessionUpdated 不会触发,
-            # 导致窗口保留上一局旧数据. 用当前 session 强制刷新.
+        # 大乱斗备选席模式: 侧边栏显示换英雄区 (自动弹出开启且已折叠时自动展开).
+        # WS 事件可能在这之前已到达 (await asyncio.gather 交出了事件循环),
+        # 用当前 session 强制刷新, 避免保留上一局的旧数据.
+        if cSession.get('benchEnabled'):
+            self.hextechWindow.setBenchMode(
+                True, expand=bool(cfg.get(cfg.autoShowHextechWindow)))
             signalBus.hextechSessionUpdated.emit(cSession)
 
         currentSummonerId = self.currentSummoner['summonerId']
@@ -1696,7 +1696,7 @@ class MainWindow(FluentWindow):
         # 海克斯/大乱斗: 备选席模式时刷新抢人窗口的头像墙.
         # 本帧刚换过英雄时 data 已是换之前的旧快照, 跳过渲染,
         # 等换英雄触发的下一帧用新数据刷新
-        if data.get('benchEnabled') and not grabbed and self.hextechWindow.isVisible():
+        if data.get('benchEnabled') and not grabbed:
             signalBus.hextechSessionUpdated.emit(data)
 
     # 进入游戏后触发
