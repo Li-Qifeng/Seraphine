@@ -1401,13 +1401,28 @@ class MainWindow(FluentWindow):
         """EndOfGame 阶段自动点击"再来一局".
 
         调用 POST /lol-lobby/v2/play-again, 让客户端自动回到排队.
-        延迟 2 秒执行, 避免与 honor 提交竞争.
+        首次延迟 2 秒, 避免与 honor 提交竞争; 之后若被拒绝 (队友未点再来一局等)
+        或阶段仍停在结算, 每 2 秒重试, 最多约 90 秒. 阶段离开结算即视为成功.
         """
         try:
             await asyncio.sleep(2)
-            logger.info("Auto play again: calling playAgain()", TAG)
-            await connector.playAgain()
-            logger.info("Auto play again: done", TAG)
+            deadline = time.monotonic() + 90
+            attempt = 0
+            while time.monotonic() < deadline:
+                attempt += 1
+                phase = await connector.getGameStatus()
+                if phase not in ('EndOfGame', 'PreEndOfGame'):
+                    logger.info(
+                        f"Auto play again: done (phase={phase}, attempt={attempt})", TAG)
+                    return
+                if await connector.tryPlayAgain():
+                    logger.info(
+                        f"Auto play again: accepted (attempt={attempt})", TAG)
+                else:
+                    logger.info(
+                        f"Auto play again: rejected, retry in 2s (attempt={attempt})", TAG)
+                await asyncio.sleep(2)
+            logger.warning("Auto play again: gave up after 90s", TAG)
         except Exception as e:
             logger.warning(f"Auto play again failed: {e}", TAG)
 
@@ -1421,24 +1436,34 @@ class MainWindow(FluentWindow):
             delay = cfg.get(cfg.autoStartMatchmakingDelay)
             await asyncio.sleep(delay)
             try:
-                cur_status = await connector.getGameStatus()
-                if cur_status != 'Lobby':
-                    logger.warning(
-                        f"Auto-start matchmaking: status changed to {cur_status}, abort", TAG)
-                    return
-                if not await connector.isLobbyReadyToSearch():
-                    logger.warning("Auto-start matchmaking: lobby not ready, abort", TAG)
-                    return
-                search_status = await connector.getMatchmakingStatus()
-                if search_status and search_status.get('searchState') in ('Searching', 'Found', 'Accepted'):
-                    logger.warning(
-                        f"Auto-start matchmaking: already in state {search_status.get('searchState')}, abort", TAG)
-                    return
-                ok = await connector.startMatchmaking()
-                if ok:
-                    logger.info("Auto-start matchmaking: started successfully", TAG)
-                else:
-                    logger.warning("Auto-start matchmaking: startMatchmaking returned False", TAG)
+                # 队友还没进房/未准备时 canStartActivity 为 False, 不能就此放弃:
+                # 每 2 秒重试, 最多约 120 秒; 离开 Lobby 由 __cancelAutoStartMatchmaking 取消
+                deadline = time.monotonic() + 120
+                attempt = 0
+                while time.monotonic() < deadline:
+                    attempt += 1
+                    cur_status = await connector.getGameStatus()
+                    if cur_status != 'Lobby':
+                        logger.info(
+                            f"Auto-start matchmaking: status changed to {cur_status}, stop", TAG)
+                        return
+                    search_status = await connector.getMatchmakingStatus()
+                    if search_status and search_status.get('searchState') in ('Searching', 'Found', 'Accepted'):
+                        logger.info(
+                            f"Auto-start matchmaking: already in state {search_status.get('searchState')}, stop", TAG)
+                        return
+                    if await connector.isLobbyReadyToSearch():
+                        if await connector.startMatchmaking():
+                            logger.info(
+                                f"Auto-start matchmaking: started successfully (attempt={attempt})", TAG)
+                            return
+                        logger.info(
+                            f"Auto-start matchmaking: start rejected, retry in 2s (attempt={attempt})", TAG)
+                    else:
+                        logger.info(
+                            f"Auto-start matchmaking: lobby not ready, retry in 2s (attempt={attempt})", TAG)
+                    await asyncio.sleep(2)
+                logger.warning("Auto-start matchmaking: gave up after 120s", TAG)
             except Exception as e:
                 logger.warning(f"Auto-start matchmaking error: {e}", TAG)
             finally:

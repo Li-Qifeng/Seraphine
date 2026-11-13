@@ -1468,6 +1468,22 @@ class LolClientConnector(QObject):
 
         return await res.read()
 
+    async def tryPlayAgain(self) -> bool:
+        """POST play-again, 以 HTTP 状态判定是否被接受 (不走 @retry).
+
+        队友还没点"再来一局"/房间尚未就绪时 LCU 会返回 4xx/5xx 而不抛异常,
+        playAgain() 会把它当成功; 自动再来一局需要据此轮询重试.
+        """
+        res = await self.__post("/lol-lobby/v2/play-again")
+        if 200 <= res.status < 300:
+            return True
+        try:
+            body = (await res.text())[:200]
+        except Exception:
+            body = ""
+        logger.debug(f"play-again rejected: status={res.status} body={body}", TAG)
+        return False
+
     async def dodge(self) -> bool:
         """秒退英雄选择 (ChampSelect 阶段).
 
