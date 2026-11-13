@@ -293,8 +293,14 @@ class AugmentRow(QFrame):
                         label.setToolTip(name)
                         label.installEventFilter(
                             ToolTipFilter(label, 0, ToolTipPosition.TOP))
+                except RuntimeError:
+                    # 异步加载期间战绩页已刷新/销毁, Qt 控件的 C++ 对象已被删除,
+                    # 剩余槽位同属该行, 无需继续
+                    return
                 except Exception as e:
                     logger.warning(f"[AugmentRow] load aid={aid} failed: {e}")
+        except RuntimeError:
+            return
         except Exception as e:
             logger.warning(f"[AugmentRow] load failed: {e}")
 

@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import hashlib
 from typing import Optional
 
@@ -16,6 +17,10 @@ from app.lol.static_data import (
 TAG = "opgg"
 
 _OPGG_AUGMENT_CACHE_DIR = os.path.join("app", "resource", "opgg", "augment icons")
+
+# 图标下载失败后的冷却时间(秒): 战绩页每个 AugmentRow 都会触发一次拉取,
+# 网络异常时不加冷却会在一天内产生数千次重复失败请求/日志
+_AUGMENT_ICON_FAIL_COOLDOWN = 600
 
 _MODE_ALIAS = {
     'aram_mayhem': 'aram',
@@ -37,6 +42,7 @@ class Opgg:
         self.apiSession = None
         self.webSession = None
         self._mayhemSlugCache = {}
+        self._augmentIconFailedAt = {}
         os.makedirs(_OPGG_AUGMENT_CACHE_DIR, exist_ok=True)
 
     async def start(self) -> None:
@@ -342,18 +348,27 @@ class Opgg:
         fpath = os.path.join(_OPGG_AUGMENT_CACHE_DIR, fname)
         if os.path.exists(fpath):
             return fpath
+        failedAt = self._augmentIconFailedAt.get(url)
+        if failedAt is not None and time.monotonic() - failedAt < _AUGMENT_ICON_FAIL_COOLDOWN:
+            return None
         try:
             timeout = aiohttp.ClientTimeout(total=15)
             async with self.webSession.get(url, ssl=False, proxy=None, timeout=timeout) as res:
                 if res.status != 200:
+                    self._augmentIconFailedAt[url] = time.monotonic()
                     return None
                 data = await res.read()
                 with open(fpath, 'wb') as f:
                     f.write(data)
+                self._augmentIconFailedAt.pop(url, None)
                 return fpath
         except Exception as e:
+            self._augmentIconFailedAt[url] = time.monotonic()
             from app.common.logger import logger
-            logger.warning(f"Failed to download OPGG augment icon {url}: {e}", TAG)
+            # 部分异常 (如 TimeoutError) str() 为空, 必须带上类型才可诊断
+            logger.warning(
+                f"Failed to download OPGG augment icon {url}: "
+                f"{type(e).__name__}: {e}", TAG)
             return None
 
 

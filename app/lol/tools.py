@@ -197,7 +197,7 @@ async def parseSummonerData(summoner, rankTask, gameTask) -> SummonerParsedData:
                 games["games"].append(info)
 
             champions = getRecentChampions(games['games'])
-            logger.error(
+            logger.debug(
                 f"parseSummonerData: games fetched count={games['gameCount']} "
                 f"parsed={len(games['games'])}", "tools")
 
@@ -1386,8 +1386,11 @@ class ChampionSelection:
         # 海克斯/大乱斗抢英雄 (备选席模式, 与上面的 Rift 字段相互隔离)
         self.isHextechMode = False          # 本局是否为备选席抢人模式 (benchEnabled)
         self.hextechTargetId = None         # 当前抢人目标 championId (愿望单命中 or 用户手动点击)
-        self.isHextechGrabbed = False       # 本局是否已成功抢到 (幂等防抖, 成功后 early-return)
+        # 用户手动选定英雄后置 True, 压制本局后续愿望单自动抢.
+        # 愿望单自动抢成功不置此标志: 后续更高优先级的英雄出现在备选席时应继续升级
+        self.isHextechGrabbed = False
         self.manualGrabRequested = False    # 用户是否在窗口手动点了头像触发抢
+        self.hextechGrabbing = False        # 有一帧正在换英雄, 避免 WS 帧重叠导致并发抢
 
     def reset(self):
         self.__init__()
@@ -1436,31 +1439,34 @@ def _resolveHextechTarget(bench, mine, selection):
     if target and target != mine:
         return target
 
-    # 愿望单按序匹配, 命中备选席且非当前手持
+    # 愿望单按序匹配: 列表越靠前优先级越高, 只换到比当前手持更优的英雄.
+    # 手持不在愿望单时视为最差; 手持已在愿望单时, 绝不能换成排在其后的英雄
+    # (如随到愿望单第 1 位, 备选席仅有第 3 位时不应换).
     wishlist = cfg.get(cfg.hextechChampions) or []
-    for w in wishlist:
-        if w in bench and w != mine:
+    mineRank = wishlist.index(mine) if mine in wishlist else len(wishlist)
+    for w in wishlist[:mineRank]:
+        if w in bench:
             return w
 
     return None
 
 
-async def _doBenchSwapWithRetry(target, max_retries=20):
+async def _doBenchSwapWithRetry(target, max_retries=3):
+    """换英雄, 以 HTTP 状态为准. 目标被队友抢走时 LCU 会拒绝, 返回 False,
+    由下一个 WS 帧重新决策 (目标已不在备选席则不会再试)."""
     for attempt in range(max_retries):
         try:
-            await connector.benchSwap(target)
-            return True
+            if await connector.benchSwap(target):
+                return True
         except Exception as e:
-            if attempt < max_retries - 1:
-                logger.debug(
-                    f"hextech benchSwap attempt {attempt+1} failed for {target}: {e}, retrying...",
-                    "autoBenchGrab")
-                await asyncio.sleep(0.1)
-            else:
-                logger.warning(
-                    f"hextech benchSwap failed for {target} after {max_retries} attempts: {e}",
-                    "autoBenchGrab")
-                return False
+            logger.debug(
+                f"hextech benchSwap attempt {attempt+1} error for {target}: {e}",
+                "autoBenchGrab")
+        if attempt < max_retries - 1:
+            await asyncio.sleep(0.1)
+    logger.info(
+        f"hextech benchSwap not accepted for {target} after {max_retries} attempts",
+        "autoBenchGrab")
     return False
 
 
@@ -1470,8 +1476,9 @@ async def autoBenchGrab(data, selection: ChampionSelection):
 
     节奏策略 (事件驱动为主):
       - 默认靠 WS 的 champSelectChanged 每帧判一次, 零额外 HTTP
-      - benchSwap 失败时自动重试 (网络抖动/竞态保护)
-      - 仅在目标不在 bench 但用户已手动请求时, 短轮询 (200ms x 8) 等待释放
+      - benchSwap 以 HTTP 状态判成败, 被拒 (如被队友抢先) 时短重试, 仍失败则等下一帧
+      - 愿望单按优先级升级: 只换到比手持更靠前的英雄, 不会换到更差的
+      - 仅在目标不在 bench 但用户已手动请求时, 短轮询 (150ms x 8) 等待释放
 
     返回 True 表示本帧已消费 (触发 phase dispatch 的 break)
     """
@@ -1485,6 +1492,17 @@ async def autoBenchGrab(data, selection: ChampionSelection):
     if not cfg.get(cfg.enableAutoAramBench) and not selection.manualGrabRequested:
         return False
 
+    # WS 帧可能重叠 (手动目标轮询最长 ~1.2s), 同一时刻只允许一帧发起换英雄
+    if selection.hextechGrabbing:
+        return False
+    selection.hextechGrabbing = True
+    try:
+        return await _grabFromBench(data, selection)
+    finally:
+        selection.hextechGrabbing = False
+
+
+async def _grabFromBench(data, selection: ChampionSelection):
     bench = set(_getBenchChampionIds(data))
     mine = _getLocalChampionId(data)
 
@@ -1497,9 +1515,14 @@ async def autoBenchGrab(data, selection: ChampionSelection):
     if target is None:
         return False
 
+    # 手动目标代表用户最终意图, 抢到后压制后续愿望单自动抢;
+    # 愿望单命中则保持可升级 (见 _resolveHextechTarget)
+    isManual = bool(selection.hextechTargetId) and target == selection.hextechTargetId
+
     if target in bench:
         if await _doBenchSwapWithRetry(target):
-            selection.isHextechGrabbed = True
+            if isManual:
+                selection.isHextechGrabbed = True
             logger.info(f"hextech grabbed champion {target}", "autoBenchGrab")
             signalBus.hextechGrabbed.emit(target)
             return True

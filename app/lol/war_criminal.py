@@ -885,7 +885,7 @@ async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
             logger.info(
                 f"TeamRating: game={gid} team={tidStr} win={teamWin} "
                 f"players={len(teamRating)}",
-                extra={'tag': TAG})
+                tag=TAG)
 
         setVerdict(
             gameId=gid,
@@ -895,6 +895,5 @@ async def diagnoseGameFromParsed(parsed: dict, currentPuuid: str,
         return True
 
     except Exception as e:
-        logger.error(f"diagnoseGameFromParsed failed: {e}",
-                     extra={'tag': TAG})
+        logger.warning(f"diagnoseGameFromParsed failed: {e}", tag=TAG)
         return False

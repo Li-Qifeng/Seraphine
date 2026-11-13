@@ -181,6 +181,18 @@ class HextechSelectInterface(QFrame):
             btn.update()
         self.championToggled.emit(championId)
 
+    def restoreSelection(self, championId):
+        """重绘后恢复选中态, 不发 championToggled 信号.
+
+        用 selectChampion 恢复会触发 __onChampionToggled → 再发一次真实的
+        benchSwap (日志里表现为自动抢到后紧跟一条多余的
+        "hextech: target X" / "swapped to X").
+        """
+        self._selectedId = championId
+        for cid, btn in self._buttons.items():
+            btn.isSelected = (cid == championId) and not btn.isGrabbed
+            btn.update()
+
     def markGrabbed(self, championId):
         """标记抢到: 该头像绿色勾, 清除其他"""
         for cid, btn in self._buttons.items():
@@ -299,7 +311,11 @@ class HextechWindow(OpggWindowBase):
         logger.info(f"hextech: target {championId}", TAG)
 
         try:
-            await connector.benchSwap(championId)
+            if not await connector.benchSwap(championId):
+                # 被队友抢先/暂不在备选席: 保留目标, 由 autoBenchGrab 轮询等待释放
+                self.selectInterface.setStatus(self.tr("等待备选席..."))
+                logger.info(f"hextech: swap {championId} rejected, waiting", TAG)
+                return
             # 手动选择代表用户最终意图: 置幂等标志压制本局后续愿望单自动抢,
             # 否则下一帧 autoBenchGrab 会用愿望单英雄换掉刚手动抢到的英雄
             self.championSelection.isHextechGrabbed = True
@@ -374,7 +390,7 @@ class HextechWindow(OpggWindowBase):
 
             # 恢复选中
             if prevSelected and prevSelected in self.selectInterface._buttons:
-                self.selectInterface.selectChampion(prevSelected)
+                self.selectInterface.restoreSelection(prevSelected)
 
             # 状态
             hitWl = wishlistSet & set(bench)

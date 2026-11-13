@@ -284,7 +284,8 @@ def getLolClientPids(path):
             stderr=subprocess.STDOUT
         )
     except subprocess.CalledProcessError as e:
-        logger.error(
+        # 客户端退出瞬间 tasklist 可能以 0xC0000142 退出, 已回退 psutil, 非致命
+        logger.warning(
             'an error occurred when calling tasklist command, '
             f'original output: {e.output.decode() if e.output else ""}'
         )
@@ -551,7 +552,7 @@ def findProcessWindowHwnd(exe_name):
 def forceForegroundWindow(hwnd):
     """强制将窗口带到前台 (绕过 Windows 前台窗口限制)"""
     if not hwnd:
-        logger.error("DeathSwitch: forceForegroundWindow called with hwnd=0", TAG)
+        logger.warning("DeathSwitch: forceForegroundWindow called with hwnd=0", TAG)
         return
     try:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE if win32gui.IsIconic(hwnd) else win32con.SW_SHOW)
@@ -578,7 +579,7 @@ def forceForegroundWindow(hwnd):
             user32.AttachThreadInput(fg_tid, cur_tid, False)
         logger.info(f"DeathSwitch: forceForegroundWindow(hwnd={hwnd}) done", TAG)
     except Exception as e:
-        logger.error(f"DeathSwitch: forceForegroundWindow failed: {e}", TAG)
+        logger.warning(f"DeathSwitch: forceForegroundWindow failed: {e}", TAG)
 
 
 def sendMediaPlayPause(hwnd: int = 0):

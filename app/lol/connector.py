@@ -873,7 +873,7 @@ class LolClientConnector(QObject):
                 # 典型场景: 游戏刚结束, LCU 还没刷新 match-history
                 if attempt < 3 and len(gameList) < expected \
                         and gameCount > len(gameList) + 2:
-                    logger.error(
+                    logger.warning(
                         f"getSummonerGamesByPuuid: stale cache detected "
                         f"(attempt={attempt}, got={len(gameList)}, "
                         f"gameCount={gameCount}, expected={expected}), "
@@ -1290,10 +1290,26 @@ class LolClientConnector(QObject):
         await self.__post(f"/lol-champ-select/v1/ongoing-swap/{id}/clear")
 
     # 备战席交换 (大乱斗/海克斯大乱斗抢英雄)
-    @retry()
-    async def benchSwap(self, championId) -> dict:
-        res = await self.__post(f"/lol-champ-select/v1/session/bench/swap/{championId}")
-        return await res.json()
+    async def benchSwap(self, championId) -> bool:
+        """POST bench/swap/{id}, 以 HTTP 状态判定是否换成功.
+
+        不能沿用 @retry + res.json(): 目标被队友抢先拿走时 LCU 返回 4xx/5xx,
+        但并不抛异常, 旧实现会把它当成功 (抢人窗口显示"已换", 愿望单自动抢
+        也就此停手). 失败是抢人竞态的正常结果, 同样不能走 @retry 的
+        "弹错误提示"路径, 因此这里只返回 bool, 由调用方决定是否重试.
+        """
+        res = await self.__post(
+            f"/lol-champ-select/v1/session/bench/swap/{championId}")
+        if 200 <= res.status < 300:
+            return True
+        try:
+            body = (await res.text())[:200]
+        except Exception:
+            body = ""
+        logger.debug(
+            f"benchSwap {championId} rejected: status={res.status} body={body}",
+            TAG)
+        return False
 
     # 选择英雄
     @retry()
@@ -1478,6 +1494,12 @@ class LolClientConnector(QObject):
                 logger.info(
                     f"dodge: invoke quitV2 status={res.status} attempt={attempt}",
                     tag)
+                if res.status >= 400:
+                    # 失败时 body 里有 errorCode/message, 是判断端点是否被
+                    # 客户端版本改动的唯一线索
+                    logger.warning(
+                        f"dodge: quitV2 rejected: {(await res.text())[:200]}",
+                        tag)
             except Exception as e:
                 logger.warning(f"dodge: invoke quitV2 failed: {e}", tag)
             # 秒退生效后 gameflow 会离开 ChampSelect, 每隔 0.25s 探一次
@@ -1491,6 +1513,23 @@ class LolClientConnector(QObject):
                         return True
                 except Exception as e:
                     logger.warning(f"dodge: get phase failed: {e}", tag)
+
+        # 兜底: Sona 正式版 (champselect-quit-button) 使用的 DELETE lobby.
+        # quitV2 在当前客户端版本不生效时, 至少还有这一条已在 Sona 上线的路径.
+        try:
+            res = await self.__delete("/lol-lobby/v2/lobby")
+            logger.info(f"dodge: fallback DELETE lobby status={res.status}", tag)
+        except Exception as e:
+            logger.warning(f"dodge: fallback DELETE lobby failed: {e}", tag)
+        for _ in range(4):
+            await asyncio.sleep(0.25)
+            try:
+                if await self.getGameStatus() != "ChampSelect":
+                    logger.info("dodge: phase left ChampSelect via fallback", tag)
+                    return True
+            except Exception as e:
+                logger.warning(f"dodge: get phase failed: {e}", tag)
+
         logger.warning("dodge: phase still ChampSelect after retries", tag)
         return False
 
@@ -1573,7 +1612,7 @@ class LolClientConnector(QObject):
         try:
             res = await self.__get("/lol-honor-v2/v1/ballot")
             if res.status != 200:
-                logger.error(
+                logger.warning(
                     f"getEogStats HTTP {res.status}", TAG)
                 return None
             data = await res.json()
@@ -1582,7 +1621,7 @@ class LolClientConnector(QObject):
                 opponents = data.get('eligibleOpponents')
                 honored = data.get('honoredPlayers')
                 gameId = data.get('gameId')
-                logger.error(
+                logger.debug(
                     f"getEogStats ballot: gameId={gameId} "
                     f"eligibleAllies={len(allies) if isinstance(allies, list) else 'N/A'} "
                     f"eligibleOpponents={len(opponents) if isinstance(opponents, list) else 'N/A'} "
@@ -1591,18 +1630,18 @@ class LolClientConnector(QObject):
                 if isinstance(allies, list) and allies:
                     first = allies[0]
                     if isinstance(first, dict):
-                        logger.error(
+                        logger.debug(
                             f"getEogStats eligibleAllies[0] keys: "
                             f"{list(first.keys())}", TAG)
                 if isinstance(allies, list) and not allies:
                     # eligibleAllies 为空, 打印完整 ballot 用于诊断
                     # (可能是 ARAM Mayhem 等模式 ballot 时序问题)
-                    logger.error(
+                    logger.debug(
                         f"getEogStats: eligibleAllies empty, "
                         f"full ballot={str(data)[:500]}", TAG)
             return data
         except (aiohttp.ClientError, json.JSONDecodeError, AttributeError) as e:
-            logger.error(f"getEogStats failed: {e}", TAG)
+            logger.warning(f"getEogStats failed: {e}", TAG)
             return None
 
     async def submitHonor(self, recipientPuuid: str,
@@ -1628,7 +1667,7 @@ class LolClientConnector(QObject):
             return res.ok
         except (aiohttp.ClientError, AttributeError, ValueError,
                 TypeError) as e:
-            logger.error(f"submitHonor failed: {e}", TAG)
+            logger.warning(f"submitHonor failed: {e}", TAG)
             return False
 
     @retry()
@@ -1886,7 +1925,7 @@ class JsonManager:
             try:
                 return self.items[iconId]
             except KeyError:
-                logger.error(f"getItemIconPath, iconId: {iconId}", tag=TAG)
+                logger.debug(f"getItemIconPath, iconId: {iconId}", tag=TAG)
 
         return "/lol-game-data/assets/ASSETS/Items/Icons2D/gp_ui_placeholder.png"
 

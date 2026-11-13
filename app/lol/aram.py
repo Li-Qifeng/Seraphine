@@ -198,7 +198,11 @@ class AramBuff:
 
         champions = {}
         for cid, item in (raw or {}).items():
-            aram = ((item or {}).get('stats') or {}).get('aram') or {}
+            # balance.json 顶层含元数据键 (如 "_patch": "16.17.1"), 值是字符串,
+            # 不跳过会抛 AttributeError 导致整个兜底数据加载失败
+            if not isinstance(item, dict):
+                continue
+            aram = ((item.get('stats') or {}).get('aram')) or {}
             if not aram:
                 continue
 

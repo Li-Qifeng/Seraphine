@@ -45,37 +45,37 @@ async def fetchCurrentAugments() -> Optional[dict]:
         try:
             # 只打印顶层 keys 和 allPlayers/activePlayer 的结构, 避免日志过长
             top_keys = list(data.keys())
-            logger.error(
+            logger.debug(
                 f"[AugmentLiveProbe] allgamedata top keys: {top_keys}", TAG)
             all_players = data.get('allPlayers')
             if isinstance(all_players, list) and all_players:
                 p0 = all_players[0]
                 if isinstance(p0, dict):
-                    logger.error(
+                    logger.debug(
                         f"[AugmentLiveProbe] allPlayers[0] keys: "
                         f"{list(p0.keys())}", TAG)
                     # 检查 augment 相关字段
                     for k, v in p0.items():
                         if 'augment' in k.lower() or 'hex' in k.lower():
-                            logger.error(
+                            logger.debug(
                                 f"[AugmentLiveProbe] allPlayers[0]['{k}'] = "
                                 f"{json.dumps(v, ensure_ascii=False)[:300]}",
                                 TAG)
             active = data.get('activePlayer')
             if isinstance(active, dict):
-                logger.error(
+                logger.debug(
                     f"[AugmentLiveProbe] activePlayer keys: "
                     f"{list(active.keys())}", TAG)
                 for k, v in active.items():
                     if 'augment' in k.lower() or 'hex' in k.lower():
-                        logger.error(
+                        logger.debug(
                             f"[AugmentLiveProbe] activePlayer['{k}'] = "
                             f"{json.dumps(v, ensure_ascii=False)[:300]}",
                             TAG)
             # 顶层 augment/hex 相关字段
             for k, v in data.items():
                 if 'augment' in k.lower() or 'hex' in k.lower():
-                    logger.error(
+                    logger.debug(
                         f"[AugmentLiveProbe] top['{k}'] = "
                         f"{json.dumps(v, ensure_ascii=False)[:300]}",
                         TAG)

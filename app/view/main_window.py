@@ -694,7 +694,7 @@ class MainWindow(FluentWindow):
 
     @asyncSlot(int)
     async def __onLolClientStarted(self, pid):
-        logger.error(f"LoL client started: {pid}, refresh career", TAG)
+        logger.info(f"LoL client started: {pid}, refresh career", TAG)
         res = await self.__startConnector(pid)
         if not res:
             return
@@ -1111,7 +1111,7 @@ class MainWindow(FluentWindow):
             try:
                 await self.__onGameStart()
             except Exception as e:
-                logger.error(
+                logger.warning(
                     f"__onGameStart failed ({type(e).__name__}: {e}), "
                     f"skip to keep gameflow pipeline going", TAG)
             isGaming = True
@@ -1125,7 +1125,7 @@ class MainWindow(FluentWindow):
                 try:
                     await self.__onGameStart()
                 except Exception as e:
-                    logger.error(
+                    logger.warning(
                         f"__onGameStart failed ({type(e).__name__}: {e}), "
                         f"skip to keep gameflow pipeline going", TAG)
             isGaming = True
@@ -1153,7 +1153,7 @@ class MainWindow(FluentWindow):
             if isinstance(self.currentSummoner, dict):
                 prefetch_puuid = self.currentSummoner.get('puuid')
                 if prefetch_puuid:
-                    logger.error(
+                    logger.info(
                         f"Lobby: prefetching games [{0}-{max_needed - 1}] "
                         f"for {prefetch_puuid}", TAG)
                     # 预取是尽力而为: LCU/SGP 双失败时会抛
@@ -1173,7 +1173,7 @@ class MainWindow(FluentWindow):
             # LCU match-history 缓存过期由 connector.getSummonerGamesByPuuid
             # 内部的重试机制处理 (检测到 stale cache 自动等待重试),
             # 这里无需再 sleep
-            logger.error("Career: refresh triggered (lobby)", TAG)
+            logger.info("Career: refresh triggered (lobby)", TAG)
             await self.careerInterface.refresh()
 
             # 同步刷新战绩查询页: 生涯页刷新后, 若搜索页已加载同一召唤师,
@@ -1315,7 +1315,7 @@ class MainWindow(FluentWindow):
             for attempt in range(3):
                 ballot = await connector.getEogStats()
                 if not ballot:
-                    logger.error(
+                    logger.warning(
                         f"Auto honor: no ballot (attempt={attempt})", TAG)
                     await asyncio.sleep(2)
                     continue
@@ -1323,13 +1323,13 @@ class MainWindow(FluentWindow):
                 opponents = (ballot.get('eligibleOpponents') or [])
                 if allies or opponents:
                     break
-                logger.error(
+                logger.warning(
                     f"Auto honor: eligibleAllies/Opponents empty, "
                     f"retry in 2s (attempt={attempt})", TAG)
                 await asyncio.sleep(2)
 
             if not ballot:
-                logger.error("Auto honor: no ballot after retries", TAG)
+                logger.warning("Auto honor: no ballot after retries", TAG)
                 return
 
             allies = list(ballot.get('eligibleAllies') or [])
@@ -1356,7 +1356,7 @@ class MainWindow(FluentWindow):
                                     if a.get('puuid') in friends_puuid]
                     if strategy == 'friends_only':
                         if not friend_allies:
-                            logger.error(
+                            logger.warning(
                                 "Auto honor: friends_only no friends", TAG)
                             return
                         allies = friend_allies
@@ -1365,7 +1365,7 @@ class MainWindow(FluentWindow):
                                       if a.get('puuid') not in friends_puuid]
                         allies = friend_allies + non_friends  # 好友在前
                 except Exception as e:
-                    logger.error(
+                    logger.warning(
                         f"Auto honor: strategy failed, fallback: {e}", TAG)
 
             # ponytail: 先队友, 多余给对手 (同 sona) — verified working
@@ -1385,17 +1385,17 @@ class MainWindow(FluentWindow):
                     summonerId=summonerId, gameId=gameId)
                 if ok:
                     success += 1
-                logger.error(
+                logger.info(
                     f"Auto honor: vote {i+1}/{len(targets)} → "
                     f"[{category}] {target.get('championName', puuid)} "
                     f"{'队友' if is_ally else '对手'} "
                     f"{'✓' if ok else '✗'}", TAG)
 
-            logger.error(
+            logger.info(
                 f"Auto honor: done {success}/{len(targets)} votes", TAG)
 
         except Exception as e:
-            logger.error(f"Auto honor failed: {e}", TAG)
+            logger.warning(f"Auto honor failed: {e}", TAG)
 
     async def __autoPlayAgain(self):
         """EndOfGame 阶段自动点击"再来一局".
@@ -1405,16 +1405,16 @@ class MainWindow(FluentWindow):
         """
         try:
             await asyncio.sleep(2)
-            logger.error("Auto play again: calling playAgain()", TAG)
+            logger.info("Auto play again: calling playAgain()", TAG)
             await connector.playAgain()
-            logger.error("Auto play again: done", TAG)
+            logger.info("Auto play again: done", TAG)
         except Exception as e:
-            logger.error(f"Auto play again failed: {e}", TAG)
+            logger.warning(f"Auto play again failed: {e}", TAG)
 
     def __scheduleAutoStartMatchmaking(self):
         if not cfg.get(cfg.enableAutoStartMatchmaking):
             return
-        logger.error("Auto-start matchmaking: scheduled (entered lobby)", TAG)
+        logger.info("Auto-start matchmaking: scheduled (entered lobby)", TAG)
         self.__cancelAutoStartMatchmaking()
 
         async def autoStart():
@@ -1423,24 +1423,24 @@ class MainWindow(FluentWindow):
             try:
                 cur_status = await connector.getGameStatus()
                 if cur_status != 'Lobby':
-                    logger.error(
+                    logger.warning(
                         f"Auto-start matchmaking: status changed to {cur_status}, abort", TAG)
                     return
                 if not await connector.isLobbyReadyToSearch():
-                    logger.error("Auto-start matchmaking: lobby not ready, abort", TAG)
+                    logger.warning("Auto-start matchmaking: lobby not ready, abort", TAG)
                     return
                 search_status = await connector.getMatchmakingStatus()
                 if search_status and search_status.get('searchState') in ('Searching', 'Found', 'Accepted'):
-                    logger.error(
+                    logger.warning(
                         f"Auto-start matchmaking: already in state {search_status.get('searchState')}, abort", TAG)
                     return
                 ok = await connector.startMatchmaking()
                 if ok:
-                    logger.error("Auto-start matchmaking: started successfully", TAG)
+                    logger.info("Auto-start matchmaking: started successfully", TAG)
                 else:
-                    logger.error("Auto-start matchmaking: startMatchmaking returned False", TAG)
+                    logger.warning("Auto-start matchmaking: startMatchmaking returned False", TAG)
             except Exception as e:
-                logger.error(f"Auto-start matchmaking error: {e}", TAG)
+                logger.warning(f"Auto-start matchmaking error: {e}", TAG)
             finally:
                 self._autoStartTask = None
 
@@ -1642,21 +1642,12 @@ class MainWindow(FluentWindow):
         if not data:
             return
 
-        # 诊断: 确认 ARAM 的 timer.phase 值 (不受 logLevel 限制)
-        try:
-            import os
-            import json
-            phaseDebug = os.path.join(
-                os.environ.get('APPDATA', ''), 'Seraphine',
-                'hextech_phase_debug.json')
-            with open(phaseDebug, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'phase': data.get('timer', {}).get('phase'),
-                    'benchEnabled': data.get('benchEnabled'),
-                    'enableAutoAramBench': cfg.get(cfg.enableAutoAramBench),
-                }, f, ensure_ascii=False, indent=2)
-        except (OSError, TypeError) as e:
-            logger.debug(f"aram session save skipped: {e}", TAG)
+        # 抢英雄是时延敏感操作 (备选席目标可能几百毫秒内被队友抢走),
+        # 先于下面会 await 网络的 phase 处理/头像刷新启动, 与它们并发执行
+        grabTask = None
+        if data.get('benchEnabled'):
+            grabTask = asyncio.ensure_future(
+                autoBenchGrab(data, self.championSelection))
 
         phase = {
             'PLANNING': [autoSetSummonerSpell, autoShow],
@@ -1675,11 +1666,12 @@ class MainWindow(FluentWindow):
             await self.gameInfoInterface.updateAllyIcon(myTeam)
             self.gameInfoInterface.updateAllySummonersOrder(myTeam)
 
-        if data.get('benchEnabled'):
-            await autoBenchGrab(data, self.championSelection)
+        grabbed = await grabTask if grabTask is not None else False
 
-        # 海克斯/大乱斗: 备选席模式时刷新抢人窗口的头像墙
-        if data.get('benchEnabled') and self.hextechWindow.isVisible():
+        # 海克斯/大乱斗: 备选席模式时刷新抢人窗口的头像墙.
+        # 本帧刚换过英雄时 data 已是换之前的旧快照, 跳过渲染,
+        # 等换英雄触发的下一帧用新数据刷新
+        if data.get('benchEnabled') and not grabbed and self.hextechWindow.isVisible():
             signalBus.hextechSessionUpdated.emit(data)
 
     # 进入游戏后触发
@@ -1690,7 +1682,7 @@ class MainWindow(FluentWindow):
 
         # ARAM Mayhem: 启动海克斯辅助轮询
         if queueId == 2400 and cfg.get(cfg.enableHextechAssist):
-            logger.error(
+            logger.info(
                 f"HextechAssist: starting timer for queueId={queueId}", TAG)
             self.hextechAssistTimer.start()
             # 自动切到 OPGG 海克斯辅助页 (若开启自动显示)
@@ -1698,20 +1690,20 @@ class MainWindow(FluentWindow):
                 try:
                     championId = await self.__getChampionIdFromLiveClient()
                     if championId and championId > 0:
-                        logger.error(
+                        logger.info(
                             f"HextechAssist: auto show for championId={championId}", TAG)
                         self.opggWindow.showHextechAssist(championId)
                     else:
-                        logger.error(
+                        logger.info(
                             "HextechAssist: no championId from live client", TAG)
                 except Exception as e:
-                    logger.error(f"Hextech assist auto show failed: {e}", TAG)
+                    logger.warning(f"Hextech assist auto show failed: {e}", TAG)
 
         # 死亡自动切窗: 非排除模式且启用时启动轮询
         if cfg.get(cfg.enableDeathSwitch):
             excluded = cfg.get(cfg.deathSwitchExcludedModes)
             if isinstance(excluded, list) and queueId not in excluded:
-                logger.error(
+                logger.info(
                     f"DeathSwitch: starting timer for queueId={queueId}", TAG)
                 self._deathPrevAlive = True
                 self._deathRespawnTask = None
@@ -1820,7 +1812,7 @@ class MainWindow(FluentWindow):
         try:
             await self.__loadGameInfoPanel(force=True)
         except Exception as e:
-            logger.error(
+            logger.warning(
                 f"GameInfo: manual refresh failed ({type(e).__name__}: {e})",
                 TAG)
 
@@ -1835,7 +1827,7 @@ class MainWindow(FluentWindow):
         try:
             await self.__loadGameInfoPanel(force=True)
         except Exception as e:
-            logger.error(
+            logger.warning(
                 f"GameInfo: auto refresh failed ({type(e).__name__}: {e})",
                 TAG)
 
@@ -1895,7 +1887,7 @@ class MainWindow(FluentWindow):
             if isinstance(self.currentSummoner, dict):
                 currentPuuid = self.currentSummoner.get('puuid')
             if not currentPuuid:
-                logger.error("WarCriminal: no current puuid", TAG)
+                logger.warning("WarCriminal: no current puuid", TAG)
                 return
 
             # 取上一局 summary
@@ -1913,10 +1905,10 @@ class MainWindow(FluentWindow):
                     games_check = gamesResp
                 if games_check:
                     break
-                logger.error(
+                logger.warning(
                     f"WarCriminal: no games yet, retry {attempt + 1}/3", TAG)
                 await asyncio.sleep(2)
-            logger.error(
+            logger.debug(
                 f"WarCriminal: gamesResp type={type(gamesResp).__name__} "
                 f"len={len(gamesResp) if hasattr(gamesResp, '__len__') else 'N/A'}",
                 TAG)
@@ -1927,32 +1919,32 @@ class MainWindow(FluentWindow):
             else:
                 games = []
             if not games:
-                logger.error("WarCriminal: no recent game", TAG)
+                logger.warning("WarCriminal: no recent game", TAG)
                 return
             lastGame = games[0] if isinstance(games, list) and games else None
             if not isinstance(lastGame, dict):
-                logger.error(f"WarCriminal: invalid lastGame type={type(lastGame)}", TAG)
+                logger.warning(f"WarCriminal: invalid lastGame type={type(lastGame)}", TAG)
                 return
             gameId = lastGame.get('gameId')
             if not gameId:
-                logger.error("WarCriminal: no gameId in lastGame", TAG)
+                logger.warning("WarCriminal: no gameId in lastGame", TAG)
                 return
 
             # 如果缓存已有该局, 跳过
             if getVerdict(gameId):
-                logger.error(f"WarCriminal: game {gameId} already diagnosed", TAG)
+                logger.info(f"WarCriminal: game {gameId} already diagnosed", TAG)
                 return
 
             # 拿本局详情
             detail = await connector.getGameDetailByGameId(gameId)
             if not detail:
-                logger.error(f"WarCriminal: no detail for {gameId}", TAG)
+                logger.warning(f"WarCriminal: no detail for {gameId}", TAG)
                 return
 
             # 解析双方队伍 (注意签名: parseGameDetailData(puuid, game))
             parsed = await parseGameDetailData(currentPuuid, detail)
             if not parsed:
-                logger.error(f"WarCriminal: parseGameDetailData returned None for {gameId}", TAG)
+                logger.warning(f"WarCriminal: parseGameDetailData returned None for {gameId}", TAG)
                 return
 
             ratingStyle = cfg.get(cfg.teamRatingStyle)
@@ -1960,7 +1952,7 @@ class MainWindow(FluentWindow):
                                           ratingStyle=ratingStyle)
             return parsed
         except Exception as e:
-            logger.error(f"WarCriminal diagnose failed: {e}", TAG)
+            logger.warning(f"WarCriminal diagnose failed: {e}", TAG)
 
     async def __onHextechAssistTick(self):
         """海克斯辅助定时轮询: 采集已选强化并刷新推荐列表"""
@@ -1971,7 +1963,7 @@ class MainWindow(FluentWindow):
                 signalBus.liveGameDataUpdated.emit(liveData)
                 self.opggWindow.hextechAssistInterface.updateLiveState(liveData)
         except Exception as e:
-            logger.error(f"Hextech assist tick failed: {e}", TAG)
+            logger.warning(f"Hextech assist tick failed: {e}", TAG)
 
     async def __onDeathSwitchTick(self):
         """死亡自动切窗: 检查死亡状态并切换窗口"""
@@ -2122,11 +2114,11 @@ class MainWindow(FluentWindow):
         try:
             status = await connector.getGameStatus()
         except Exception as e:
-            logger.error(f"Auto sync OPGG: getGameStatus failed: {e}", TAG)
+            logger.warning(f"Auto sync OPGG: getGameStatus failed: {e}", TAG)
             return
 
         # 用 error 级别记录, 确保写入日志文件 (项目日志级别为 ERROR)
-        logger.error(f"Auto sync OPGG: status={status}", TAG)
+        logger.info(f"Auto sync OPGG: status={status}", TAG)
 
         # 仅在选人或游戏中自动切换
         if status not in ('ChampSelect', 'InProgress', 'Lobby', 'ReadyCheck'):
@@ -2164,13 +2156,13 @@ class MainWindow(FluentWindow):
                 data = session.get('gameData', {}) if session else {}
                 queueId = data.get('queue', {}).get('id', 0)
             except Exception as e:
-                logger.error(
+                logger.warning(
                     f"Auto sync OPGG: getGameflowSession failed: {e}", TAG)
             # 游戏中: 从 Live Client API 获取当前英雄
             championId = await self.__getChampionIdFromLiveClient()
 
         mode = self.__queueIdToOpggMode(queueId, status)
-        logger.error(
+        logger.info(
             f"Auto sync OPGG: championId={championId}, queueId={queueId}, mode={mode}", TAG)
 
         if not mode:
@@ -2216,7 +2208,7 @@ class MainWindow(FluentWindow):
                             return 0
                     break
         except Exception as e:
-            logger.error(
+            logger.warning(
                 f"Auto sync OPGG: Live Client API failed: {e}", TAG)
         return 0
 
