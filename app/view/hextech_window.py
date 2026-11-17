@@ -3,7 +3,7 @@ import sys
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QIcon, QPainter, QColor
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QGridLayout, QFrame,
-                             QLabel, QWidget, QScrollArea, QApplication)
+                             QLabel, QWidget, QScrollArea)
 
 from qasync import asyncSlot
 
@@ -12,8 +12,9 @@ from app.common.signals import signalBus
 from app.common.logger import logger
 from app.common.util import getLolClientWindowPos, isLolClientForeground
 from app.common.icons import Icon
-from app.common.side_dock import (QUICK_TOGGLES, dockWidth, orderToggles,
-                                  computeDockGeometry, shouldShowDock)
+from app.common.side_dock import (QUICK_TOGGLES, IN_GAME_PHASES, dockWidth,
+                                  orderToggles, computeDockGeometry,
+                                  shouldShowDock)
 from app.common.qfluentwidgets import (ToolTipFilter, ToolTipPosition,
                                        FlyoutViewBase, StrongBodyLabel,
                                        CaptionLabel, isDarkTheme)
@@ -58,6 +59,9 @@ class HextechSelectInterface(QFrame):
         self.scrollArea = QScrollArea()
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setFrameShape(QFrame.NoFrame)
+        # 空间不够时仍可用滚轮滚动, 但不画滚动条 (窄侧栏里滚动条会挤占一列头像)
+        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scrollArea.setWidget(self.gridWidget)
 
         self._buttons = {}       # championId -> RoundIconButton (备选席)
@@ -88,12 +92,12 @@ class HextechSelectInterface(QFrame):
         self.mineLabel.setObjectName("hintLabel")
         self.benchLabel.setObjectName("hintLabel")
 
-        self.vBoxLayout.setContentsMargins(10, 10, 10, 10)
-        self.vBoxLayout.setSpacing(6)
+        self.vBoxLayout.setContentsMargins(10, 4, 10, 6)
+        self.vBoxLayout.setSpacing(4)
 
-        self.vBoxLayout.addWidget(self.titleLabel, alignment=Qt.AlignCenter)
+        # 标题在常驻侧栏里是冗余的, 隐藏以给备选席网格让出高度
+        self.titleLabel.hide()
         self.vBoxLayout.addWidget(self.statusLabel, alignment=Qt.AlignCenter)
-        self.vBoxLayout.addSpacing(2)
 
         self.vBoxLayout.addWidget(self.mineLabel, alignment=Qt.AlignLeft)
         self.vBoxLayout.addWidget(self.mineWidget)
@@ -229,6 +233,8 @@ class QuickToggleSection(QWidget):
 
         self._buttons = {}   # key -> QuickToggleButton
         self._order = []     # 当前布局顺序 (key 列表)
+        self._actives = {}   # key -> 是否与当前阶段相关
+        self._compact = False
 
         for toggle in QUICK_TOGGLES:
             item = getattr(cfg, toggle.key, None)
@@ -270,8 +276,20 @@ class QuickToggleSection(QWidget):
                 self.vBoxLayout.addWidget(self._buttons[key])
             self._order = newOrder
 
-        for toggle, active in ordered:
-            self._buttons[toggle.key].setActive(active)
+        self._actives = {t.key: a for t, a in ordered}
+        self._applyVisibility()
+
+    def setCompact(self, compact):
+        """紧凑模式只显示与当前阶段相关的开关, 把高度让给换英雄区."""
+        if compact != self._compact:
+            self._compact = compact
+            self._applyVisibility()
+
+    def _applyVisibility(self):
+        for key, btn in self._buttons.items():
+            active = self._actives.get(key, True)
+            btn.setActive(active)
+            btn.setVisible(active or not self._compact)
 
 
 class SideDockWindow(OpggWindowBase):
@@ -410,13 +428,16 @@ class SideDockWindow(OpggWindowBase):
     def _syncToClient(self):
         pos = getLolClientWindowPos() if self._clientPresent else None
         onTop = bool(cfg.get(cfg.enableHextechWindowOnTop))
+        inGame = self._phase in IN_GAME_PHASES
         show = shouldShowDock(
             enabled=bool(cfg.get(cfg.enableSideDock)),
             clientPresent=self._clientPresent,
             clientRectValid=pos is not None,
             onTop=onTop,
-            clientForeground=isLolClientForeground() if (pos is not None and onTop) else False,
-            ownActive=QApplication.activeWindow() is not None)
+            clientForeground=(isLolClientForeground()
+                              if pos is not None and (onTop or inGame) else False),
+            ownActive=self.isActiveWindow(),
+            inGame=inGame)
         if not show:
             self._hideDock()
             return
@@ -454,7 +475,9 @@ class SideDockWindow(OpggWindowBase):
         self.collapseButton.setTitle(
             self.tr("展开") if collapsed else self.tr("收起"))
         self.toggleSection.setCollapsed(collapsed)
-        self.selectInterface.setVisible(self._benchActive and not collapsed)
+        showBench = self._benchActive and not collapsed
+        self.toggleSection.setCompact(showBench)
+        self.selectInterface.setVisible(showBench)
         self.update()
 
     def setPhase(self, phase):
@@ -463,6 +486,9 @@ class SideDockWindow(OpggWindowBase):
         self.toggleSection.setPhase(phase)
         if phase != 'ChampSelect':
             self.setBenchMode(False)
+        # 进游戏等阶段切换后立即重判显隐, 不等下一个 500ms 轮询
+        if self._clientPresent:
+            self._syncToClient()
 
     def setBenchMode(self, active: bool, expand: bool = False):
         """大乱斗备选席模式开关. expand=True 且当前折叠时自动展开 (autoShowHextechWindow)."""

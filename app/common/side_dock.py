@@ -8,6 +8,9 @@ from typing import Optional, Sequence, Tuple
 DOCK_WIDTH_EXPANDED = 168
 DOCK_WIDTH_COLLAPSED = 48
 
+# 对局进行中的阶段: 侧边栏只在客户端位于前台时显示, 不能浮在游戏上
+IN_GAME_PHASES = ('GameStart', 'InProgress', 'Reconnect')
+
 
 @dataclass(frozen=True)
 class QuickToggle:
@@ -80,12 +83,16 @@ def computeDockGeometry(client: Tuple[float, float, float, float],
 
 def shouldShowDock(enabled: bool, clientPresent: bool, clientRectValid: bool,
                    onTop: bool, clientForeground: bool,
-                   ownActive: bool) -> bool:
+                   ownActive: bool, inGame: bool = False) -> bool:
     """是否应显示侧边栏.
 
-    置顶时窗口会浮在所有程序之上, 因此只在客户端或 Seraphine 自己在前台时
-    显示, 避免客户端被别的窗口盖住后侧边栏仍悬浮在其他软件上.
+    置顶时窗口会浮在所有程序之上, 对局中也一样, 因此这两种情况下只在
+    客户端前台或侧边栏自己处于活动状态 (用户正在点它) 时显示.
+    ownActive 必须是"侧边栏自己"是否活动, 不能是任意 Seraphine 窗口:
+    否则游戏中切到 Seraphine 主窗口就会让侧边栏浮到游戏上.
     """
     if not (enabled and clientPresent and clientRectValid):
         return False
-    return (not onTop) or clientForeground or ownActive
+    if onTop or inGame:
+        return clientForeground or ownActive
+    return True

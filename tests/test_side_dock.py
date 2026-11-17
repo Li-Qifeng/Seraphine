@@ -7,7 +7,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.common.side_dock import (  # noqa: E402
-    DOCK_WIDTH_COLLAPSED, DOCK_WIDTH_EXPANDED, QUICK_TOGGLES, QuickToggle,
+    DOCK_WIDTH_COLLAPSED, DOCK_WIDTH_EXPANDED, IN_GAME_PHASES, QUICK_TOGGLES,
+    QuickToggle,
     computeDockGeometry, dockWidth, orderToggles, shouldShowDock)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -152,3 +153,12 @@ class TestShouldShowDock:
         assert not self._call(onTop=True)
         assert self._call(onTop=True, clientForeground=True)
         assert self._call(onTop=True, ownActive=True)
+
+    def test_in_game_requires_foreground_even_when_not_on_top(self):
+        assert not self._call(inGame=True)
+        assert self._call(inGame=True, clientForeground=True)
+        assert self._call(inGame=True, ownActive=True)
+
+    def test_in_game_phases_are_valid(self):
+        assert set(IN_GAME_PHASES) <= GAMEFLOW_PHASES
+        assert 'InProgress' in IN_GAME_PHASES
